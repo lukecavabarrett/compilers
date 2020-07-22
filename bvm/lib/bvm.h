@@ -77,9 +77,8 @@ namespace operand {
 struct t {
   virtual word_t get_rvalue(machine &m) = 0;
   virtual ~t() = default;
-  static std::unique_ptr<t> parse(std::string_view s);
+
 };
-std::unique_ptr<t> parse(std::string_view s);
 struct rvalue : public t {
 };
 
@@ -92,12 +91,11 @@ struct immediate : public rvalue {
   word_t value;
   immediate(word_t w) : value(w) {}
   virtual word_t get_rvalue(machine &m) final { return value; }
-  static std::unique_ptr<immediate> parse(std::string_view s);
 
 };
 
 struct reg : public lvalue {
-  static std::unique_ptr<reg> parse(std::string_view s);
+
 };
 
 #define header_reg(r) struct reg_##r : public reg {\
@@ -113,7 +111,6 @@ header_reg(rsi);
 header_reg(rdi);
 
 struct mem_access : public lvalue {
-  static std::unique_ptr<mem_access> parse(std::string_view s);
 };
 
 struct mem_access_1 : public mem_access {
@@ -145,7 +142,6 @@ struct t {
   virtual ~t() = default;
 };
 
-std::unique_ptr<t> parse(std::string_view s);
 
 struct exit : public t {
   std::unique_ptr<operand::rvalue> what;
@@ -158,6 +154,13 @@ struct exit : public t {
 struct jmp : public t {
   std::unique_ptr<operand::rvalue> where;
   jmp(std::unique_ptr<operand::rvalue> &&w) : where(std::move(w)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+struct jmpz : public t {
+  std::unique_ptr<operand::rvalue> what,where;
+  jmpz(std::unique_ptr<operand::rvalue> &&wha,std::unique_ptr<operand::rvalue> &&whe) : what(std::move(wha)),where(std::move(whe)) {};
 
   virtual std::optional<word_t> execute_on(machine &m) final;
 };
@@ -209,6 +212,26 @@ typedef binary_op_fold<std::plus<word_t>> add2;
 typedef binary_op_fold<std::minus<word_t>> sub2;
 typedef binary_op_fold<std::multiplies<word_t>> mul2;
 typedef binary_op_fold<std::divides<word_t>> div2;
+
+template<typename Op>
+struct unary_op : public t {
+  virtual std::optional<word_t> execute_on(machine &m) final {
+    lhs->get_lvalue(m) = Op()(rhs->get_rvalue(m));
+    return {};
+  }
+  unary_op(std::unique_ptr<operand::lvalue> &&l, std::unique_ptr<operand::rvalue> &&r)
+      : lhs(std::move(l)), rhs(std::move(r)) {}
+  std::unique_ptr<operand::lvalue> lhs;
+  std::unique_ptr<operand::rvalue> rhs;
+};
+namespace {
+struct __identity {
+  constexpr word_t operator()( word_t t ) const noexcept {return t;}
+};
+
+}
+typedef unary_op<__identity> mov2;
+
 
 }
 

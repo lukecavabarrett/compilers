@@ -1,5 +1,5 @@
 
-add_library(libbvm STATIC bvm.cc)
+add_library(libbvm STATIC bvm.cc parse_asm.cc)
 
 target_link_libraries(libbvm
         PRIVATE
