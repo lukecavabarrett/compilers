@@ -17,6 +17,7 @@ typedef uint64_t word_t;
 
 struct registers {
   word_t rip = 0; // instruction pointer
+  word_t rsp = 0x0000000100000000ULL ;
   word_t rax = 0, rbx = 0, rcx = 0, rdx = 0, rsi = 0, rdi = 0; // classic "general_purpose" registers
 };
 
@@ -62,6 +63,7 @@ struct memory {
     if (hi == 0) {
       throw; //cannot dereference code
     } else if (hi == 1) {
+      if(s.data.size()<=lo){s.data.resize(lo+1);}
       return s.data[lo];
     } else {
       return h.pages.at(hi).data[lo];
@@ -103,6 +105,7 @@ virtual word_t& get_lvalue(machine &m) final;\
 };
 
 header_reg(rip);
+header_reg(rsp);
 header_reg(rax);
 header_reg(rbx);
 header_reg(rcx);
@@ -142,6 +145,10 @@ struct t {
   virtual ~t() = default;
 };
 
+struct nop : public t {
+  nop() {};
+  virtual std::optional<word_t> execute_on(machine &m) final {return {};}
+};
 
 struct exit : public t {
   std::unique_ptr<operand::rvalue> what;
@@ -159,8 +166,29 @@ struct jmp : public t {
 };
 
 struct jmpz : public t {
-  std::unique_ptr<operand::rvalue> what,where;
-  jmpz(std::unique_ptr<operand::rvalue> &&wha,std::unique_ptr<operand::rvalue> &&whe) : what(std::move(wha)),where(std::move(whe)) {};
+  std::unique_ptr<operand::rvalue> what, where;
+  jmpz(std::unique_ptr<operand::rvalue> &&wha, std::unique_ptr<operand::rvalue> &&whe) : what(std::move(wha)), where(std::move(whe)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+struct jmpnz : public t {
+  std::unique_ptr<operand::rvalue> what, where;
+  jmpnz(std::unique_ptr<operand::rvalue> &&wha, std::unique_ptr<operand::rvalue> &&whe) : what(std::move(wha)), where(std::move(whe)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+struct jmpl : public t {
+  std::unique_ptr<operand::rvalue> w1, w2, where;
+  jmpl(std::unique_ptr<operand::rvalue> &&wha1, std::unique_ptr<operand::rvalue> &&wha2, std::unique_ptr<operand::rvalue> &&whe) : w1(std::move(wha1)), w2(std::move(wha2)), where(std::move(whe)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+struct jmple : public t {
+  std::unique_ptr<operand::rvalue> w1, w2, where;
+  jmple(std::unique_ptr<operand::rvalue> &&wha1, std::unique_ptr<operand::rvalue> &&wha2, std::unique_ptr<operand::rvalue> &&whe) : w1(std::move(wha1)), w2(std::move(wha2)), where(std::move(whe)) {};
 
   virtual std::optional<word_t> execute_on(machine &m) final;
 };
@@ -178,6 +206,29 @@ struct scan_int : public t {
 
   virtual std::optional<word_t> execute_on(machine &m) final;
 };
+
+struct push : public t {
+  std::unique_ptr<operand::rvalue> what;
+  push(std::unique_ptr<operand::rvalue> &&w) : what(std::move(w)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+struct push_p : public t {
+  std::unique_ptr<operand::rvalue> what, offset;
+  push_p(std::unique_ptr<operand::rvalue> &&w,std::unique_ptr<operand::rvalue> &&o) : what(std::move(w)), offset(std::move(o)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+struct pop : public t {
+  std::unique_ptr<operand::lvalue> what;
+  pop(std::unique_ptr<operand::lvalue> &&w) : what(std::move(w)) {};
+
+  virtual std::optional<word_t> execute_on(machine &m) final;
+};
+
+
 
 template<typename Op>
 struct binary_op : public t {
@@ -226,12 +277,11 @@ struct unary_op : public t {
 };
 namespace {
 struct __identity {
-  constexpr word_t operator()( word_t t ) const noexcept {return t;}
+  constexpr word_t operator()(word_t t) const noexcept { return t; }
 };
 
 }
 typedef unary_op<__identity> mov2;
-
 
 }
 
