@@ -33,11 +33,42 @@ std::vector<token> tokenize(std::string_view s) {
         break;
     }
     if(mtc)continue;
+
+
+    if(s.front()=='\"'){
+      //string literal
+      throw std::runtime_error("parsing of string literal unimplemented");
+      trim_prefix
+      continue;
+    }
+
+    if(s.front()=='.'){
+      //float literal
+      auto end = std::find_if_not(s.begin()+1,s.end(),::isdigit);
+      tks.push_back({.sv=itr_sv(s.begin(),end),.type=token_type::LITERAL});
+      s.remove_prefix(end-s.begin());
+      trim_prefix
+      continue;
+    }
+
+    if(isdigit(s.front())){
+      //int or float literal
+      auto end = std::find_if_not(s.begin(),s.end(),::isdigit);
+      if(end!=s.end() && *end=='.')end = std::find_if_not(end+1,s.end(),::isdigit);
+      tks.push_back({.sv=itr_sv(s.begin(),end),.type=token_type::LITERAL});
+      s.remove_prefix(end-s.begin());
+      trim_prefix
+      continue;
+    }
+
+
+
+
     auto end = std::find_if_not(s.begin(),s.end(),allowed_in_identifier);
     if(s.begin()==end){
       throw std::runtime_error(formatter() << "cannot parse anymore: " << int(s.front()) << s >> formatter::to_str);
     }
-    tks.push_back({.sv=itr_sv(s.begin(),end),.type=token_type::FREE});
+    tks.push_back({.sv=itr_sv(s.begin(),end),.type= ::isupper(s.front()) ? token_type::CAP_NAME : token_type::IDENTIFIER});
     s.remove_prefix(end-s.begin());
     trim_prefix
   }
