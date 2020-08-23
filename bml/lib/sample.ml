@@ -1,7 +1,15 @@
+match next_event server conn with
+| Error _ , t -> Error t
+| Ok (Error _), t -> error t
+| OK (Ok (a,b)), _ -> Ok a
+| Nothing 43 , _ -> Ok conn ;;
+
 let rec start x =
     (x , def_start (int_add x 1))
 and def_start x () =
-    start x ;;
+    start x
+in
+    start 45 ;;
 
 let rec multiply_out e =
     match e with
@@ -19,13 +27,10 @@ let rec multiply_out e =
        Times (multiply_out left, multiply_out right)
     | Divide (left, right) ->
        Divide (multiply_out left, multiply_out right)
-    | Value v -> Value v ;;
+    | Value v -> Value v
+in
 
 match result with
 | true -> false
 | false -> true ;;
 
-match next_event server conn with
-| Error _ , t -> Error t
-| Ok (Error _), t -> error t
-| OK (Ok (a,b)), _ -> Ok a ;;

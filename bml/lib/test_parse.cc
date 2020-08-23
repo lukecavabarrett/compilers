@@ -33,31 +33,33 @@ std::string file_to_string(const char* path){
 
 void test1(){
   static constexpr std::string_view source = "Error _ , t ";
-  auto tks = tokenize(source);
-  auto [Ast,end] = ast::parse_matcher(tks.begin(),tks.end());
-  assert(end==tks.end());
+  auto tks = parse::tokenizer(source);
+  auto ast = ast::matcher::parse(tks);
+  assert(tks.empty());
 }
 
 void test2(){
   static constexpr std::string_view source = "Upper lower";
-  auto tks = tokenize(source);
-  auto [Ast,end] = ast::parse_expression(tks.begin(),tks.end());
-  assert(end==tks.end());
-  assert(dynamic_cast<ast::fun_app*>(Ast.get()));
+  auto tks = parse::tokenizer(source);
+  auto ast = ast::expression::parse(tks);
+  assert(tks.empty());
+  assert(dynamic_cast<ast::expression::fun_app*>(ast.get()));
 }
 
 void test3(){
   static constexpr std::string_view source = "lower lower";
-  auto tks = tokenize(source);
-  auto [Ast,end] = ast::parse_expression(tks.begin(),tks.end());
-  assert(end==tks.end());
-  assert(dynamic_cast<ast::fun_app*>(Ast.get()));
+  auto tks = parse::tokenizer(source);
+  auto ast = ast::expression::parse(tks);
+  assert(tks.empty());
+  assert(dynamic_cast<ast::expression::fun_app*>(ast.get()));
 }
 
 void test4(){
   static constexpr std::string_view source = "let rec f () = x and x = f () ;;";
-  auto tks = tokenize(source);
-  auto [Ast,end] = ast::parse_definition(tks.begin(),tks.end());
+  auto tks = parse::tokenizer(source);
+  auto ast = ast::definition::parse(tks);
+  tks.expect_pop(parse::EOC);
+  assert(tks.empty());
 }
 
 int main() {
@@ -66,10 +68,8 @@ int main() {
   test3();
   test4();
   auto source = file_to_string("/home/luke/CLionProjects/compilers/bml/lib/sample.ml");
-  auto tks = tokenize(source);
-  for (const token& t : tks)std::cout << "[" << t.to_string() << "] " ;
+  auto tks = parse::tokenizer(source);
   std::cout<<std::endl;
-  auto [Ast,end] = ast::parse_definition(tks.begin(),tks.end());
-  //assert(end==tks.end());
-  std::ofstream("out.html", std::ofstream::out | std::ofstream::trunc)<< Ast->to_html() << std::endl;
+  auto ast = ast::expression::parse(tks);
+  std::ofstream("out.html", std::ofstream::out | std::ofstream::trunc)<< ast->to_html() << std::endl;
 }
