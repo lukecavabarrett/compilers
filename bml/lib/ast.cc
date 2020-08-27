@@ -1,8 +1,9 @@
 #include <ast.h>
+#include "util.h"
 
 namespace ast {
- code_piece::code_piece(std::string_view loc) : loc(loc) {}
-void code_piece::make_html(std::string &out, std::string_view::iterator &it) const {
+node::node(std::string_view loc) : loc(loc) {}
+void node::make_html(std::string &out, std::string_view::iterator &it) const {
   while (it < loc.begin()) {
     out.append(char_to_html(*it));
     ++it;
@@ -15,7 +16,7 @@ void code_piece::make_html(std::string &out, std::string_view::iterator &it) con
   }
   out.append("</span>");
 }
-std::string code_piece::to_html() const {
+std::string node::to_html() const {
   std::string out = "<html>\n"
                     "<head>\n"
                     "    <style type=\"text/css\">\n"
@@ -53,8 +54,18 @@ std::string code_piece::to_html() const {
   return out;
 }
 
-
-
-
+namespace definition {
+ltable t::bind(const ltable &) {
+  if (rec) {
+    // asssert no value definition
+    for (auto &p : defs)
+      if (dynamic_cast<function *>(p.get()) == nullptr)
+        throw std::runtime_error("only function definitions are allowed in recursive definition");
+    THROW_UNIMPLEMENTED;
+  } else {
+    THROW_UNIMPLEMENTED;
+  }
+}
+}
 
 }

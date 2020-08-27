@@ -8,9 +8,15 @@
 #include <charconv>
 #include <iostream>
 #include "util.h"
+#include <errmsg.h>
 
 namespace parse {
 enum token_type { LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE, EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE, END_OF_INPUT };
+
+class error : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
 namespace {
 typedef std::pair<std::string_view, token_type> st;
 }
@@ -66,6 +72,8 @@ struct token {
   }
 };
 
+
+
 class tokenizer {
  public:
   explicit tokenizer(std::string_view source);
@@ -76,6 +84,8 @@ class tokenizer {
   bool empty() const;
   void expect_pop(token_type);
   void expect_peek(token_type);
+  void unexpected_token();
+  void print_errors();
  private:
   void write_head();
   std::string_view to_parse;

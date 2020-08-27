@@ -17,6 +17,15 @@ bool startswith_legal(std::string_view a, std::string_view b) {
   return true;
 }
 
+namespace {
+using namespace parse;
+std::string_view token_type_to_string(token_type t){
+  for (const auto&[p, t_i] : tokens_map)if(t_i==t)return p;
+  throw std::runtime_error("parsing of string literal unimplemented");
+}
+
+}
+
 }
 
 namespace parse {
@@ -80,8 +89,14 @@ void tokenizer::expect_pop(token_type t) {
 }
 void tokenizer::expect_peek(token_type t) {
   //TODO: make better error
-  if (head.type != t)std::runtime_error("expected \"TK\", found another");
+  if (head.type != t){
+    throw std::runtime_error("expected \"TK\", found another");
+  }
 }
+void tokenizer::unexpected_token(){
+  throw std::runtime_error("expected \"TK\", found another");
+}
+
 }
 namespace ast {
 
@@ -164,48 +179,48 @@ ptr parse_e_p(tokenizer &tk) {
         return std::make_unique<literal>(std::make_unique<ast::literal::unit>(), itr_sv(loc_start, tk.pop().sv.end())) ;
       }
     }
-    default:throw std::runtime_error("expected either ( or identifier");
+    default:tk.unexpected_token();
   }
 }
 
 }
 
 ptr parse(tokenizer &tk) {
-  switch (tk.peek()) {
-    case IF: {
-      auto loc_start = tk.pop().sv.begin();
-      auto condition = parse(tk);
-      tk.expect_pop(THEN);
-      auto true_branch = parse(tk);
-      tk.expect_pop(ELSE);
-      auto false_branch = parse(tk);
-      return std::make_unique<if_then_else>(std::move(condition), std::move(true_branch), std::move(false_branch), itr_sv(loc_start,false_branch->loc.end()));
-    }
-    case MATCH: {
-      auto loc_start = tk.pop().sv.begin();
-      auto what = parse(tk);
-      match_with::ptr mtc = std::make_unique<match_with>(std::move(what), std::string_view());
-      tk.expect_pop(WITH);
-      tk.expect_peek(PIPE);
-      while (tk.peek() == PIPE) {
-        tk.pop();
-        auto m = ast::matcher::parse(tk);
-        tk.expect_pop(ARROW);
-        auto e = parse(tk);
-        mtc->branches.push_back({.pattern=std::move(m), .result=std::move(e)});
+    switch (tk.peek()) {
+      case IF: {
+        auto loc_start = tk.pop().sv.begin();
+        auto condition = parse(tk);
+        tk.expect_pop(THEN);
+        auto true_branch = parse(tk);
+        tk.expect_pop(ELSE);
+        auto false_branch = parse(tk);
+        return std::make_unique<if_then_else>(std::move(condition), std::move(true_branch), std::move(false_branch), itr_sv(loc_start, false_branch->loc.end()));
       }
-      mtc->loc = itr_sv(loc_start, mtc->branches.back().result->loc.end());
-      return std::move(mtc);
+      case MATCH: {
+        auto loc_start = tk.pop().sv.begin();
+        auto what = parse(tk);
+        match_with::ptr mtc = std::make_unique<match_with>(std::move(what), std::string_view());
+        tk.expect_pop(WITH);
+        tk.expect_peek(PIPE);
+        while (tk.peek() == PIPE) {
+          tk.pop();
+          auto m = ast::matcher::parse(tk);
+          tk.expect_pop(ARROW);
+          auto e = parse(tk);
+          mtc->branches.push_back({.pattern=std::move(m), .result=std::move(e)});
+        }
+        mtc->loc = itr_sv(loc_start, mtc->branches.back().result->loc.end());
+        return std::move(mtc);
+      }
+      case LET: {
+        auto loc_start = tk.peek_sv().begin();
+        auto d = definition::parse(tk);
+        tk.expect_pop(IN);
+        auto e = parse(tk);
+        return std::make_unique<let_in>(std::move(d), std::move(e), itr_sv(loc_start, e->loc.end()));
+      }
+      default:return parse_e_s(tk);
     }
-    case LET: {
-      auto loc_start = tk.peek_sv().begin();
-      auto d = definition::parse(tk);
-      tk.expect_pop(IN);
-      auto e  = parse(tk);
-      return std::make_unique<let_in>(std::move(d), std::move(e), itr_sv(loc_start, e->loc.end()));
-    }
-    default:return parse_e_s(tk);
-  }
 }
 
 }

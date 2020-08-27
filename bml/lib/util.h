@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <array>
+#include <algorithm>
 
 class formatter {
  public:
@@ -56,7 +57,7 @@ bool is_in(const T &v, std::initializer_list<T> lst) {
 #include <variant>
 #include <vector>
 #include <cassert>
-
+/*
 template <typename T,int I>
 class struct_wrap : public T {
   using T::T;
@@ -129,15 +130,12 @@ class result {
 
 #define RETURN_IF_ERROR(expr)                                                \
   do {                                                                       \
-    /* Using _status below to avoid capture problems if expr is "status". */ \
-    const  _status = (expr);              \
+       const  _status = (expr);              \
     if (PROTOBUF_PREDICT_FALSE(!_status.ok())) return _status;               \
   } while (0)
 
 #define RETURN_IF_ERROR_BIND(expr)                                                \
   do {                                                                       \
-    /* Using _status below to avoid capture problems if expr is "status". */ \
-    const PROTOBUF_NAMESPACE_ID::util::Status _status = (expr);              \
     if (PROTOBUF_PREDICT_FALSE(!_status.ok())) return _status;               \
   } while (0)
 
@@ -162,5 +160,12 @@ class result {
 #define ASSIGN_OR_RETURN_BIND(lhs, rexpr) \
   ASSIGN_OR_RETURN_IMPL( \
       STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr);
+
+*/
+
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#define AT __FILE__ ":" TOSTRING(__LINE__)
+#define THROW_UNIMPLEMENTED throw std::runtime_error( AT ": unimplemented" );
 
 #endif //COMPILERS_BML_LIB_UTIL_H_

@@ -3,6 +3,8 @@
 #include <memory>
 #include <vector>
 #include <variant>
+#include <bind.h>
+#include "util.h"
 
 namespace ast {
 
@@ -12,11 +14,18 @@ std::string char_to_html(char c) {
   if (c == '\n')return "<br>";
   return std::string{c};
 }
+}//Forward
+namespace matcher {
+struct t;
+typedef std::unique_ptr<t> ptr;
+struct universal_matcher;
 }
 
-struct code_piece {
+typedef bind::name_table<ast::matcher::universal_matcher> ltable;
+
+struct node {
   std::string_view loc;
-  explicit code_piece(std::string_view loc);
+  explicit node(std::string_view loc);
   virtual std::string html_description() const = 0;
   virtual void _make_html_childcall(std::string &out, std::string_view::iterator &it) const = 0;
   void make_html(std::string &out, std::string_view::iterator &it) const;;
@@ -24,44 +33,52 @@ struct code_piece {
 
 };
 
+
+
 //Base definitions
 namespace expression {
-struct t : public code_piece {
-  using code_piece::code_piece;
+struct t : public node {
+  using node::node;
+  virtual void bind(const ltable &) = 0;
 };
 typedef std::unique_ptr<t> ptr;
 }
 
+//Base definitions
 namespace matcher {
-struct t : public code_piece {
-  using code_piece::code_piece;
+struct t : public node {
+  using node::node;
+  virtual void bind(ltable::map_t &) = 0;
 };
 typedef std::unique_ptr<t> ptr;
+struct universal_matcher;
 }
 
 namespace definition {
 
-struct single : code_piece {
+struct single : node {
   typedef std::unique_ptr<single> ptr;
   expression::ptr body;
-  single(expression::ptr &&b, std::string_view l) : code_piece(l), body(std::move(b)) {}
+  single(expression::ptr &&b, std::string_view l) : node(l), body(std::move(b)) {}
 };
 
-struct t : code_piece {
+struct t : node {
   bool rec = false;
   std::vector<single::ptr> defs;
   std::string html_description() const final { return "Definition(s)"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {
     for (const auto &p : defs)p->make_html(out, it);
   };
-  t() : code_piece(std::string_view()) {};
+
+  t() : node(std::string_view()) {};
+  ltable bind(const ltable &);;
 };
 typedef std::unique_ptr<t> ptr;
 
 }
 
 namespace literal {
-struct t  {
+struct t {
   virtual std::string html_description() const = 0;
 };
 typedef std::unique_ptr<t> ptr;
@@ -76,14 +93,14 @@ struct literal : public t {
   std::string html_description() const final { return value->html_description(); }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   ast::literal::ptr value;
-  literal(ast::literal::ptr&& v,std::string_view loc  ) : t(loc), value(std::move(v)) {}
+  literal(ast::literal::ptr &&v, std::string_view loc) : t(loc), value(std::move(v)) {}
+  void bind(const ltable &) final {}
 };
-
 
 struct identifier : public t {
   std::string html_description() const final { return "Identifier"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
-
+  void bind(const ltable &) final { throw std::runtime_error("unimplemented"); }
   //const universal_bind &definition_point;
   using t::t;
 };
@@ -99,6 +116,11 @@ struct if_then_else : public t {
   expression::ptr condition, true_branch, false_branch;
   if_then_else(expression::ptr &&condition, expression::ptr &&true_branch, expression::ptr &&false_branch, std::string_view loc)
       : t(loc), condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
+  void bind(const ltable &lt) final {
+    condition->bind(lt);
+    true_branch->bind(lt);
+    false_branch->bind(lt);
+  }
 };
 
 struct build_tuple : public t {
@@ -109,6 +131,8 @@ struct build_tuple : public t {
   std::vector<expression::ptr> args;
   build_tuple(std::vector<expression::ptr> &&args, std::string_view loc) : t(loc), args(std::move(args)) {}
   build_tuple(std::string_view loc) : t(loc) {}
+  void bind(const ltable &lt) final { for (auto &p : args)p->bind(lt); }
+
 };
 
 struct fun_app : public t {
@@ -119,6 +143,10 @@ struct fun_app : public t {
   };
   expression::ptr f, x;
   fun_app(expression::ptr &&f, expression::ptr &&x, std::string_view loc) : t(loc), f(std::move(f)), x(std::move(x)) {}
+  void bind(const ltable &lt) final {
+    f->bind(lt);
+    x->bind(lt);
+  }
 
 };
 
@@ -130,6 +158,10 @@ struct seq : public t {
   };
   expression::ptr a, b;
   seq(expression::ptr &&a, expression::ptr &&b, std::string_view loc) : t(loc), a(std::move(a)), b(std::move(b)) {}
+  void bind(const ltable &lt) final {
+    a->bind(lt);
+    b->bind(lt);
+  }
 
 };
 
@@ -150,6 +182,13 @@ struct match_with : public t {
   expression::ptr what;
   std::vector<branch> branches;
   match_with(expression::ptr &&w, std::string_view loc) : t(loc), what(std::move(w)) {}
+  void bind(const ltable &lt) final {
+    what->bind(lt);
+    THROW_UNIMPLEMENTED;
+    for (auto&[p, r] : branches) {
+
+    }
+  }
 
 };
 
@@ -162,7 +201,7 @@ struct let_in : public t {
   definition::ptr d;
   expression::ptr e;
   let_in(definition::ptr &&d, expression::ptr &&e, std::string_view loc) : t(loc), d(std::move(d)), e(std::move(e)) {}
-
+  void bind(const ltable &lt) final { THROW_UNIMPLEMENTED; }
 };
 
 }
@@ -174,6 +213,9 @@ struct universal_matcher : public t {
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<universal_matcher> ptr;
   using t::t;
+  void bind(ltable::map_t &m) final {
+    m.bind(loc, *this);
+  }
 };
 
 struct anonymous_universal_matcher : public t {
@@ -181,6 +223,7 @@ struct anonymous_universal_matcher : public t {
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<anonymous_universal_matcher> ptr;
   using t::t;
+  void bind(ltable::map_t &m) final {}
 };
 
 struct constructor_matcher : public t {
@@ -193,6 +236,9 @@ struct constructor_matcher : public t {
   std::string_view cons;
   constructor_matcher(matcher::ptr &&m, std::string_view loc, std::string_view c) : t(loc), arg(std::move(m)), cons(c) {}
   constructor_matcher(std::string_view loc) : t(loc), arg(), cons(loc) {}
+  void bind(ltable::map_t &m) final {
+    if (arg)arg->bind(m);
+  }
 
 };
 
@@ -203,6 +249,7 @@ struct literal_matcher : public t {
   typedef std::unique_ptr<literal_matcher> ptr;
   ast::literal::ptr value;
   literal_matcher(ast::literal::ptr &&lit, std::string_view loc) : t(loc), value(std::move(lit)) {}
+  void bind(ltable::map_t &m) final {}
 };
 
 struct tuple_matcher : public t {
@@ -213,6 +260,9 @@ struct tuple_matcher : public t {
   std::vector<matcher::ptr> args;
   tuple_matcher(std::vector<matcher::ptr> &&args, std::string_view loc) : t(loc), args(std::move(args)) {}
   tuple_matcher(std::string_view loc) : t(loc) {}
+  void bind(ltable::map_t &m) final {
+    for (auto &p : args)p->bind(m);
+  }
 };
 
 }

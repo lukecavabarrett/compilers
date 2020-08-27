@@ -1,5 +1,5 @@
 
-add_library(libbml STATIC util.cc ast.cc parse.cc)
+add_library(libbml STATIC errmsg.cc util.cc ast.cc parse.cc bind.cc)
 
 target_link_libraries(libbml
         PRIVATE

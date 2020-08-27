@@ -1,5 +1,5 @@
 match next_event server conn with
-| Error _ , t -> Error t
+| Error _ , t -> ) Error t
 | Ok (Error _), t -> error t
 | OK (Ok (a,b)), _ -> Ok a
 | Nothing 43 , _ -> Ok conn ;;
