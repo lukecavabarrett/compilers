@@ -11,27 +11,30 @@
 #include <errmsg.h>
 
 namespace parse {
-enum token_type { LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE, EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE, END_OF_INPUT };
+enum token_type {
+  LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE,
+  EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH,
+  COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
+  STAR, SLASH, TYPE, NONREC, END_OF_INPUT
+};
 
 namespace error {
 class t : public std::runtime_error {
  public:
-  t() : std::runtime_error("parsing error"){}
+  t() : std::runtime_error("parsing error") {}
 };
 
- class unexpected_token : public t, public ::errmsg::report_token_error {
+class unexpected_token : public t, public ::errmsg::report_token_error {
  public:
-  unexpected_token(std::string_view found) : ::errmsg::report_token_error("Token",found,"was not expected here") {}
+  unexpected_token(std::string_view found) : ::errmsg::report_token_error("Token", found, "was not expected here") {}
 
 };
 
-class expected_token_found_another : public t ,public ::errmsg::report_token_error{
+class expected_token_found_another : public t, public ::errmsg::report_token_error {
  public:
-  expected_token_found_another(std::string_view expected,std::string_view found) : ::errmsg::report_token_error(std::string("Expected ").append(expected).append(" but found"),found,"") {}
+  expected_token_found_another(std::string_view expected, std::string_view found) : ::errmsg::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
 };
 }
-
-
 
 namespace {
 typedef std::pair<std::string_view, token_type> st;
@@ -42,13 +45,14 @@ constexpr auto tokens_map = make_array(
     st{"=", EQUAL}, st{"|", PIPE},
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},
-    st{"let", LET}, st{"rec", REC},
+    st{"let", LET}, st{"rec", REC}, st{"nonrec", NONREC},
     st{"in", IN}, st{"and", AND},
     st{"with", WITH}, st{"match", MATCH},
     st{",", COMMA}, st{":", COLON},
     st{";", SEMICOLON}, st{".", DOT},
     st{"if", IF}, st{"then", THEN}, st{"else", ELSE},
-    st{"true", TRUE}, st{"false", FALSE}, st{"_", UNDERSCORE});
+    st{"true", TRUE}, st{"false", FALSE}, st{"_", UNDERSCORE},
+    st{"*", STAR}, st{"/", SLASH}, st{"type", TYPE});
 
 struct token {
 
@@ -88,14 +92,12 @@ struct token {
   }
 };
 
-
-
 class tokenizer {
  public:
-  tokenizer(const tokenizer&) = default;
-  tokenizer(tokenizer&&) = default;
-  tokenizer& operator=(const tokenizer&) = default;
-  tokenizer& operator=(tokenizer&&) = default;
+  tokenizer(const tokenizer &) = default;
+  tokenizer(tokenizer &&) = default;
+  tokenizer &operator=(const tokenizer &) = default;
+  tokenizer &operator=(tokenizer &&) = default;
   explicit tokenizer(std::string_view source);
   token_type peek() const;
   token peek_full() const;
@@ -108,7 +110,7 @@ class tokenizer {
   void print_errors();
  private:
   void write_head();
-  std::string_view to_parse,source;
+  std::string_view to_parse, source;
   token head;
 };
 
@@ -136,6 +138,14 @@ namespace literal {
 ptr parse(const token &t);
 }
 
+namespace type {
+namespace expression {
+ptr parse(tokenizer &tk);
+}
+namespace definition {
+ptr parse(tokenizer &tk);
+}
+}
 
 }
 

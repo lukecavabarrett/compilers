@@ -26,8 +26,8 @@ typedef bind::name_table<ast::matcher::universal_matcher> ltable;
 struct node {
   std::string_view loc;
   explicit node(std::string_view loc);
-  virtual std::string html_description() const = 0;
-  virtual void _make_html_childcall(std::string &out, std::string_view::iterator &it) const = 0;
+  virtual std::string html_description() const { THROW_UNIMPLEMENTED }
+  virtual void _make_html_childcall(std::string &out, std::string_view::iterator &it) const { THROW_UNIMPLEMENTED }
   void make_html(std::string &out, std::string_view::iterator &it) const;;
   std::string to_html() const;
 
@@ -44,7 +44,6 @@ struct t : public node {
 typedef std::unique_ptr<t> ptr;
 }
 
-//Base definitions
 namespace matcher {
 struct t : public node {
   using node::node;
@@ -86,6 +85,7 @@ struct t {
 typedef std::unique_ptr<t> ptr;
 }
 
+
 //Extended definitions
 
 namespace expression {
@@ -102,7 +102,7 @@ struct literal : public t {
 struct identifier : public t {
   std::string html_description() const final { return "Identifier"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
-  void bind(const ltable &lt) final { definition_point = &lt.lookup(loc);}
+  void bind(const ltable &lt) final { definition_point = &lt.lookup(loc); }
   const matcher::universal_matcher *definition_point;
   using t::t;
 };
@@ -340,14 +340,93 @@ struct string : public t {
 };
 }
 
+namespace type {
+
+namespace expression {
+
+struct t : public node {
+  using node::node;
+};
+typedef std::unique_ptr<t> ptr;
+
+struct identifier : public t {
+  typedef std::unique_ptr<identifier> ptr;
+  std::string_view name;
+  identifier(std::string_view s) : t(s), name(s) {}
+}; //e.g. 'a or int
+struct function : public t {
+  ptr from, to;
+  function(ptr &&f, ptr &&x) : t(""), from(std::move(f)), to(std::move(x)) {loc = itr_sv(from->loc.begin(),to->loc.end());}
+};
+struct product : public t {
+  typedef std::unique_ptr<product> ptr;
+
+  std::vector<expression::ptr> ts; //size>=2
+  product(expression::ptr &&x) : t("") { ts.push_back(std::move(x)); }
+  void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
+};
+struct tuple : public t {
+  typedef std::unique_ptr<tuple> ptr;
+
+  std::vector<expression::ptr> ts; //size>=2
+  tuple(expression::ptr &&x) : t("") { ts.push_back(std::move(x)); }
+  void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
+};
+struct constr : public t {
+  ptr x, f;
+  constr(ptr &&xx, ptr &&ff) : t(""), x(std::move(xx)), f(std::move(ff)) {loc = itr_sv(x->loc.begin(),f->loc.end());}
+};
+
+}
+
+namespace definition {
+
+struct param : public node {
+  typedef std::unique_ptr<param> ptr;
+  using node::node;
+};
+
+struct single : public node {
+  typedef std::unique_ptr<single> ptr;
+  std::vector<param::ptr> params;
+  std::string_view name;
+  single() : node("") {}
+};
+
+struct t : public node {
+  bool nonrec = false;
+  std::vector<single::ptr> defs;
+  t() : node("") {}
+};
+typedef std::unique_ptr<t> ptr;
+
+struct single_texpr : public single {
+  typedef std::unique_ptr<single_texpr> ptr;
+
+  expression::ptr type;
+};
+
+struct single_variant : public single {
+  typedef std::unique_ptr<single_variant> ptr;
+
+  struct constr {
+    std::string_view name;
+    expression::ptr type;
+  };
+};
+
+}
+
+}
+
 std::optional<
     std::pair<
-          std::vector<
-                std::variant<definition::ptr,
-                            expression::ptr>
-                > ,
-          ltable>
-    > compile(std::string_view source,const ltable& lt,std::string_view filename = "source");
+        std::vector<
+            std::variant<definition::ptr,
+                         expression::ptr>
+        >,
+        ltable>
+> compile(std::string_view source, const ltable &lt, std::string_view filename = "source");
 
 }
 
