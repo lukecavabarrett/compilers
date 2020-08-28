@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <ostream>
 
-namespace error {
+namespace errmsg {
 
 namespace {
 template<typename _It>
@@ -56,13 +56,6 @@ void errmsg::print(std::ostream &os,std::string_view file,std::string_view filen
 }
 std::string_view errmsg::get_msgstyle() const { return ""; }
 
-void report_token_error::print_content(std::ostream &os) const {
-  constexpr std::string_view bold_style = "\e[1m";
-  constexpr std::string_view clear_style = "\e[0m";
-  os << msg_front << " '" << bold_style << token << clear_style << "' " << msg_back;
-}
-std::string_view report_token_error::get_code_token() const { return token; }
-report_token_error::report_token_error(std::string_view f, std::string_view t, std::string_view b) : msg_front(f), token(t), msg_back(b) {}
 std::string_view error::get_msgtype() const { return "error"; }
 std::string_view error::get_msgstyle() const { return "\e[31m"; }
 std::string_view note::get_msgtype() const { return "note"; }

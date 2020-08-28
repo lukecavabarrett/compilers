@@ -1,5 +1,6 @@
 #include <ast.h>
-#include "util.h"
+#include <util.h>
+#include <parse.h>
 
 namespace ast {
 node::node(std::string_view loc) : loc(loc) {}
@@ -55,17 +56,63 @@ std::string node::to_html() const {
 }
 
 namespace definition {
-ltable t::bind(const ltable &) {
+ltable t::bind(const ltable &lt) {
   if (rec) {
     // asssert no value definition
     for (auto &p : defs)
       if (dynamic_cast<function *>(p.get()) == nullptr)
         throw std::runtime_error("only function definitions are allowed in recursive definition");
-    THROW_UNIMPLEMENTED;
+    ltable wnames = lt.sub_table();
+    for (auto &p : defs)dynamic_cast<function *>(p.get())->name->bind(wnames.map());
+    for (auto &p : defs)p->bind(wnames);
+    return wnames;
   } else {
-    THROW_UNIMPLEMENTED;
+    for (auto &p : defs)p->bind(lt);
+    ltable wnames = lt.sub_table();
+    for (auto &p : defs)p->bind(wnames.map());
+    return wnames;
   }
 }
 }
 
+std::optional<
+    std::pair<
+        std::vector<
+            std::variant<definition::ptr,
+                         expression::ptr>
+        >,
+        ltable>
+> compile(std::string_view source, const ltable &__lt,std::string_view filename) {
+  tokenizer tk(source);
+  std::vector<std::variant<definition::ptr, expression::ptr> > asts;
+  ltable lt = __lt;
+  try {
+    while (!tk.empty()) {
+      bool was_def = false;
+      if (tk.peek() == LET) {
+        tokenizer tk_copy = tk;
+        definition::ptr d = definition::parse(tk);
+        if (tk.peek() == IN) {
+          was_def = false;
+          tk = tk_copy;
+        } else {
+          was_def = true;
+          tk.expect_pop(EOC);
+          lt = d->bind(lt);
+        }
+      }
+      if (!was_def) {
+        expression::ptr e = expression::parse(tk);
+        tk.expect_pop(EOC);
+        e->bind(lt);
+      }
+
+    }
+  } catch (const errmsg::errmsg& e) {
+    e.print(std::cout,source,filename);
+    return {};
+  }
+  return std::make_pair(std::move(asts),lt);
+
+}
 }

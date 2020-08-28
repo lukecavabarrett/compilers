@@ -1,8 +1,11 @@
+let next_event,server,conn,error,ok = () in
 match next_event server conn with
-| Error _ , t -> ) Error t
+| Error _ , t ->  t
 | Ok (Error _), t -> error t
-| OK (Ok (a,b)), _ -> Ok a
-| Nothing 43 , _ -> Ok conn ;;
+| OK (Ok (a,b)), _ -> ok a
+| Nothing 43 , _ ->  conn ;;
+
+let int_add x y = () ;;
 
 let rec start x =
     (x , def_start (int_add x 1))

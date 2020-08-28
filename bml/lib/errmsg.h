@@ -1,7 +1,7 @@
 #ifndef COMPILERS_BML_LIB_ERRMSG_H_
 #define COMPILERS_BML_LIB_ERRMSG_H_
 #include <string>
-namespace error{
+namespace errmsg {
 
 class errmsg{
  protected:
@@ -12,7 +12,7 @@ class errmsg{
   virtual std::string_view get_code_token() const = 0; // the point IN CODE to be displayed (if any)
   virtual void print_content(std::ostream&) const = 0;
  public:
-  virtual void print(std::ostream&,std::string_view file,std::string_view filename = "source" ) const;
+  virtual void print(std::ostream&,std::string_view file,std::string_view filename) const;
   //static std::pair<std::string,std::string> context(std::string_view tk);
 };
 
@@ -39,18 +39,12 @@ class generic_static_error : error {
 };
 
 //what if this is a template of error|warning|note ?
-class report_token_error : public error {
- public:
-  std::string_view token,msg_front,msg_back;
-  virtual std::string_view get_code_token() const;
-  virtual void print_content(std::ostream& os) const;
-  report_token_error(std::string_view f,std::string_view t,std::string_view b);
-};
 
 template<typename BaseMsg>
 class report_token : public BaseMsg {
  public:
-  std::string_view token,msg_front,msg_back;
+  std::string_view token;
+  std::string msg_front,msg_back;
   virtual std::string_view get_code_token() const {return token;}
   virtual void print_content(std::ostream& os) const {
     constexpr std::string_view bold_style="\e[1m";
@@ -59,7 +53,7 @@ class report_token : public BaseMsg {
   }
   report_token(std::string_view f,std::string_view t,std::string_view b) : msg_front(f),token(t),msg_back(b) {}
 };
-
+/*
 template<typename BaseMsg>
 class report_token_string : public BaseMsg {
  public:
@@ -73,14 +67,13 @@ class report_token_string : public BaseMsg {
   }
   report_token_string(std::string_view t,std::string_view f,std::string_view q,std::string_view b) : msg_front(f),token(t),msg_back(b),quote(q) {}
 };
+*/
+typedef report_token<error> report_token_error;
 
 class warning : public errmsg {
   virtual std::string_view get_msgtype() const;
   virtual std::string_view get_msgstyle() const;
 };
-
-class parse_error : public error {};
-
 
 }
 #endif //COMPILERS_BML_LIB_ERRMSG_H_

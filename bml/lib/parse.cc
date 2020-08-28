@@ -21,7 +21,7 @@ namespace {
 using namespace parse;
 std::string_view token_type_to_string(token_type t){
   for (const auto&[p, t_i] : tokens_map)if(t_i==t)return p;
-  throw std::runtime_error("parsing of string literal unimplemented");
+  throw std::runtime_error(AT "parsing of string literal unimplemented");
 }
 
 }
@@ -29,7 +29,7 @@ std::string_view token_type_to_string(token_type t){
 }
 
 namespace parse {
-tokenizer::tokenizer(std::string_view source) : to_parse(source) { write_head(); }
+tokenizer::tokenizer(std::string_view source) : to_parse(source),source(source) { write_head(); }
 token tokenizer::pop() {
   token t = head;
   write_head();
@@ -90,11 +90,12 @@ void tokenizer::expect_pop(token_type t) {
 void tokenizer::expect_peek(token_type t) {
   //TODO: make better error
   if (head.type != t){
-    throw std::runtime_error("expected \"TK\", found another");
+    throw error::expected_token_found_another(token_type_to_string(t),head.sv);
   }
 }
 void tokenizer::unexpected_token(){
-  throw std::runtime_error("expected \"TK\", found another");
+  throw error::unexpected_token(head.sv);
+  //throw std::runtime_error("expected \"TK\", found another");
 }
 
 }
@@ -181,6 +182,7 @@ ptr parse_e_p(tokenizer &tk) {
     }
     default:tk.unexpected_token();
   }
+  throw std::runtime_error(AT "How did I end up here");
 }
 
 }
@@ -355,6 +357,7 @@ ptr parse(tokenizer &tk) {
     }
   } while (tk.peek() == AND);
   defs->loc = itr_sv(loc_start, defs->defs.back()->loc.end());
+  defs->rec = rec;
   return std::move(defs);
 
 }
@@ -370,9 +373,9 @@ ast::literal::ptr ast::literal::parse(const token &t) {
     case LITERAL: {
       if (int64_t n;std::from_chars(t.sv.begin(), t.sv.end(), n).ec == std::errc())return std::make_unique<integer>(n);
       //TODO: floating point literal, string literal
-      throw std::runtime_error("unimplemented floating point literal, string literal");
+      throw std::runtime_error(AT "unimplemented floating point literal, string literal");
     }
-    default: throw std::runtime_error("trying to parse a literal");
+    default: throw std::runtime_error(AT "trying to parse a literal");
   }
 
 }

@@ -5,8 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <fstream>
-#include <streambuf>
+
 
 constexpr std::string_view source_long =
     "let rec even n =\n"
@@ -25,11 +24,7 @@ constexpr std::string_view source_if_then_else =
     "else\n"
     "  make_failure x ;;";
 
-std::string file_to_string(const char* path){
-  std::ifstream t(path);
-  return std::string((std::istreambuf_iterator<char>(t)),
-                  std::istreambuf_iterator<char>());
-}
+
 
 void test1(){
   static constexpr std::string_view source = "Error _ , t ";
@@ -55,11 +50,12 @@ void test3(){
 }
 
 void test4(){
-  static constexpr std::string_view source = "let rec f () = x and x = f () ;;";
+  static constexpr std::string_view source = "let rec f x = f x in f () ;;";
   auto tks = parse::tokenizer(source);
-  auto ast = ast::definition::parse(tks);
+  auto ast = ast::expression::parse(tks);
   tks.expect_pop(parse::EOC);
   assert(tks.empty());
+  ast->bind(ast::ltable());
 }
 
 int main() {
@@ -67,9 +63,14 @@ int main() {
   test2();
   test3();
   test4();
-  auto source = file_to_string("/home/luke/CLionProjects/compilers/bml/lib/sample.ml");
-  auto tks = parse::tokenizer(source);
+  std::string_view path = ("/home/luke/CLionProjects/compilers/bml/lib/sample.ml");
+
+  ast::compile(load_file(path),ast::ltable(),path);
+
+  /*auto tks = parse::tokenizer(source);
   std::cout<<std::endl;
   auto ast = ast::expression::parse(tks);
   std::ofstream("out.html", std::ofstream::out | std::ofstream::trunc)<< ast->to_html() << std::endl;
+  ast->bind(ast::ltable());*/
+
 }

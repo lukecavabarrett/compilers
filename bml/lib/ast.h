@@ -60,6 +60,8 @@ struct single : node {
   typedef std::unique_ptr<single> ptr;
   expression::ptr body;
   single(expression::ptr &&b, std::string_view l) : node(l), body(std::move(b)) {}
+  virtual void bind(const ltable &) = 0;;
+  virtual void bind(ltable::map_t &mt) = 0;;
 };
 
 struct t : node {
@@ -100,8 +102,8 @@ struct literal : public t {
 struct identifier : public t {
   std::string html_description() const final { return "Identifier"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
-  void bind(const ltable &) final { throw std::runtime_error("unimplemented"); }
-  //const universal_bind &definition_point;
+  void bind(const ltable &lt) final { definition_point = &lt.lookup(loc);}
+  const matcher::universal_matcher *definition_point;
   using t::t;
 };
 
@@ -184,9 +186,10 @@ struct match_with : public t {
   match_with(expression::ptr &&w, std::string_view loc) : t(loc), what(std::move(w)) {}
   void bind(const ltable &lt) final {
     what->bind(lt);
-    THROW_UNIMPLEMENTED;
     for (auto&[p, r] : branches) {
-
+      ltable wp = lt.sub_table();
+      p->bind(wp.map());
+      r->bind(wp);
     }
   }
 
@@ -201,7 +204,9 @@ struct let_in : public t {
   definition::ptr d;
   expression::ptr e;
   let_in(definition::ptr &&d, expression::ptr &&e, std::string_view loc) : t(loc), d(std::move(d)), e(std::move(e)) {}
-  void bind(const ltable &lt) final { THROW_UNIMPLEMENTED; }
+  void bind(const ltable &lt) final {
+    e->bind(d->bind(lt));
+  }
 };
 
 }
@@ -281,6 +286,14 @@ struct function : single {
   std::vector<matcher::ptr> args;
   using single::single;
   function() : single(expression::ptr(), std::string_view()) {}
+  void bind(const ltable &lt) final {
+    ltable argtable = lt.sub_table();
+    for (auto &p : args)p->bind(argtable.map());
+    body->bind(argtable);
+  }
+  void bind(ltable::map_t &mt) final {
+    name->bind(mt);
+  }
 };
 
 struct value : single {
@@ -292,6 +305,12 @@ struct value : single {
   };
   matcher::ptr binded;
   value(matcher::ptr &&bi, expression::ptr &&bo, std::string_view loc) : single(std::move(bo), loc), binded(std::move(bi)) {}
+  void bind(const ltable &lt) final {
+    body->bind(lt);
+  }
+  void bind(ltable::map_t &mt) final {
+    binded->bind(mt);
+  }
 };
 
 }
@@ -320,6 +339,15 @@ struct string : public t {
   string(std::string_view value) : value(value) {}
 };
 }
+
+std::optional<
+    std::pair<
+          std::vector<
+                std::variant<definition::ptr,
+                            expression::ptr>
+                > ,
+          ltable>
+    > compile(std::string_view source,const ltable& lt,std::string_view filename = "source");
 
 }
 
