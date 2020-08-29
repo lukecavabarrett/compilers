@@ -15,7 +15,7 @@ enum token_type {
   LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE,
   EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH,
   COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
-  STAR, SLASH, TYPE, NONREC, END_OF_INPUT
+  STAR, SLASH, TYPE, NONREC, OF, END_OF_INPUT
 };
 
 namespace error {
@@ -45,7 +45,8 @@ constexpr auto tokens_map = make_array(
     st{"=", EQUAL}, st{"|", PIPE},
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},
-    st{"let", LET}, st{"rec", REC}, st{"nonrec", NONREC},
+    st{"let", LET}, st{"rec", REC},
+    st{"nonrec", NONREC}, st{"of", OF},
     st{"in", IN}, st{"and", AND},
     st{"with", WITH}, st{"match", MATCH},
     st{",", COMMA}, st{":", COLON},

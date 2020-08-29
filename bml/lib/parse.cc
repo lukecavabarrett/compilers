@@ -28,6 +28,54 @@ std::string_view token_type_to_string(token_type t) {
 
 }
 
+namespace patterns {
+
+template<token_type sep>
+struct tk_sep {
+  static bool has_sep(const tokenizer &tk) { return tk.peek() == sep; }
+  static void consume_sep(tokenizer &tk) { tk.expect_pop(sep); }
+};
+
+template<auto F>
+struct peek_sep {
+  static bool has_sep(const tokenizer &tk) { return F(tk.peek()); }
+  static void consume_sep(tokenizer &tk) {}
+};
+
+template<typename vec_type, auto vec_ptr, auto sub_method, typename sep>
+std::invoke_result_t<decltype(sub_method), tokenizer &> parse_vec(tokenizer &tk) {
+  auto p = sub_method(tk);
+  if (!sep::has_sep(tk))return p;
+  auto pv = std::make_unique<vec_type>();
+  ((*pv.get()).*vec_ptr).push_back(std::move(p));
+  while (sep::has_sep(tk)) {
+    sep::consume_sep(tk);
+    ((*pv.get()).*vec_ptr).push_back(sub_method(tk));
+  }
+  pv->loc = itr_sv(((*pv.get()).*vec_ptr).front()->loc.begin(), ((*pv.get()).*vec_ptr).back()->loc.end());
+  return pv;
+}
+
+template<auto make_lr_type, auto sub_method, typename sep>
+std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_r(tokenizer &tk) {
+  auto l = sub_method(tk);
+  while (sep::has_sep(tk)) {
+    sep::consume_sep(tk);
+    l = make_lr_type(std::move(l), sub_method(tk));
+  }
+  return l;
+}
+
+template<auto make_lr_type, auto sub_method, typename sep>
+std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &tk) {
+  auto l = sub_method(tk);
+  if (!sep::has_sep(tk))return l;
+    sep::consume_sep(tk);
+    return make_lr_type(std::move(l), parse_fold_l<make_lr_type,sub_method,sep>(tk));
+}
+
+}
+
 namespace parse {
 tokenizer::tokenizer(std::string_view source) : to_parse(source), source(source) { write_head(); }
 token tokenizer::pop() {
@@ -121,36 +169,18 @@ ptr parse_e_p(tokenizer &tk);
 bool parse_e_p_first(token_type);
 
 ptr parse_e_s(tokenizer &tk) {
-  auto e2 = parse_e_t(tk);
-  while (!tk.empty() && tk.peek() == SEMICOLON) {
-    tk.pop();
-    auto ne2 = parse_e_t(tk);
-    e2 = std::make_unique<seq>(std::move(e2), std::move(ne2), itr_sv(e2->loc.begin(), ne2->loc.end()));
-  }
-  return std::move(e2);
+  using namespace patterns;
+  return parse_fold_r<std::make_unique<seq, ptr &&, ptr &&>, parse_e_t, tk_sep<SEMICOLON>>(tk);
 }
 
 ptr parse_e_t(tokenizer &tk) {
-  auto e3 = parse_e_f(tk);
-  if (tk.peek() != COMMA)return std::move(e3);
-  auto e2 = std::make_unique<build_tuple>(std::string_view());
-  e2->args.emplace_back(std::move(e3));
-  while (tk.peek() == COMMA) {
-    tk.pop();
-    auto e3 = parse_e_f(tk);
-    e2->args.emplace_back(std::move(e3));
-  }
-  e2->loc = itr_sv(e2->args.front()->loc.begin(), e2->args.back()->loc.end());
-  return std::move(e2);
+  using namespace patterns;
+  return parse_vec<build_tuple, &build_tuple::args, parse_e_f, tk_sep<COMMA>>(tk);
 }
 
 ptr parse_e_f(tokenizer &tk) {
-  auto e4 = parse_e_p(tk);
-  while (parse_e_p_first(tk.peek())) {
-    auto ne4 = parse_e_p(tk);
-    e4 = std::make_unique<fun_app>(std::move(e4), std::move(ne4), itr_sv(e4->loc.begin(), ne4->loc.end()));
-  }
-  return std::move(e4);
+  using namespace patterns;
+  return parse_fold_r<std::make_unique<fun_app, ptr &&, ptr &&>, parse_e_p, peek_sep<parse_e_p_first>>(tk);
 }
 
 bool parse_e_p_first(token_type t) {
@@ -172,7 +202,7 @@ ptr parse_e_p(tokenizer &tk) {
       auto loc_start = tk.pop().sv.begin();
       if (tk.peek() != PARENS_CLOSE) {
         auto e = expression::parse(tk);
-        if (tk.peek() != PARENS_CLOSE)throw std::runtime_error("expected \")\"");
+        tk.expect_pop(PARENS_CLOSE);
         //IDEA: enlarge
         e->loc = itr_sv(loc_start, tk.pop().sv.end());
         return std::move(e);
@@ -249,17 +279,8 @@ ptr parse_m_3(tokenizer &tk);
 bool parse_m_3_first(const token &t);
 
 ptr parse_m_1(tokenizer &tk) {
-  auto m2 = parse_m_2(tk);
-  if (tk.empty() || tk.peek() != COMMA)return std::move(m2);
-  auto m1 = std::make_unique<tuple_matcher>(std::string_view());
-  m1->args.emplace_back(std::move(m2));
-  while (tk.peek() == COMMA) {
-    tk.expect_pop(COMMA);
-    auto m2 = parse_m_2(tk);
-    m1->args.emplace_back(std::move(m2));
-  }
-  m1->loc = itr_sv(m1->args.front()->loc.begin(), m1->args.back()->loc.end());
-  return std::move(m1);
+  using namespace patterns;
+  return parse_vec<tuple_matcher, &tuple_matcher::args, parse_m_2, tk_sep<COMMA>>(tk);
 }
 
 ptr parse_m_2(tokenizer &tk) {
@@ -421,22 +442,11 @@ ptr parse_c(tokenizer &tk) {
 }
 
 ptr parse_p(tokenizer &tk) {
-  ptr t = parse_c(tk);
-  if (tk.peek() != STAR)return t;
-  product::ptr ts = std::make_unique<product>(std::move(t));
-  while (tk.peek() == STAR) {
-    tk.expect_pop(STAR);
-    ts->ts.push_back(parse_f(tk));
-  }
-  ts->set_loc();
-  return ts;
+  using namespace patterns;
+  return parse_vec<product, &product::ts, parse_c, tk_sep<STAR>>(tk);
 }
 ptr parse_f(tokenizer &tk) {
-  ptr from = parse_p(tk);
-  if (tk.peek() != ARROW)return from;
-  tk.expect_pop(ARROW);
-  ptr to = parse_f(tk);
-  return std::make_unique<constr>(std::move(from), std::move(to));
+  return patterns::parse_fold_l<std::make_unique<function,ptr&&,ptr&&>,parse_p,patterns::tk_sep<ARROW>>(tk);
 }
 
 ptr parse_t(tokenizer &tk) {
@@ -482,7 +492,11 @@ ptr parse(tokenizer &tk) {
       if (dynamic_cast<expression::identifier *>(c->x.get())) {
         params.push_back(std::make_unique<param>(dynamic_cast<expression::identifier *>(c->x.get())->name));
       } else if (dynamic_cast<expression::tuple *>(c->x.get())) {
-        THROW_UNIMPLEMENTED
+        for (expression::ptr &t : dynamic_cast<expression::tuple *>(c->x.get())->ts) {
+          if (expression::identifier *i = dynamic_cast<expression::identifier *>(m.get()); i == nullptr) {
+            THROW_UNIMPLEMENTED
+          } else params.push_back(std::make_unique<param>(i->name));
+        }
       } else {
         THROW_UNIMPLEMENTED
       }
@@ -495,7 +509,23 @@ ptr parse(tokenizer &tk) {
     std::string_view def_name = dynamic_cast<expression::identifier *>(m.get())->name;
     tk.expect_pop(EQUAL);
     if (tk.peek() == PIPE) {
-      THROW_UNIMPLEMENTED;
+      single_variant::ptr def = std::make_unique<single_variant>();
+      def->params = std::move(params);
+      def->name = def_name;
+
+      while (tk.peek() == PIPE) {
+        tk.expect_pop(PIPE);
+        tk.expect_peek(CAP_NAME);
+        def->variants.emplace_back();
+        def->variants.back().name = tk.pop().sv;
+        if (tk.peek() == OF) {
+          tk.expect_pop(OF);
+          def->variants.back().type = expression::parse(tk);
+        }
+      }
+      def->loc = itr_sv(loc_start, def->variants.back().type.operator bool() ? def->variants.back().type->loc.end() : def->variants.back().name.end());
+      defs->defs.push_back(std::move(def));
+
     } else {
       single_texpr::ptr def = std::make_unique<single_texpr>();
       def->params = std::move(params);

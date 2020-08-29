@@ -54,6 +54,7 @@ endfunction(add_testing_unit)
 
 
 add_testing_unit(parse_test)
+add_testing_unit(sexp_test)
 
 add_executable(test_parse test_parse.cc)
 target_link_libraries(test_parse libbml)
