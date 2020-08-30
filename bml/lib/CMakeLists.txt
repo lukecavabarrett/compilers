@@ -20,9 +20,10 @@ add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
 
 
 add_subdirectory(util)
+add_subdirectory(parse)
 
 
-add_library(libbml STATIC util/message.cc ast.cc parse.cc bind.cc)
+add_library(libbml STATIC bind.cc)
 target_link_libraries(libbml PRIVATE util)
 
 target_include_directories(libbml
@@ -48,7 +49,7 @@ function(add_testing_unit NAME)
 endfunction(add_testing_unit)
 
 
-add_testing_unit(parse_test)
+#add_testing_unit(parse_test)
 
 add_executable(test_parse test_parse.cc)
 target_link_libraries(test_parse libbml)

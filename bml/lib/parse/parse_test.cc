@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <parse.h>
+#include <parse/parse.h>
 
 namespace {
 

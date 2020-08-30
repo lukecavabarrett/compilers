@@ -1,7 +1,7 @@
 #ifndef COMPILERS_BML_LIB_PARSE_H_
 #define COMPILERS_BML_LIB_PARSE_H_
 
-#include <ast.h>
+#include <parse/ast.h>
 #include <array>
 #include <cassert>
 #include <algorithm>

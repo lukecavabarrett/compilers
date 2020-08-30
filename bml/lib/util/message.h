@@ -6,7 +6,6 @@ namespace util::error {
 //Assumption: just one source at a time is considered
 class message {
  protected:
-  //virtual std::string to_string() const = 0;
   virtual std::string_view get_msgtype() const = 0;
   virtual std::string_view get_msgstyle() const;
 
@@ -14,7 +13,6 @@ class message {
   virtual void print_content(std::ostream&) const = 0;
  public:
   virtual void print(std::ostream&,std::string_view file,std::string_view filename) const;
-  //static std::pair<std::string,std::string> context(std::string_view tk);
 };
 
 //std::ostream& operator<< (std::ostream& os, const message& em);
@@ -24,18 +22,18 @@ class message {
 namespace style {
 
 class error : public virtual message {
-  virtual std::string_view get_msgtype() const;
-  virtual std::string_view get_msgstyle() const;
+  std::string_view get_msgtype() const override;
+  std::string_view get_msgstyle() const override;
 };
 
 class note : public virtual message {
-  virtual std::string_view get_msgtype() const;
-  virtual std::string_view get_msgstyle() const;
+  std::string_view get_msgtype() const override;
+  std::string_view get_msgstyle() const override;
 };
 
 class warning : public virtual message {
-  virtual std::string_view get_msgtype() const;
-  virtual std::string_view get_msgstyle() const;
+  std::string_view get_msgtype() const override;
+  std::string_view get_msgstyle() const override;
 };
 
 }

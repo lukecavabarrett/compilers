@@ -1,8 +1,9 @@
-add_library(util STATIC util.cc sexp.cc)
+add_library(util STATIC util.cc sexp.cc message.cc)
+
 target_include_directories(util
         PUBLIC
-        $<INSTALL_INTERFACE:include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:util>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         )

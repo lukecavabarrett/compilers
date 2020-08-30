@@ -448,15 +448,6 @@ struct single_variant : public single {
 
 }
 
-std::optional<
-    std::pair<
-        std::vector<
-            std::variant<definition::ptr,
-                         expression::ptr>
-        >,
-        ltable>
-> compile(std::string_view source, const ltable &lt, std::string_view filename = "source");
-
 }
 
 #endif //COMPILERS_BML_LIB_AST_H_

@@ -1,5 +1,5 @@
-#include <ast.h>
-#include <parse.h>
+#include <parse/ast.h>
+#include <parse/parse.h>
 
 int main(){
 
