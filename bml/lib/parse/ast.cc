@@ -3,8 +3,7 @@
 #include <parse.h>
 
 namespace ast {
-node::node(std::string_view loc) : loc(loc) {}
-void node::make_html(std::string &out, std::string_view::iterator &it) const {
+void locable::make_html(std::string &out, std::string_view::iterator &it) const {
   while (it < loc.begin()) {
     out.append(char_to_html(*it));
     ++it;
@@ -17,7 +16,7 @@ void node::make_html(std::string &out, std::string_view::iterator &it) const {
   }
   out.append("</span>");
 }
-std::string node::to_html() const {
+std::string locable::to_html() const {
   std::string out = "<html>\n"
                     "<head>\n"
                     "    <style type=\"text/css\">\n"

@@ -9,6 +9,11 @@ using namespace util;
 bool allowed_in_identifier(char c) {
   return ::isalnum(c) || c == '_' || c == '\'';
 }
+template<typename T>
+std::unique_ptr<T> with_loc(std::unique_ptr<T> &&p, std::string_view s) {
+  p->loc = s;
+  return std::move(p);
+}
 
 bool startswith_legal(std::string_view a, std::string_view b) {
   if (b.size() > a.size())return false;
@@ -70,8 +75,8 @@ template<auto make_lr_type, auto sub_method, typename sep>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &tk) {
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
-    sep::consume_sep(tk);
-    return make_lr_type(std::move(l), parse_fold_l<make_lr_type,sub_method,sep>(tk));
+  sep::consume_sep(tk);
+  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sub_method, sep>(tk));
 }
 
 }
@@ -191,7 +196,7 @@ ptr parse_e_p(tokenizer &tk) {
     case TRUE:
     case FALSE:
     case LITERAL: {
-      return std::make_unique<literal>(ast::literal::parse(tk.pop()), tk.peek_sv());
+      return std::make_unique<literal>(ast::literal::parse(tk.pop()));
     }
     case IDENTIFIER:
     case CAP_NAME: {
@@ -202,12 +207,13 @@ ptr parse_e_p(tokenizer &tk) {
       auto loc_start = tk.pop().sv.begin();
       if (tk.peek() != PARENS_CLOSE) {
         auto e = expression::parse(tk);
-        tk.expect_pop(PARENS_CLOSE);
-        //IDEA: enlarge
+        tk.expect_peek(PARENS_CLOSE);
         e->loc = itr_sv(loc_start, tk.pop().sv.end());
         return std::move(e);
       } else {
-        return std::make_unique<literal>(std::make_unique<ast::literal::unit>(), itr_sv(loc_start, tk.pop().sv.end()));
+        auto e = std::make_unique<literal>(std::make_unique<ast::literal::unit>());
+        e->loc = itr_sv(loc_start, tk.pop().sv.end());
+        return e;
       }
     }
     default:tk.unexpected_token();
@@ -226,12 +232,14 @@ ptr parse(tokenizer &tk) {
       auto true_branch = parse(tk);
       tk.expect_pop(ELSE);
       auto false_branch = parse(tk);
-      return std::make_unique<if_then_else>(std::move(condition), std::move(true_branch), std::move(false_branch), itr_sv(loc_start, false_branch->loc.end()));
+      auto e = std::make_unique<if_then_else>(std::move(condition), std::move(true_branch), std::move(false_branch));
+      e->loc = itr_sv(loc_start, false_branch->loc.end());
+      return e;
     }
     case MATCH: {
       auto loc_start = tk.pop().sv.begin();
       auto what = parse(tk);
-      match_with::ptr mtc = std::make_unique<match_with>(std::move(what), std::string_view());
+      match_with::ptr mtc = std::make_unique<match_with>(std::move(what));
       tk.expect_pop(WITH);
       tk.expect_peek(PIPE);
       while (tk.peek() == PIPE) {
@@ -239,7 +247,9 @@ ptr parse(tokenizer &tk) {
         auto m = ast::matcher::parse(tk);
         tk.expect_pop(ARROW);
         auto e = parse(tk);
-        mtc->branches.push_back({.pattern=std::move(m), .result=std::move(e)});
+        mtc->branches.emplace_back();
+        mtc->branches.back().pattern=std::move(m);
+        mtc->branches.back().result=std::move(e);
       }
       mtc->loc = itr_sv(loc_start, mtc->branches.back().result->loc.end());
       return std::move(mtc);
@@ -249,7 +259,7 @@ ptr parse(tokenizer &tk) {
       auto d = definition::parse(tk);
       tk.expect_pop(IN);
       auto e = parse(tk);
-      return std::make_unique<let_in>(std::move(d), std::move(e), itr_sv(loc_start, e->loc.end()));
+      return with_loc(std::make_unique<let_in>(std::move(d), std::move(e)), itr_sv(loc_start, e->loc.end()));
     }
     default:return parse_e_s(tk);
   }
@@ -291,7 +301,7 @@ ptr parse_m_2(tokenizer &tk) {
       if (!parse_m_3_first(tk.peek_full())) return std::make_unique<constructor_matcher>(begin_sv);
 
       auto m = parse_m_3(tk);
-      return std::make_unique<constructor_matcher>(std::move(m), itr_sv(begin_sv.begin(), m->loc.end()), begin_sv);
+      return with_loc(std::make_unique<constructor_matcher>(std::move(m),begin_sv), itr_sv(begin_sv.begin(), m->loc.end()));
     }
     default: { return parse_m_3(tk); }
   }
@@ -308,14 +318,14 @@ ptr parse_m_3(tokenizer &tk) {
   switch (tk.peek()) {
     case PARENS_OPEN: {
       auto loc_start = tk.pop().sv.begin();
-      if (tk.peek() == PARENS_CLOSE)return std::make_unique<literal_matcher>(std::make_unique<ast::literal::unit>(), itr_sv(loc_start, tk.pop().sv.end()));
+      if (tk.peek() == PARENS_CLOSE)return with_loc(std::make_unique<literal_matcher>(std::make_unique<ast::literal::unit>()), itr_sv(loc_start, tk.pop().sv.end()));
       auto m = parse_m_1(tk);
       tk.expect_peek(PARENS_CLOSE);
       m->loc = itr_sv(loc_start, tk.pop().sv.end());
       return std::move(m);
     }
     case UNDERSCORE: {
-      return std::make_unique<anonymous_universal_matcher>(tk.pop().sv);
+      return with_loc(std::make_unique<anonymous_universal_matcher>(), tk.pop().sv);
     }
     case IDENTIFIER: {
       return std::make_unique<universal_matcher>(tk.pop().sv);
@@ -323,7 +333,7 @@ ptr parse_m_3(tokenizer &tk) {
     case TRUE:
     case FALSE:
     case LITERAL: {
-      return std::make_unique<literal_matcher>(ast::literal::parse(tk.pop()), tk.peek_sv());
+      return with_loc(std::make_unique<literal_matcher>(ast::literal::parse(tk.pop())), tk.peek_sv());
     }
     default: {
       throw std::runtime_error("unexpected_token");
@@ -387,7 +397,7 @@ ptr parse(tokenizer &tk) {
       //value binding
       tk.expect_pop(EQUAL);
       auto e = expression::parse(tk);
-      defs->defs.push_back(std::move(std::make_unique<value>(std::move(m), std::move(e), itr_sv(loc_start, e->loc.end()))));
+      defs->defs.push_back(with_loc(std::make_unique<value>(std::move(m), std::move(e)), itr_sv(loc_start, e->loc.end())));
     }
   } while (tk.peek() == AND);
   defs->loc = itr_sv(loc_start, defs->defs.back()->loc.end());
@@ -446,10 +456,14 @@ ptr parse_p(tokenizer &tk) {
   return parse_vec<product, &product::ts, parse_c, tk_sep<STAR>>(tk);
 }
 ptr parse_f(tokenizer &tk) {
-  return patterns::parse_fold_l<std::make_unique<function,ptr&&,ptr&&>,parse_p,patterns::tk_sep<ARROW>>(tk);
+  return patterns::parse_fold_l<std::make_unique<function, ptr &&, ptr &&>, parse_p, patterns::tk_sep<ARROW>>(tk);
 }
 
 ptr parse_t(tokenizer &tk) {
+
+  //return patterns::parse_vec<tuple,&tuple::ts,parse_f,patterns::tk_sep<COMMA>>(tk);
+
+  //TODO: compress
   ptr t = parse_f(tk);
   if (tk.peek() != COMMA)return t;
   tuple::ptr ts = std::make_unique<tuple>(std::move(t));
@@ -457,7 +471,7 @@ ptr parse_t(tokenizer &tk) {
     tk.expect_pop(COMMA);
     ts->ts.push_back(parse_f(tk));
   }
-  ts->set_loc();
+  // ts->set_loc();
   return ts;
 }
 

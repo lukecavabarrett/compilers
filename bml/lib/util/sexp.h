@@ -97,21 +97,21 @@ struct sexp_of_single {
 template<typename C>
 struct sexp_of_single<std::unique_ptr<C> > {
   static t get_sexp(const std::unique_ptr<C> &p) {
-    return sexp_of_single<C>::get_sexp(*p.get());
+    return sexp_of_single<C*>::get_sexp(p.get());
   }
 };
 
 template<typename C>
 struct sexp_of_single<std::shared_ptr<C> > {
   static t get_sexp(const std::shared_ptr<C> &p) {
-    return sexp_of_single<C>::get_sexp(*p.get());
+    return sexp_of_single<C*>::get_sexp(p.get());
   }
 };
 
 template<typename C>
 struct sexp_of_single<C *> {
-  static t get_sexp(const C *&p) {
-    return sexp_of_single<C>::get_sexp(*p);
+  static t get_sexp(const C *p) {
+    return p== nullptr ? t("NULL") : sexp_of_single<C>::get_sexp(*p);
   }
 };
 

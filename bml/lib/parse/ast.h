@@ -18,8 +18,9 @@ std::string char_to_html(char c) {
   return std::string{c};
 }
 
-template<typename P1,typename P2> std::string_view unite_sv(const P1& p1,const P2& p2){
-  return itr_sv(p1->loc.begin(),p2->loc.end());
+template<typename P1, typename P2>
+std::string_view unite_sv(const P1 &p1, const P2 &p2) {
+  return itr_sv(p1->loc.begin(), p2->loc.end());
 }
 
 }//Forward
@@ -31,10 +32,8 @@ struct universal_matcher;
 
 typedef bind::name_table<ast::matcher::universal_matcher> ltable;
 
-struct node {
+struct locable {
   std::string_view loc;
-  explicit node(std::string_view loc);
-  explicit node() = default;
   virtual std::string html_description() const { THROW_UNIMPLEMENTED }
   virtual void _make_html_childcall(std::string &out, std::string_view::iterator &it) const { THROW_UNIMPLEMENTED }
   void make_html(std::string &out, std::string_view::iterator &it) const;;
@@ -46,16 +45,15 @@ struct node {
 
 //Base definitions
 namespace expression {
-struct t : public node,public sexp_of_t {
-  using node::node;
+struct t : public locable, public sexp_of_t {
+  using locable::locable;
   virtual void bind(const ltable &) = 0;
 };
 typedef std::unique_ptr<t> ptr;
 }
 
 namespace matcher {
-struct t : public node {
-  using node::node;
+struct t : public locable, sexp_of_t {
   virtual void bind(ltable::map_t &) = 0;
 };
 typedef std::unique_ptr<t> ptr;
@@ -64,31 +62,27 @@ struct universal_matcher;
 
 namespace definition {
 
-struct single : node {
+struct single : public locable,sexp_of_t {
   typedef std::unique_ptr<single> ptr;
   expression::ptr body;
-  single(expression::ptr &&b, std::string_view l) : node(l), body(std::move(b)) {}
+  single(expression::ptr &&b) : body(std::move(b)) {}
   virtual void bind(const ltable &) = 0;;
   virtual void bind(ltable::map_t &mt) = 0;;
 };
 
-struct t : node {
+struct t : locable,sexp_of_t {
   bool rec = false;
   std::vector<single::ptr> defs;
   std::string html_description() const final { return "Definition(s)"; }
-  void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {
-    for (const auto &p : defs)p->make_html(out, it);
-  };
-
-  t() : node(std::string_view()) {};
   ltable bind(const ltable &);;
+  TO_SEXP(rec,defs);
 };
 typedef std::unique_ptr<t> ptr;
 
 }
 
 namespace literal {
-struct t {
+struct t : public sexp_of_t {
   virtual std::string html_description() const = 0;
 };
 typedef std::unique_ptr<t> ptr;
@@ -104,20 +98,20 @@ struct literal : public t {
   std::string html_description() const final { return value->html_description(); }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   ast::literal::ptr value;
-  literal(ast::literal::ptr &&v, std::string_view loc) : t(loc), value(std::move(v)) {}
+  literal(ast::literal::ptr &&v) : value(std::move(v)) {}
   void bind(const ltable &) final {}
 
-  TO_SEXP();
+  TO_SEXP(value);
 };
 
 struct identifier : public t {
   std::string html_description() const final { return "Identifier"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
-  void bind(const ltable &lt) final { definition_point = &lt.lookup(loc); }
+  void bind(const ltable &lt) final { definition_point = &lt.lookup(name); }
   const matcher::universal_matcher *definition_point;
-  using t::t;
-
-  TO_SEXP();
+  identifier(std::string_view n) : name(n) {}
+  std::string_view name;
+  TO_SEXP(name);
 };
 
 struct if_then_else : public t {
@@ -129,14 +123,14 @@ struct if_then_else : public t {
   };
 
   expression::ptr condition, true_branch, false_branch;
-  if_then_else(expression::ptr &&condition, expression::ptr &&true_branch, expression::ptr &&false_branch, std::string_view loc)
-      : t(loc), condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
+  if_then_else(expression::ptr &&condition, expression::ptr &&true_branch, expression::ptr &&false_branch)
+      : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
   void bind(const ltable &lt) final {
     condition->bind(lt);
     true_branch->bind(lt);
     false_branch->bind(lt);
   }
-  TO_SEXP(condition,true_branch,false_branch);
+  TO_SEXP(condition, true_branch, false_branch);
 };
 
 struct build_tuple : public t {
@@ -145,10 +139,10 @@ struct build_tuple : public t {
     for (const auto &p : args)p->make_html(out, it);
   };
   std::vector<expression::ptr> args;
-  build_tuple(std::vector<expression::ptr> &&args, std::string_view loc) : t(loc), args(std::move(args)) {}
-  build_tuple() : t() {}
+  build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
+  build_tuple() = default;
   void bind(const ltable &lt) final { for (auto &p : args)p->bind(lt); }
-  TO_SEXP();
+  TO_SEXP(args);
 };
 
 struct fun_app : public t {
@@ -158,14 +152,14 @@ struct fun_app : public t {
     x->make_html(out, it);
   };
   expression::ptr f, x;
-  fun_app(expression::ptr &&f_, expression::ptr &&x_) :  f(std::move(f_)), x(std::move(x_)) {
-    loc = unite_sv(f,x);
+  fun_app(expression::ptr &&f_, expression::ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
+    loc = unite_sv(f, x);
   }
   void bind(const ltable &lt) final {
     f->bind(lt);
     x->bind(lt);
   }
-  TO_SEXP(f,x);
+  TO_SEXP(f, x);
 };
 
 struct seq : public t {
@@ -175,12 +169,12 @@ struct seq : public t {
     b->make_html(out, it);
   };
   expression::ptr a, b;
-  seq(expression::ptr &&a, expression::ptr &&b) :  t(unite_sv(a,b)) , a(std::move(a)), b(std::move(b)) {  }
+  seq(expression::ptr &&a, expression::ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
   void bind(const ltable &lt) final {
     a->bind(lt);
     b->bind(lt);
   }
-  TO_SEXP(a,b);
+  TO_SEXP(a, b);
 };
 
 struct match_with : public t {
@@ -193,13 +187,14 @@ struct match_with : public t {
     }
   };
   typedef std::unique_ptr<match_with> ptr;
-  struct branch {
+  struct branch : public sexp_of_t {
     matcher::ptr pattern;
     expression::ptr result;
+    TO_SEXP(pattern,result)
   };
   expression::ptr what;
   std::vector<branch> branches;
-  match_with(expression::ptr &&w, std::string_view loc) : t(loc), what(std::move(w)) {}
+  match_with(expression::ptr &&w) : what(std::move(w)) {}
   void bind(const ltable &lt) final {
     what->bind(lt);
     for (auto&[p, r] : branches) {
@@ -208,7 +203,7 @@ struct match_with : public t {
       r->bind(wp);
     }
   }
-  TO_SEXP();
+  TO_SEXP(what,branches);
 };
 
 struct let_in : public t {
@@ -219,11 +214,11 @@ struct let_in : public t {
   };
   definition::ptr d;
   expression::ptr e;
-  let_in(definition::ptr &&d, expression::ptr &&e, std::string_view loc) : t(loc), d(std::move(d)), e(std::move(e)) {}
+  let_in(definition::ptr &&d, expression::ptr &&e) : d(std::move(d)), e(std::move(e)) {}
   void bind(const ltable &lt) final {
     e->bind(d->bind(lt));
   }
-  TO_SEXP();
+  TO_SEXP(d,e);
 };
 
 }
@@ -234,18 +229,20 @@ struct universal_matcher : public t {
   std::string html_description() const final { return "Universal matcher"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<universal_matcher> ptr;
-  using t::t;
+  universal_matcher(std::string_view n) : name(n) {}
   void bind(ltable::map_t &m) final {
     m.bind(loc, *this);
   }
+  std::string_view name;
+  TO_SEXP(name)
 };
 
 struct anonymous_universal_matcher : public t {
   std::string html_description() const final { return "Ignore matcher"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<anonymous_universal_matcher> ptr;
-  using t::t;
   void bind(ltable::map_t &m) final {}
+  TO_SEXP()
 };
 
 struct constructor_matcher : public t {
@@ -256,12 +253,12 @@ struct constructor_matcher : public t {
   typedef std::unique_ptr<constructor_matcher> ptr;
   matcher::ptr arg;
   std::string_view cons;
-  constructor_matcher(matcher::ptr &&m, std::string_view loc, std::string_view c) : t(loc), arg(std::move(m)), cons(c) {}
-  constructor_matcher(std::string_view loc) : t(loc), arg(), cons(loc) {}
+  constructor_matcher(matcher::ptr &&m, std::string_view c) : arg(std::move(m)), cons(c) {}
+  constructor_matcher(std::string_view c) : arg(), cons(c) {}
   void bind(ltable::map_t &m) final {
     if (arg)arg->bind(m);
   }
-
+  TO_SEXP(cons,arg); //TODO: arg is optional expect SEGFAULT
 };
 
 struct literal_matcher : public t {
@@ -270,8 +267,9 @@ struct literal_matcher : public t {
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<literal_matcher> ptr;
   ast::literal::ptr value;
-  literal_matcher(ast::literal::ptr &&lit, std::string_view loc) : t(loc), value(std::move(lit)) {}
+  literal_matcher(ast::literal::ptr &&lit) : value(std::move(lit)) {}
   void bind(ltable::map_t &m) final {}
+  TO_SEXP(value);
 };
 
 struct tuple_matcher : public t {
@@ -284,6 +282,7 @@ struct tuple_matcher : public t {
   void bind(ltable::map_t &m) final {
     for (auto &p : args)p->bind(m);
   }
+  TO_SEXP(args);
 };
 
 }
@@ -301,7 +300,7 @@ struct function : single {
   matcher::universal_matcher::ptr name;
   std::vector<matcher::ptr> args;
   using single::single;
-  function() : single(expression::ptr(), std::string_view()) {}
+  function() : single(expression::ptr()) {}
   void bind(const ltable &lt) final {
     ltable argtable = lt.sub_table();
     for (auto &p : args)p->bind(argtable.map());
@@ -310,6 +309,7 @@ struct function : single {
   void bind(ltable::map_t &mt) final {
     name->bind(mt);
   }
+  TO_SEXP(name,args,body)
 };
 
 struct value : single {
@@ -320,13 +320,14 @@ struct value : single {
     body->make_html(out, it);
   };
   matcher::ptr binded;
-  value(matcher::ptr &&bi, expression::ptr &&bo, std::string_view loc) : single(std::move(bo), loc), binded(std::move(bi)) {}
+  value(matcher::ptr &&bi, expression::ptr &&bo) : single(std::move(bo)), binded(std::move(bi)) {}
   void bind(const ltable &lt) final {
     body->bind(lt);
   }
   void bind(ltable::map_t &mt) final {
     binded->bind(mt);
   }
+  TO_SEXP(binded,body)
 };
 
 }
@@ -338,21 +339,25 @@ struct integer : public t {
 
   int64_t value;
   integer(int64_t value) : value(value) {}
+  TO_SEXP(value)
 };
 struct boolean : public t {
   std::string html_description() const final { return "Bool Literal"; }
 
   bool value;
   boolean(bool value) : value(value) {}
+  TO_SEXP(value)
 };
 struct unit : public t {
   std::string html_description() const final { return "Unit Literal"; }
   unit() {}
+  TO_SEXP("()")
 };
 struct string : public t {
   std::string html_description() const final { return "String Literal"; }
   std::string value;
   string(std::string_view value) : value(value) {}
+  TO_SEXP(value)
 };
 }
 
@@ -360,66 +365,63 @@ namespace type {
 
 namespace expression {
 
-struct t : public node, public sexp_of_t {
-  using node::node;
+struct t : public locable, public sexp_of_t {
 };
 typedef std::unique_ptr<t> ptr;
 
 struct identifier : public t {
   typedef std::unique_ptr<identifier> ptr;
   std::string_view name;
-  identifier(std::string_view s) : t(s), name(s) {}
+  identifier(std::string_view s) : name(s) {}
   TO_SEXP(name);
 }; //e.g. 'a or int
 struct function : public t {
   ptr from, to;
-  function(ptr &&f, ptr &&x) : t(""), from(std::move(f)), to(std::move(x)) {loc = itr_sv(from->loc.begin(),to->loc.end());}
-  TO_SEXP(from,to);
+  function(ptr &&f, ptr &&x) : from(std::move(f)), to(std::move(x)) { loc = unite_sv(from, to); }
+  TO_SEXP(from, to);
 };
 struct product : public t {
   typedef std::unique_ptr<product> ptr;
 
   std::vector<expression::ptr> ts; //size>=2
-  product() : t("") { }
-  void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
+  //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
   TO_SEXP(ts);
 };
 struct tuple : public t {
   typedef std::unique_ptr<tuple> ptr;
 
   std::vector<expression::ptr> ts; //size>=2
-  tuple(expression::ptr &&x) : t("") { ts.push_back(std::move(x)); }
-  void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
+  tuple(expression::ptr &&x) { ts.push_back(std::move(x)); }
+  //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
   TO_SEXP(ts);
 };
 struct constr : public t {
   ptr x, f;
-  constr(ptr &&xx, ptr &&ff) : t(""), x(std::move(xx)), f(std::move(ff)) {loc = itr_sv(x->loc.begin(),f->loc.end());}
-  TO_SEXP(x,f)
+  constr(ptr &&xx, ptr &&ff) : x(std::move(xx)), f(std::move(ff)) { loc = itr_sv(x->loc.begin(), f->loc.end()); }
+  TO_SEXP(x, f)
 };
 
 }
 
 namespace definition {
 
-struct param : public node,public sexp_of_t {
+struct param : public locable, public sexp_of_t {
   typedef std::unique_ptr<param> ptr;
-  using node::node;
-  TO_SEXP(loc);
+  param(std::string_view s) : name(s) {}
+  std::string_view name;
+  TO_SEXP(name);
 };
 
-struct single : public node,public sexp_of_t {
+struct single : public locable, public sexp_of_t {
   typedef std::unique_ptr<single> ptr;
   std::vector<param::ptr> params;
   std::string_view name;
-  single() : node("") {}
 };
 
-struct t : public node,public sexp_of_t {
+struct t : public locable, public sexp_of_t {
   bool nonrec = false;
   std::vector<single::ptr> defs;
-  t() : node("") {}
-  TO_SEXP(nonrec,defs);
+  TO_SEXP(nonrec, defs);
 };
 typedef std::unique_ptr<t> ptr;
 
@@ -427,7 +429,7 @@ struct single_texpr : public single {
   typedef std::unique_ptr<single_texpr> ptr;
 
   expression::ptr type;
-  TO_SEXP(name,type);
+  TO_SEXP(name, type);
 };
 
 struct single_variant : public single {
@@ -436,11 +438,11 @@ struct single_variant : public single {
   struct constr : public sexp_of_t {
     std::string_view name;
     expression::ptr type;
-    TO_SEXP(name,type);
+    TO_SEXP(name, type);
   };
 
   std::vector<constr> variants;
-  TO_SEXP(name,variants);
+  TO_SEXP(name, variants);
 
 };
 

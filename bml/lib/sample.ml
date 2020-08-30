@@ -1,4 +1,7 @@
-
+let map t f =
+match t with
+| Some value -> Some (f value)
+| None -> None
 
 let next_event,server,conn,error,ok = () in
 match next_event server conn with
