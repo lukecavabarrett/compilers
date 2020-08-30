@@ -1,5 +1,5 @@
 #include <ast.h>
-#include <util.h>
+#include <util/util.h>
 #include <parse.h>
 
 namespace ast {
@@ -108,7 +108,7 @@ std::optional<
       }
 
     }
-  } catch (const errmsg::errmsg& e) {
+  } catch (const util::error::message& e) {
     e.print(std::cout,source,filename);
     return {};
   }

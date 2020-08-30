@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <parse.h>
+#include <sexp.h>
 
 namespace sexp{
 namespace {
@@ -36,7 +36,7 @@ TEST(Sexp,Constructors) {
   EXPECT_EQ(s5[3].size(),0);
   t s6 = s5;
   EXPECT_TRUE(s6.is_list());
-  EXPECT_EQ(s6.to_string(),"(A (A B) (D))");
+  EXPECT_EQ(s6.to_string(),"(A (A B) (D) ())");
 
   EXPECT_TRUE(s6[0].is_atom());
   EXPECT_TRUE(s6[1].is_list());

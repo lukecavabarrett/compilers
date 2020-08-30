@@ -1,9 +1,10 @@
 #ifndef COMPILERS_BML_LIB_ERRMSG_H_
 #define COMPILERS_BML_LIB_ERRMSG_H_
 #include <string>
-namespace errmsg {
+namespace util::error {
 
-class errmsg{
+//Assumption: just one source at a time is considered
+class message {
  protected:
   //virtual std::string to_string() const = 0;
   virtual std::string_view get_msgtype() const = 0;
@@ -16,32 +17,42 @@ class errmsg{
   //static std::pair<std::string,std::string> context(std::string_view tk);
 };
 
-std::ostream& operator<< (std::ostream& os, const errmsg& em);
+//std::ostream& operator<< (std::ostream& os, const message& em);
 
 //error, warnings, both can be followed by notes, and preceeded by locators
-// locators not an errmsg
+// locators not an message
+namespace style {
 
-class error : public errmsg {
+class error : public virtual message {
   virtual std::string_view get_msgtype() const;
   virtual std::string_view get_msgstyle() const;
 };
 
-class note : public errmsg {
+class note : public virtual message {
   virtual std::string_view get_msgtype() const;
   virtual std::string_view get_msgstyle() const;
 };
 
-class generic_static_error : error {
+class warning : public virtual message {
+  virtual std::string_view get_msgtype() const;
+  virtual std::string_view get_msgstyle() const;
+};
+
+}
+
+template<typename Style>
+class simple : public virtual message, public virtual Style {
  public:
-  std::string_view token,msg;
-  virtual std::string_view get_code_token() const;
-  virtual void print_content(std::ostream& os) const;
+  std::string_view token, msg;
+  virtual std::string_view get_code_token() const { return token; }
+  virtual void print_content(std::ostream &os) const { os << msg; }
 };
+
 
 //what if this is a template of error|warning|note ?
 
-template<typename BaseMsg>
-class report_token : public BaseMsg {
+template<typename Style>
+class report_token : public virtual message, public virtual Style {
  public:
   std::string_view token;
   std::string msg_front,msg_back;
@@ -68,12 +79,9 @@ class report_token_string : public BaseMsg {
   report_token_string(std::string_view t,std::string_view f,std::string_view q,std::string_view b) : msg_front(f),token(t),msg_back(b),quote(q) {}
 };
 */
-typedef report_token<error> report_token_error;
+typedef report_token<style::error> report_token_error;
 
-class warning : public errmsg {
-  virtual std::string_view get_msgtype() const;
-  virtual std::string_view get_msgstyle() const;
-};
+
 
 }
 #endif //COMPILERS_BML_LIB_ERRMSG_H_

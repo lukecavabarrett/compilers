@@ -2,10 +2,10 @@
 #include <unordered_map>
 #include <algorithm>
 #include <cassert>
-#include <util.h>
+#include <util/util.h>
 
 namespace {
-
+using namespace util;
 bool allowed_in_identifier(char c) {
   return ::isalnum(c) || c == '_' || c == '\'';
 }

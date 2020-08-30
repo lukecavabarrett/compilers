@@ -1,10 +1,10 @@
 
-#include <errmsg.h>
+#include <message.h>
 
 #include <algorithm>
 #include <ostream>
 
-namespace errmsg {
+namespace util::error {
 
 namespace {
 template<typename _It>
@@ -18,7 +18,7 @@ inline constexpr auto make_string_view(_It begin, _It end) {
 }
 }
 
-void errmsg::print(std::ostream &os,std::string_view file,std::string_view filename) const {
+void message::print(std::ostream &os, std::string_view file, std::string_view filename) const {
 
   constexpr std::string_view bold_style = "\e[1m";
   constexpr std::string_view clear_style = "\e[0m";
@@ -54,19 +54,20 @@ void errmsg::print(std::ostream &os,std::string_view file,std::string_view filen
     os << clear_style << std::endl;
   }
 }
-std::string_view errmsg::get_msgstyle() const { return ""; }
-
+std::string_view message::get_msgstyle() const { return ""; }
+namespace style {
 std::string_view error::get_msgtype() const { return "error"; }
 std::string_view error::get_msgstyle() const { return "\e[31m"; }
 std::string_view note::get_msgtype() const { return "note"; }
 std::string_view note::get_msgstyle() const { return "\e[36m"; }
+std::string_view warning::get_msgtype() const { return "warning"; }
+std::string_view warning::get_msgstyle() const { return "\e[35m"; }
+}
 
-std::string_view generic_static_error::get_code_token() const { return token; }
-void generic_static_error::print_content(std::ostream &os) const { os << msg; }
-//std::ostream &operator<<(std::ostream &os, const errmsg &em) {
+
+
+//std::ostream &operator<<(std::ostream &os, const message &em) {
 //  em.print(os);
 //  return os;
 //}
-std::string_view warning::get_msgtype() const { return "warning"; }
-std::string_view warning::get_msgstyle() const { return "\e[35m"; }
 }

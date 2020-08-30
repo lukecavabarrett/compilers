@@ -8,7 +8,11 @@
 #include <memory>
 #include <string>
 #include <cstdlib>
-#include <util.h>
+#include <util/util.h>
+
+
+namespace util {
+
 namespace sexp {
 //the sexp type
 
@@ -68,7 +72,7 @@ struct try_get_as_string {
 
 template<typename T>
 struct try_convert_to_string {
-  static t get_sexp(const T& v) {
+  static t get_sexp(const T &v) {
     return t(std::to_string(v));
   }
 };
@@ -83,7 +87,7 @@ template<typename T>
 struct sexp_of_single {
   static t get_sexp(const T &p) {
     typedef std::conditional_t<std::is_base_of_v<sexp_of_t, T>, try_using_sexpable_base_class,
-    std::conditional_t<std::is_fundamental_v<T>,try_convert_to_string<T>,try_get_as_string >
+                               std::conditional_t<std::is_fundamental_v<T>, try_convert_to_string<T>, try_get_as_string>
 
     > strategy;
     return strategy::get_sexp(p);
@@ -115,7 +119,7 @@ template<typename C>
 struct sexp_of_single<std::vector<C>> {
   static t get_sexp(const std::vector<C> &v) {
     t s = {};
-    for(const C& x : v)std::get<1>(s.value).push_back(sexp_of_single<C>::get_sexp(x));
+    for (const C &x : v)std::get<1>(s.value).push_back(sexp_of_single<C>::get_sexp(x));
     return s;
   }
 };
@@ -182,11 +186,13 @@ t prepend_type(t s) {
 
 }
 #define TO_SEXP(...) sexp::t to_sexp() const final {\
-  return  sexp::__internal::prepend_type<decltype(*this)>( sexp::__internal::make_from(  __VA_ARGS__  ) ); \
+  return  ::util::sexp::__internal::prepend_type<decltype(*this)>( ::util::sexp::__internal::make_from(  __VA_ARGS__  ) ); \
 }
 
 #define TO_SEXP_ATOM(tag) sexp::t to_sexp() const final {\
   return  sexp::__internal::make_from(  tag ); \
+}
+
 }
 
 }

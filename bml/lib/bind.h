@@ -5,8 +5,8 @@
 #include <map>
 #include <vector>
 #include <memory>
-#include <util.h>
-#include <errmsg.h>
+#include <util/util.h>
+#include <util/message.h>
 #include <iostream>
 namespace bind {
 
@@ -16,9 +16,9 @@ class t : public std::runtime_error {
   t() : std::runtime_error("binding error"){}
 };
 
-class unbound_value : public t, public ::errmsg::report_token_error {
+class unbound_value : public t, public util::error::report_token_error {
  public:
-  unbound_value(std::string_view identifier) : ::errmsg::report_token_error("Unbound value",identifier,"") {}
+  unbound_value(std::string_view identifier) : util::error::report_token_error("Unbound value",identifier,"") {}
 };
 
 //TODO: error unbound value with suggestion

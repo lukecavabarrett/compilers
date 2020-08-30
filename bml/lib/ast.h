@@ -4,10 +4,11 @@
 #include <vector>
 #include <variant>
 #include <bind.h>
-#include <util.h>
-#include <sexp.h>
+#include <util/util.h>
+#include <util/sexp.h>
 
 namespace ast {
+using namespace util;
 
 namespace {
 typedef sexp::sexp_of_t sexp_of_t;
