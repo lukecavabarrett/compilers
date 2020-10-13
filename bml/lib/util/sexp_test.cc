@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <sexp.h>
 
-namespace sexp{
+namespace util::sexp{
 namespace {
 
 TEST(Sexp,Constructors) {

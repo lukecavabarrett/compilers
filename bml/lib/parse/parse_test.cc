@@ -43,13 +43,13 @@ void parse_retrow(std::string_view source,std::string_view expected) {
   type::definition, MACROS_CONCAT_NAME(TypeDef, __COUNTER__), source,expected)
 
 
-TEST_PARSE_EXPRESSION("Upper lower", "(ast::expression::fun_app (ast::expression::identifier Upper) (ast::expression::identifier lower))");
+TEST_PARSE_EXPRESSION("Upper lower", "(ast::expression::fun_app (ast::expression::constructor Upper) (ast::expression::identifier lower))");
 TEST_PARSE_EXPRESSION("lower lower", "(ast::expression::fun_app (ast::expression::identifier lower) (ast::expression::identifier lower))");
 
 TEST_PARSE_MATCHER("Error _ , t ","(ast::matcher::tuple_matcher ((ast::matcher::constructor_matcher Error (ast::matcher::anonymous_universal_matcher)) (ast::matcher::universal_matcher t)))")
 TEST_PARSE_EXPRESSION("match t with\n"
                       "| Some value -> Some (f value)\n"
-                      "| None -> None", "(ast::expression::match_with (ast::expression::identifier t) ((ast::expression::match_with::branch (ast::matcher::constructor_matcher Some (ast::matcher::universal_matcher value)) (ast::expression::fun_app (ast::expression::identifier Some) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier value)))) (ast::expression::match_with::branch (ast::matcher::constructor_matcher None NULL) (ast::expression::identifier None))))");
+                      "| None -> None", "(ast::expression::match_with (ast::expression::identifier t) ((ast::expression::match_with::branch (ast::matcher::constructor_matcher Some (ast::matcher::universal_matcher value)) (ast::expression::fun_app (ast::expression::constructor Some) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier value)))) (ast::expression::match_with::branch (ast::matcher::constructor_matcher None NULL) (ast::expression::constructor None))))");
 TEST_PARSE_DEFINITION("let rec f x = f x and x = f () ",
                       "(ast::definition::t 1 ((ast::definition::function (ast::matcher::universal_matcher f) ((ast::matcher::universal_matcher x)) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier x))) (ast::definition::value (ast::matcher::universal_matcher x) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::literal (ast::literal::unit ()))))))");
 

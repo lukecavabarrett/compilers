@@ -21,6 +21,7 @@ add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
 
 add_subdirectory(util)
 add_subdirectory(parse)
+add_subdirectory(rt)
 
 
 add_library(libbml STATIC bind.cc)

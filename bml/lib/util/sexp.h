@@ -9,7 +9,8 @@
 #include <string>
 #include <cstdlib>
 #include <util/util.h>
-
+#include <forward_list>
+#include <unordered_set>
 
 namespace util {
 
@@ -124,6 +125,35 @@ struct sexp_of_single<std::vector<C>> {
   }
 };
 
+template<typename C>
+struct sexp_of_single<std::forward_list<C>> {
+  static t get_sexp(const std::forward_list<C> &v) {
+    t s = {};
+    for (const C &x : v)std::get<1>(s.value).push_back(sexp_of_single<C>::get_sexp(x));
+    return s;
+  }
+};
+
+template<typename K,typename V>
+struct sexp_of_single<std::unordered_map<K,V>> {
+  static t get_sexp(const std::unordered_map<K,V> &m) {
+    t s = {};
+    for (const auto&[k,v] : m)std::get<1>(s.value).push_back({sexp_of_single<K>::get_sexp(k),sexp_of_single<V>::get_sexp(v)});
+    return s;
+  }
+};
+
+template<typename T>
+struct sexp_of_single<std::unordered_set<T>> {
+  static t get_sexp(const std::unordered_set<T> &m) {
+    t s = {};
+    for (const T& x : m)std::get<1>(s.value).push_back(sexp_of_single<T>::get_sexp(x));
+    return s;
+  }
+};
+
+
+
 template<typename ...Ts>
 t make_from(const Ts &... fields) {
   return {sexp_of_single<Ts>::get_sexp(fields) ...};
@@ -185,12 +215,14 @@ t prepend_type(t s) {
 }
 
 }
-#define TO_SEXP(...) sexp::t to_sexp() const final {\
-  return  ::util::sexp::__internal::prepend_type<decltype(*this)>( ::util::sexp::__internal::make_from(  __VA_ARGS__  ) ); \
+
+template<typename T>
+t make_sexp(const T& x){
+  return __internal::sexp_of_single<T>::get_sexp(x);
 }
 
-#define TO_SEXP_ATOM(tag) sexp::t to_sexp() const final {\
-  return  sexp::__internal::make_from(  tag ); \
+#define TO_SEXP(...) sexp::t to_sexp() const final {\
+  return  ::util::sexp::__internal::prepend_type<decltype(*this)>( ::util::sexp::__internal::make_from(  __VA_ARGS__  ) ); \
 }
 
 }

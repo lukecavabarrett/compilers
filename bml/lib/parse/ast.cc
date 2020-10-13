@@ -54,25 +54,29 @@ std::string locable::to_html() const {
   return out;
 }
 
+
+namespace expression{
+
+free_vars_t identifier::free_vars() {
+  if(definition_point && definition_point->top_level) return {};
+  return {{name, {this}}};
+}
+
+capture_set identifier::capture_group() {
+  assert(definition_point); //TODO: internal fail
+  if(definition_point->top_level) return {};
+  return {definition_point};
+}
+
+}
+
+
 namespace definition {
-ltable t::bind(const ltable &lt) {
-  if (rec) {
-    // asssert no value definition
-    for (auto &p : defs)
-      if (dynamic_cast<function *>(p.get()) == nullptr)
-        throw std::runtime_error("only function definitions are allowed in recursive definition");
-    ltable wnames = lt.sub_table();
-    for (auto &p : defs)dynamic_cast<function *>(p.get())->name->bind(wnames.map());
-    for (auto &p : defs)p->bind(wnames);
-    return wnames;
-  } else {
-    for (auto &p : defs)p->bind(lt);
-    ltable wnames = lt.sub_table();
-    for (auto &p : defs)p->bind(wnames.map());
-    return wnames;
-  }
 }
-}
+
+
+
+
 /*
 TODO: clean this for being binded
 

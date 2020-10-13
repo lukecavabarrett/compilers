@@ -6,6 +6,9 @@
 #include <bind.h>
 #include <util/util.h>
 #include <util/sexp.h>
+#include <forward_list>
+#include <unordered_set>
+#include <cinttypes>
 
 namespace ast {
 using namespace util;
@@ -30,6 +33,32 @@ typedef std::unique_ptr<t> ptr;
 struct universal_matcher;
 }
 
+namespace expression {
+struct identifier;
+}
+
+typedef std::forward_list<expression::identifier *> usage_list;
+typedef std::unordered_map<std::string_view, usage_list> free_vars_t;
+typedef std::unordered_set<const matcher::universal_matcher *> capture_set;
+namespace {
+free_vars_t join_free_vars(free_vars_t &&v1, free_vars_t &&v2) {
+  if (v1.size() < v2.size())std::swap(v1, v2);
+  for (auto&[k, l] : v2) {
+    if (auto it = v1.find(k);it == v1.end()) {
+      v1.try_emplace(k, std::move(l));
+    } else {
+      it->second.splice_after(it->second.cbegin(), l, l.cbefore_begin());
+    }
+  }
+  return v1;
+}
+capture_set join_capture_set(capture_set &&c1, capture_set &&c2) {
+  if (c1.size() < c2.size())std::swap(c1, c2);
+  c1.merge(std::move(c2));
+  return c1;
+}
+}
+
 typedef bind::name_table<ast::matcher::universal_matcher> ltable;
 
 struct locable {
@@ -38,7 +67,7 @@ struct locable {
   virtual void _make_html_childcall(std::string &out, std::string_view::iterator &it) const { THROW_UNIMPLEMENTED }
   void make_html(std::string &out, std::string_view::iterator &it) const;;
   std::string to_html() const;
-
+  virtual ~locable() = default;
 };
 
 
@@ -47,14 +76,16 @@ struct locable {
 namespace expression {
 struct t : public locable, public sexp_of_t {
   using locable::locable;
-  virtual void bind(const ltable &) = 0;
+  virtual free_vars_t free_vars() = 0;
+  virtual capture_set capture_group() = 0;
 };
 typedef std::unique_ptr<t> ptr;
 }
 
 namespace matcher {
 struct t : public locable, sexp_of_t {
-  virtual void bind(ltable::map_t &) = 0;
+  virtual void bind(free_vars_t &) = 0;
+  virtual void bind(capture_set &) = 0;
 };
 typedef std::unique_ptr<t> ptr;
 struct universal_matcher;
@@ -62,20 +93,43 @@ struct universal_matcher;
 
 namespace definition {
 
-struct single : public locable,sexp_of_t {
+struct single : public locable, sexp_of_t {
   typedef std::unique_ptr<single> ptr;
   expression::ptr body;
   single(expression::ptr &&b) : body(std::move(b)) {}
-  virtual void bind(const ltable &) = 0;;
-  virtual void bind(ltable::map_t &mt) = 0;;
+  virtual matcher::t &binder() const = 0;
+  virtual free_vars_t free_vars() = 0;
+  virtual capture_set capture_group() = 0;
+  virtual ~single() = default;
 };
 
-struct t : locable,sexp_of_t {
+struct function;
+
+struct t : locable, sexp_of_t {
   bool rec = false;
   std::vector<single::ptr> defs;
   std::string html_description() const final { return "Definition(s)"; }
-  ltable bind(const ltable &);;
-  TO_SEXP(rec,defs);
+  free_vars_t free_vars(free_vars_t &&fv = {}) {
+    if (rec) {
+      for (auto &def : defs)fv = join_free_vars(std::move(fv), def->free_vars());
+      for (auto &def : defs)def->binder().bind(fv);
+    } else {
+      for (auto &def : defs)def->binder().bind(fv);
+      for (auto &def : defs)fv = join_free_vars(std::move(fv), def->free_vars());
+    }
+    return fv;
+  }
+  capture_set capture_group(capture_set &&cs = {}) {
+    if (rec) {
+      for (auto &def : defs)cs = join_capture_set(std::move(cs), def->capture_group());
+      for (auto &def : defs)def->binder().bind(cs);
+    } else {
+      for (auto &def : defs)def->binder().bind(cs);
+      for (auto &def : defs)cs = join_capture_set(std::move(cs), def->capture_group());
+    }
+    return cs;
+  }
+  TO_SEXP(rec, defs);
 };
 typedef std::unique_ptr<t> ptr;
 
@@ -84,10 +138,10 @@ typedef std::unique_ptr<t> ptr;
 namespace literal {
 struct t : public sexp_of_t {
   virtual std::string html_description() const = 0;
+  virtual ~t() = default;
 };
 typedef std::unique_ptr<t> ptr;
 }
-
 
 //Extended definitions
 
@@ -99,7 +153,8 @@ struct literal : public t {
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   ast::literal::ptr value;
   literal(ast::literal::ptr &&v) : value(std::move(v)) {}
-  void bind(const ltable &) final {}
+  free_vars_t free_vars() final { return {}; };
+  capture_set capture_group() final { return {}; };
 
   TO_SEXP(value);
 };
@@ -107,9 +162,21 @@ struct literal : public t {
 struct identifier : public t {
   std::string html_description() const final { return "Identifier"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
-  void bind(const ltable &lt) final { definition_point = &lt.lookup(name); }
+  free_vars_t free_vars() final;
   const matcher::universal_matcher *definition_point;
-  identifier(std::string_view n) : name(n) {}
+  const definition::function *closured; // If it's nullptr it means it have direct access to it
+  identifier(std::string_view n) : name(n), definition_point(nullptr) {}
+  capture_set capture_group() final;
+  std::string_view name;
+  TO_SEXP(name);
+};
+
+struct constructor : public t {
+  std::string html_description() const final { return "Constructor"; }
+  void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
+  free_vars_t free_vars() final { return {}; };
+  capture_set capture_group() final { return {}; };
+  constructor(std::string_view n) : name(n) {}
   std::string_view name;
   TO_SEXP(name);
 };
@@ -125,11 +192,9 @@ struct if_then_else : public t {
   expression::ptr condition, true_branch, false_branch;
   if_then_else(expression::ptr &&condition, expression::ptr &&true_branch, expression::ptr &&false_branch)
       : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
-  void bind(const ltable &lt) final {
-    condition->bind(lt);
-    true_branch->bind(lt);
-    false_branch->bind(lt);
-  }
+  free_vars_t free_vars() final { return join_free_vars(join_free_vars(condition->free_vars(), true_branch->free_vars()), false_branch->free_vars()); };
+  capture_set capture_group() final { return join_capture_set(join_capture_set(condition->capture_group(), true_branch->capture_group()), false_branch->capture_group()); };
+
   TO_SEXP(condition, true_branch, false_branch);
 };
 
@@ -141,7 +206,17 @@ struct build_tuple : public t {
   std::vector<expression::ptr> args;
   build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
   build_tuple() = default;
-  void bind(const ltable &lt) final { for (auto &p : args)p->bind(lt); }
+  free_vars_t free_vars() final {
+    free_vars_t fv;
+    for (auto &p : args)fv = join_free_vars(p->free_vars(), std::move(fv));
+    return fv;
+  }
+  capture_set capture_group() final {
+    capture_set fv;
+    for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
+    return fv;
+  };
+
   TO_SEXP(args);
 };
 
@@ -155,10 +230,8 @@ struct fun_app : public t {
   fun_app(expression::ptr &&f_, expression::ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
     loc = unite_sv(f, x);
   }
-  void bind(const ltable &lt) final {
-    f->bind(lt);
-    x->bind(lt);
-  }
+  free_vars_t free_vars() final { return join_free_vars(f->free_vars(), x->free_vars()); }
+  capture_set capture_group() final { return join_capture_set(f->capture_group(), x->capture_group()); }
   TO_SEXP(f, x);
 };
 
@@ -170,10 +243,9 @@ struct seq : public t {
   };
   expression::ptr a, b;
   seq(expression::ptr &&a, expression::ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
-  void bind(const ltable &lt) final {
-    a->bind(lt);
-    b->bind(lt);
-  }
+  free_vars_t free_vars() final { return join_free_vars(a->free_vars(), b->free_vars()); };
+  capture_set capture_group() final { return join_capture_set(a->capture_group(), b->capture_group()); }
+
   TO_SEXP(a, b);
 };
 
@@ -190,20 +262,32 @@ struct match_with : public t {
   struct branch : public sexp_of_t {
     matcher::ptr pattern;
     expression::ptr result;
-    TO_SEXP(pattern,result)
+    TO_SEXP(pattern, result)
   };
   expression::ptr what;
   std::vector<branch> branches;
   match_with(expression::ptr &&w) : what(std::move(w)) {}
-  void bind(const ltable &lt) final {
-    what->bind(lt);
+  free_vars_t free_vars() final {
+    free_vars_t fv = what->free_vars();
     for (auto&[p, r] : branches) {
-      ltable wp = lt.sub_table();
-      p->bind(wp.map());
-      r->bind(wp);
+      free_vars_t bfv = r->free_vars();
+      p->bind(bfv);
+      fv = join_free_vars(std::move(fv), std::move(bfv));
     }
+    return fv;
+  };
+
+  capture_set capture_group() final {
+    capture_set cs = what->capture_group();
+    for (auto&[p, r] : branches) {
+      capture_set bcs = r->capture_group();
+      p->bind(bcs);
+      cs = join_capture_set(std::move(cs), std::move(bcs));
+    }
+    return cs;
   }
-  TO_SEXP(what,branches);
+
+  TO_SEXP(what, branches);
 };
 
 struct let_in : public t {
@@ -215,10 +299,13 @@ struct let_in : public t {
   definition::ptr d;
   expression::ptr e;
   let_in(definition::ptr &&d, expression::ptr &&e) : d(std::move(d)), e(std::move(e)) {}
-  void bind(const ltable &lt) final {
-    e->bind(d->bind(lt));
-  }
-  TO_SEXP(d,e);
+  free_vars_t free_vars() final {
+    return d->free_vars(e->free_vars());
+  };
+  capture_set capture_group() final {
+    return d->capture_group(e->capture_group());
+  };
+  TO_SEXP(d, e);
 };
 
 }
@@ -229,11 +316,26 @@ struct universal_matcher : public t {
   std::string html_description() const final { return "Universal matcher"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<universal_matcher> ptr;
-  universal_matcher(std::string_view n) : name(n) {}
-  void bind(ltable::map_t &m) final {
-    m.bind(loc, *this);
+  bool top_level =
+      false; // True only for toplevel definition - this means
+  // 1. It has a static address which doesn't expire
+  // 2. Hence closures do not need to capture this
+  // 3. It's type doesn't get changed by type inference - unified on a "per use" basis
+  universal_matcher(std::string_view n) : name(n), top_level(false) {}
+  void bind(free_vars_t &fv) final {
+    if (auto it = fv.find(name); it != fv.end()) {
+      usages = std::move(it->second);
+      fv.erase(it);
+      for (auto i : usages)i->definition_point = this;
+    } else {
+      //TODO-someday: warning that the name is unused
+    }
+  }
+  void bind(capture_set &cs) final {
+    cs.erase(this);
   }
   std::string_view name;
+  usage_list usages;
   TO_SEXP(name)
 };
 
@@ -241,7 +343,8 @@ struct anonymous_universal_matcher : public t {
   std::string html_description() const final { return "Ignore matcher"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<anonymous_universal_matcher> ptr;
-  void bind(ltable::map_t &m) final {}
+  void bind(free_vars_t &fv) final {}
+  void bind(capture_set &cs) final {}
   TO_SEXP()
 };
 
@@ -255,10 +358,14 @@ struct constructor_matcher : public t {
   std::string_view cons;
   constructor_matcher(matcher::ptr &&m, std::string_view c) : arg(std::move(m)), cons(c) {}
   constructor_matcher(std::string_view c) : arg(), cons(c) {}
-  void bind(ltable::map_t &m) final {
-    if (arg)arg->bind(m);
+  void bind(free_vars_t &fv) final {
+    if (arg)arg->bind(fv);
   }
-  TO_SEXP(cons,arg); //TODO: arg is optional expect SEGFAULT
+  void bind(capture_set &cs) final {
+    if (arg)arg->bind(cs);
+  }
+
+  TO_SEXP(cons, arg); //TODO: arg is optional expect SEGFAULT
 };
 
 struct literal_matcher : public t {
@@ -268,7 +375,9 @@ struct literal_matcher : public t {
   typedef std::unique_ptr<literal_matcher> ptr;
   ast::literal::ptr value;
   literal_matcher(ast::literal::ptr &&lit) : value(std::move(lit)) {}
-  void bind(ltable::map_t &m) final {}
+  void bind(free_vars_t &fv) final {}
+  void bind(capture_set &cs) final {}
+
   TO_SEXP(value);
 };
 
@@ -279,8 +388,11 @@ struct tuple_matcher : public t {
   };
   std::vector<matcher::ptr> args;
   tuple_matcher() = default;
-  void bind(ltable::map_t &m) final {
-    for (auto &p : args)p->bind(m);
+  void bind(free_vars_t &fv) final {
+    for (auto &p : args)p->bind(fv);
+  }
+  void bind(capture_set &cs) final {
+    for (auto &p : args)p->bind(cs);
   }
   TO_SEXP(args);
 };
@@ -298,18 +410,30 @@ struct function : single {
     body->make_html(out, it);
   };
   matcher::universal_matcher::ptr name;
+  matcher::t &binder() const final { return *name.get(); }
   std::vector<matcher::ptr> args;
+  std::vector<const matcher::universal_matcher*> captures;
   using single::single;
   function() : single(expression::ptr()) {}
-  void bind(const ltable &lt) final {
-    ltable argtable = lt.sub_table();
-    for (auto &p : args)p->bind(argtable.map());
-    body->bind(argtable);
+  free_vars_t free_vars() final {
+    free_vars_t fv = body->free_vars();
+    for (auto &m : args)m->bind(fv);
+    return fv;
+  };
+  capture_set capture_group() final {
+    capture_set cs = body->capture_group();
+    for (auto &m : args)m->bind(cs);
+    captures.assign(cs.begin(),cs.end());
+    std::sort(captures.begin(),captures.end());
+    if(captures.size()==1 && captures.front()==name.get()){
+      //TODO-somdeday: the function can be made pure
+      // captures.clear();
+      // NOTE: the function can be made pure
+    }
+    return cs;
   }
-  void bind(ltable::map_t &mt) final {
-    name->bind(mt);
-  }
-  TO_SEXP(name,args,body)
+
+  TO_SEXP(name, args, captures, body)
 };
 
 struct value : single {
@@ -320,14 +444,16 @@ struct value : single {
     body->make_html(out, it);
   };
   matcher::ptr binded;
+  matcher::t &binder() const final { return *binded.get(); }
+
   value(matcher::ptr &&bi, expression::ptr &&bo) : single(std::move(bo)), binded(std::move(bi)) {}
-  void bind(const ltable &lt) final {
-    body->bind(lt);
+  free_vars_t free_vars() final {
+    return body->free_vars();
+  };
+  capture_set capture_group() final {
+    return body->capture_group();
   }
-  void bind(ltable::map_t &mt) final {
-    binded->bind(mt);
-  }
-  TO_SEXP(binded,body)
+  TO_SEXP(binded, body)
 };
 
 }
@@ -447,6 +573,14 @@ struct single_variant : public single {
 };
 
 }
+
+}
+
+namespace top_level {
+
+//values
+//types
+//constructors
 
 }
 

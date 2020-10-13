@@ -44,9 +44,15 @@
       First, top-down assign ids to every name. At this point we also know enough to determine who is global and who is not.
       Secondly, bottom-up to find whether some name is captured or not. The tricky things: the memory location of something is capture-dependent, its type is not.
       This makes easy to conclude:
-        within introduction/matcher store type and location;
-        within usages store link to introduction and `Direct | `Closured of single_function_definition
+        within introduction/matcher store type and original location;
+        within usages store link to introduction and [`Direct | `Closured of single_function_definition]
+        within function definition store a map from closures to their closured_location
       store the type within the introduction/matcher; on each usage store information on how to get
+
+      type location = | Absolute of address | Stack_relative of int
+
+      type type = | Primitive of primitive_type |
+
 
 
 

@@ -25,7 +25,6 @@ class unbound_value : public t, public util::error::report_token_error {
 }
 
 
-
 /*
  In general map gets forwarded as they are in most expressions, copied in all places.
  Two cases of introduction:

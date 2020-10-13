@@ -198,9 +198,11 @@ ptr parse_e_p(tokenizer &tk) {
     case LITERAL: {
       return std::make_unique<literal>(ast::literal::parse(tk.pop()));
     }
-    case IDENTIFIER:
-    case CAP_NAME: {
+    case IDENTIFIER: {
       return std::make_unique<identifier>(tk.pop().sv);
+    }
+    case CAP_NAME: {
+      return std::make_unique<constructor>(tk.pop().sv);
     }
       //TODO-someday : implement dot notation
     case PARENS_OPEN: {
@@ -233,7 +235,7 @@ ptr parse(tokenizer &tk) {
       tk.expect_pop(ELSE);
       auto false_branch = parse(tk);
       auto e = std::make_unique<if_then_else>(std::move(condition), std::move(true_branch), std::move(false_branch));
-      e->loc = itr_sv(loc_start, false_branch->loc.end());
+      e->loc = itr_sv(loc_start, e->false_branch->loc.end());
       return e;
     }
     case MATCH: {
