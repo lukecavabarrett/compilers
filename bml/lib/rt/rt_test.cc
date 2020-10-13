@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "rt.h"
+#include "rt2.h"
 
 namespace {
 
@@ -43,17 +43,11 @@ TEST(Value,UintBackAndForth) {
 
 }
 
-rt::value int_sum_fn(rt::value v) {
-  assert(v.is_block());
-  const rt::array& a = *reinterpret_cast<const rt::array *>(v.to_block());
-  assert(a.size==2);
-  return rt::value::from_int(a[0].to_int() + a[1].to_int());
-}
+
 
 TEST(Function,Sum){
-  static rt::fn_base_pure int_sum(2,int_sum_fn);
 
-  rt::value f = rt::value::from_block(&int_sum);
+  rt::value f = rt::value::from_block(&rt::int_sum);
   EXPECT_TRUE(f.is_block());
   rt::value f_3 = rt::apply_fn(f,rt::value::from_int(3));
   EXPECT_TRUE(f_3.is_block());
