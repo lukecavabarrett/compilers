@@ -84,6 +84,7 @@ uint_print_fn:
         ret
 uint_format:
         db  "%llu",10, 0      ; note the 0 at the end
+
 uint_print:
         dq 1,1,uint_print_fn
 
@@ -98,7 +99,11 @@ main:
         call    apply_fn
         mov     edi, int_print
         mov     rsi, rax
+        ;push    3
+        ;push    5
+        ;mov     rsi, qword [rsp]
         call    apply_fn
+        ;add     rsp, 16
         xor     eax, eax
         add     rsp, 8
         ret

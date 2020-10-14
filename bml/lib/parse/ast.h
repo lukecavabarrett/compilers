@@ -9,6 +9,7 @@
 #include <forward_list>
 #include <unordered_set>
 #include <cinttypes>
+#include <cassert>
 
 namespace ast {
 using namespace util;
@@ -52,6 +53,13 @@ free_vars_t join_free_vars(free_vars_t &&v1, free_vars_t &&v2) {
   }
   return v1;
 }
+
+class unbound_value : public std::runtime_error, public util::error::report_token_error {
+ public:
+  unbound_value(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Unbound value ", value, "; maybe you forget a rec or you mispelt something.") {}
+
+};
+
 capture_set join_capture_set(capture_set &&c1, capture_set &&c2) {
   if (c1.size() < c2.size())std::swap(c1, c2);
   c1.merge(std::move(c2));
@@ -78,17 +86,26 @@ struct t : public locable, public sexp_of_t {
   using locable::locable;
   virtual free_vars_t free_vars() = 0;
   virtual capture_set capture_group() = 0;
+  virtual void compile(std::ostream &os, size_t stack_pos) = 0;
 };
 typedef std::unique_ptr<t> ptr;
 }
 
 namespace matcher {
+struct universal_matcher;
+}
+
+typedef std::unordered_map<std::string_view, matcher::universal_matcher *> global_map;
+
+namespace matcher {
 struct t : public locable, sexp_of_t {
   virtual void bind(free_vars_t &) = 0;
   virtual void bind(capture_set &) = 0;
+  virtual void globally_register(global_map &) = 0;
+  virtual void globally_allocate(std::ostream &os) = 0;
+  virtual void global_unroll(std::ostream &os) = 0;
 };
 typedef std::unique_ptr<t> ptr;
-struct universal_matcher;
 }
 
 namespace definition {
@@ -100,6 +117,7 @@ struct single : public locable, sexp_of_t {
   virtual matcher::t &binder() const = 0;
   virtual free_vars_t free_vars() = 0;
   virtual capture_set capture_group() = 0;
+  virtual void compile_global(std::ostream &os, size_t stack_pos) = 0;
   virtual ~single() = default;
 };
 
@@ -129,6 +147,11 @@ struct t : locable, sexp_of_t {
     }
     return cs;
   }
+
+  void compile_global(std::ostream &os) {
+    for (auto &def : defs)def->compile_global(os, 0);
+  }
+
   TO_SEXP(rec, defs);
 };
 typedef std::unique_ptr<t> ptr;
@@ -139,6 +162,7 @@ namespace literal {
 struct t : public sexp_of_t {
   virtual std::string html_description() const = 0;
   virtual ~t() = default;
+  virtual uint64_t to_value() const = 0;
 };
 typedef std::unique_ptr<t> ptr;
 }
@@ -155,7 +179,9 @@ struct literal : public t {
   literal(ast::literal::ptr &&v) : value(std::move(v)) {}
   free_vars_t free_vars() final { return {}; };
   capture_set capture_group() final { return {}; };
-
+  void compile(std::ostream &os, size_t stack_pos) final {
+    os << "mov rax, " << std::to_string(value->to_value()) << std::endl;
+  }
   TO_SEXP(value);
 };
 
@@ -168,6 +194,7 @@ struct identifier : public t {
   identifier(std::string_view n) : name(n), definition_point(nullptr) {}
   capture_set capture_group() final;
   std::string_view name;
+  void compile(std::ostream &os, size_t stack_pos) final;
   TO_SEXP(name);
 };
 
@@ -178,6 +205,7 @@ struct constructor : public t {
   capture_set capture_group() final { return {}; };
   constructor(std::string_view n) : name(n) {}
   std::string_view name;
+  void compile(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(name);
 };
 
@@ -194,7 +222,19 @@ struct if_then_else : public t {
       : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
   free_vars_t free_vars() final { return join_free_vars(join_free_vars(condition->free_vars(), true_branch->free_vars()), false_branch->free_vars()); };
   capture_set capture_group() final { return join_capture_set(join_capture_set(condition->capture_group(), true_branch->capture_group()), false_branch->capture_group()); };
+  void compile(std::ostream &os, size_t stack_pos) final {
+    static size_t if_id = 0;
+    ++if_id;
+    condition->compile(os,stack_pos);
+    os << "cmp rax, 1\n"
+          "je .L_IF_F_" << if_id << "\n";
+    true_branch->compile(os,stack_pos);
+    os << "jmp .L_IF_E_" << if_id << "\n";
+    os << " .L_IF_F_" << if_id << ":\n";
+    false_branch->compile(os,stack_pos);
+    os << " .L_IF_E_" << if_id << ":\n";
 
+  }
   TO_SEXP(condition, true_branch, false_branch);
 };
 
@@ -216,7 +256,19 @@ struct build_tuple : public t {
     for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
     return fv;
   };
-
+  void compile(std::ostream &os, size_t stack_pos) final {
+    os << "push r12\n";
+    ++stack_pos;
+    os << "mov edi, " << std::to_string(args.size() * 8) << "\n"
+       << "call malloc\n" << "mov r12, rax\n";;
+    for (int i = 0; i < args.size(); ++i) {
+      args.at(i)->compile(os, stack_pos);
+      os << "mov qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "], rax\n";
+    }
+    os << "mov rax, r12\n"
+          "pop r12\n";
+    --stack_pos;
+  }
   TO_SEXP(args);
 };
 
@@ -232,6 +284,14 @@ struct fun_app : public t {
   }
   free_vars_t free_vars() final { return join_free_vars(f->free_vars(), x->free_vars()); }
   capture_set capture_group() final { return join_capture_set(f->capture_group(), x->capture_group()); }
+  void compile(std::ostream &os, size_t stack_pos) final {
+    f->compile(os,stack_pos);
+    os << "push rax\n"; ++stack_pos;
+    x->compile(os,stack_pos);
+    os << "pop rdi\n"; --stack_pos;
+    os << "mov rsi, rax\n"
+          "call apply_fn\n";
+  }
   TO_SEXP(f, x);
 };
 
@@ -245,7 +305,10 @@ struct seq : public t {
   seq(expression::ptr &&a, expression::ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
   free_vars_t free_vars() final { return join_free_vars(a->free_vars(), b->free_vars()); };
   capture_set capture_group() final { return join_capture_set(a->capture_group(), b->capture_group()); }
-
+  void compile(std::ostream &os, size_t stack_pos) final {
+    a->compile(os, stack_pos);
+    b->compile(os, stack_pos);
+  }
   TO_SEXP(a, b);
 };
 
@@ -286,7 +349,7 @@ struct match_with : public t {
     }
     return cs;
   }
-
+  void compile(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(what, branches);
 };
 
@@ -305,6 +368,7 @@ struct let_in : public t {
   capture_set capture_group() final {
     return d->capture_group(e->capture_group());
   };
+  void compile(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(d, e);
 };
 
@@ -316,12 +380,15 @@ struct universal_matcher : public t {
   std::string html_description() const final { return "Universal matcher"; }
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   typedef std::unique_ptr<universal_matcher> ptr;
+  size_t stack_relative_pos = -1;
+  bool glo_fun_name = false;
+  size_t name_resolution_id = 0;
   bool top_level =
       false; // True only for toplevel definition - this means
   // 1. It has a static address which doesn't expire
   // 2. Hence closures do not need to capture this
   // 3. It's type doesn't get changed by type inference - unified on a "per use" basis
-  universal_matcher(std::string_view n) : name(n), top_level(false) {}
+  universal_matcher(std::string_view n) : name(n), stack_relative_pos(-1), top_level(false) {}
   void bind(free_vars_t &fv) final {
     if (auto it = fv.find(name); it != fv.end()) {
       usages = std::move(it->second);
@@ -334,6 +401,31 @@ struct universal_matcher : public t {
   void bind(capture_set &cs) final {
     cs.erase(this);
   }
+  std::string asm_name() const {
+    return name_resolution_id ? std::string(name).append("_").append(std::to_string(name_resolution_id)) : std::string(name);
+  }
+  void globally_register(global_map &m) final {
+    top_level = true;
+    if (auto[it, b] = m.try_emplace(name, this); !b) {
+      name_resolution_id = it->second->name_resolution_id + 1;
+      it->second = this;
+    }
+  }
+  void globally_allocate(std::ostream &os) final {
+    os << asm_name() << " dq 0" << std::endl;
+
+  }
+  void global_unroll(std::ostream &os) final {
+    os << "mov qword [" << asm_name() << "], rax" << std::endl;
+  }
+  void globally_evaluate(std::ostream &os) const {
+    assert(top_level);
+    if(glo_fun_name) {
+      os << "mov rax, " << asm_name() << std::endl;
+    } else {
+      os << "mov rax, qword [" << asm_name() << "]" << std::endl;
+    }
+  }
   std::string_view name;
   usage_list usages;
   TO_SEXP(name)
@@ -345,6 +437,9 @@ struct anonymous_universal_matcher : public t {
   typedef std::unique_ptr<anonymous_universal_matcher> ptr;
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
+  void globally_allocate(std::ostream &os) final { THROW_UNIMPLEMENTED; }
+  void globally_register(global_map &m) final {}
+  void global_unroll(std::ostream &os) final { THROW_UNIMPLEMENTED; }
   TO_SEXP()
 };
 
@@ -364,7 +459,11 @@ struct constructor_matcher : public t {
   void bind(capture_set &cs) final {
     if (arg)arg->bind(cs);
   }
-
+  void globally_register(global_map &m) final {
+    if (arg)arg->globally_register(m);
+  }
+  void globally_allocate(std::ostream &os) final { THROW_UNIMPLEMENTED; }
+  void global_unroll(std::ostream &os) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(cons, arg); //TODO: arg is optional expect SEGFAULT
 };
 
@@ -377,7 +476,9 @@ struct literal_matcher : public t {
   literal_matcher(ast::literal::ptr &&lit) : value(std::move(lit)) {}
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
-
+  void globally_allocate(std::ostream &os) final {}
+  void globally_register(global_map &m) final {}
+  void global_unroll(std::ostream &os) final {}
   TO_SEXP(value);
 };
 
@@ -393,6 +494,22 @@ struct tuple_matcher : public t {
   }
   void bind(capture_set &cs) final {
     for (auto &p : args)p->bind(cs);
+  }
+  void globally_allocate(std::ostream &os) final {
+    for (auto &p : args)p->globally_allocate(os);
+  }
+
+  void globally_register(global_map &m) final {
+    for (auto &p : args)p->globally_register(m);
+  }
+  void global_unroll(std::ostream &os) final {
+    os << "push r12\n"
+          "mov r12, rax\n";
+    for (int i = 0; i < args.size(); ++i) {
+      os << "mov rax, qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "]\n";
+      args.at(i)->global_unroll(os);
+    }
+    os << "pop r12\n";
   }
   TO_SEXP(args);
 };
@@ -412,7 +529,7 @@ struct function : single {
   matcher::universal_matcher::ptr name;
   matcher::t &binder() const final { return *name.get(); }
   std::vector<matcher::ptr> args;
-  std::vector<const matcher::universal_matcher*> captures;
+  std::vector<const matcher::universal_matcher *> captures;
   using single::single;
   function() : single(expression::ptr()) {}
   free_vars_t free_vars() final {
@@ -423,14 +540,17 @@ struct function : single {
   capture_set capture_group() final {
     capture_set cs = body->capture_group();
     for (auto &m : args)m->bind(cs);
-    captures.assign(cs.begin(),cs.end());
-    std::sort(captures.begin(),captures.end());
-    if(captures.size()==1 && captures.front()==name.get()){
+    captures.assign(cs.begin(), cs.end());
+    std::sort(captures.begin(), captures.end());
+    if (captures.size() == 1 && captures.front() == name.get()) {
       //TODO-somdeday: the function can be made pure
       // captures.clear();
       // NOTE: the function can be made pure
     }
     return cs;
+  }
+  void compile_global(std::ostream &os, size_t stack_pos) final {
+    THROW_UNIMPLEMENTED;
   }
 
   TO_SEXP(name, args, captures, body)
@@ -453,6 +573,10 @@ struct value : single {
   capture_set capture_group() final {
     return body->capture_group();
   }
+  void compile_global(std::ostream &os, size_t stack_pos) final {
+    body->compile(os, stack_pos); // the value is left on rax
+    binded->global_unroll(os); // take rax, unroll it onto globals.
+  }
   TO_SEXP(binded, body)
 };
 
@@ -466,23 +590,29 @@ struct integer : public t {
   int64_t value;
   integer(int64_t value) : value(value) {}
   TO_SEXP(value)
+  uint64_t to_value() const final {
+    return uint64_t((value << 1) | 1);
+  }
 };
 struct boolean : public t {
   std::string html_description() const final { return "Bool Literal"; }
 
   bool value;
   boolean(bool value) : value(value) {}
+  uint64_t to_value() const final { return value; }
   TO_SEXP(value)
 };
 struct unit : public t {
   std::string html_description() const final { return "Unit Literal"; }
   unit() {}
+  uint64_t to_value() const final { return 0; }
   TO_SEXP("()")
 };
 struct string : public t {
   std::string html_description() const final { return "String Literal"; }
   std::string value;
   string(std::string_view value) : value(value) {}
+  uint64_t to_value() const final { THROW_UNIMPLEMENTED; }
   TO_SEXP(value)
 };
 }

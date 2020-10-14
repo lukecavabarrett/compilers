@@ -67,6 +67,13 @@ capture_set identifier::capture_group() {
   if(definition_point->top_level) return {};
   return {definition_point};
 }
+void identifier::compile(std::ostream &os, size_t stack_pos) {
+  if(definition_point->top_level) {
+    definition_point->globally_evaluate(os);
+  } else {
+    THROW_UNIMPLEMENTED;
+  }
+}
 
 }
 
