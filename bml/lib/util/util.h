@@ -8,7 +8,24 @@
 #include <algorithm>
 #include <fstream>
 #include <streambuf>
+namespace ast::definition{
+struct function;
+}
 namespace util {
+
+
+struct sections_t {
+  std::ostream &data, &text, &main;
+  ast::definition::function* def_fun;
+  sections_t(const sections_t&) = default;
+  sections_t(std::ostream& d,std::ostream& t, std::ostream& m, ast::definition::function* df = nullptr) : data(d), text(t), main(m), def_fun(df) {}
+  sections_t with_main(std::ostream& os,ast::definition::function* df)  {
+    return sections_t(data,text,os, df);
+  }
+  sections_t with_main(std::ostream& os)  {
+    return sections_t(data,text,os, def_fun);
+  }
+};
 
 std::string load_file(std::string_view path);
 

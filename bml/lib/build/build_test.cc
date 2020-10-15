@@ -12,17 +12,21 @@ TEST(BuildPiecewise,Expression){
   EXPECT_EQ(fv.size(),2);
 }
 
-TEST(Build,Expression){
-  constexpr std::string_view source = //"let () = int_print (int_sum 4 5) ;;\n"
-                                      //"let rec a = Cons a;;\n"
-                                      //"let loop x = loop x ;;\n"
-                                      "let answer = 42 ;;\n"
-                                      "let another_answer = answer;;\n"
-                                      "let answer = 56\n"
-                                      "and yet_another_answer = answer;;\n"
-                                      "let a_pair = (92, 54) ;;\n"
-                                      "let (x,y) = a_pair;;\n"
-                                      "let sum_100 = int_sum 100 ;;\n"
-                                      "let () = int_print (sum_100 (if (int_eq 107 106) then x else y)) ;;\n";
+TEST(Build,Expression1){
+  constexpr std::string_view source = "let answer = 42 ;;\n"
+      "let another_answer = answer;;\n"
+      "let answer = 56\n"
+      "and yet_another_answer = answer;;\n"
+      "let a_pair = (92, 54) ;;\n"
+      "let (x,y) = a_pair;;\n"
+      "let sum_100 = int_sum 100 ;;\n"
+      "let () = int_print (sum_100 (if (int_eq 107 106) then x else y)) ;;\n";
+  build(source);
+}
+
+TEST(Build,Expression2){
+  constexpr std::string_view source = "let g f x = f x 1 ;;\n"
+                                      "let y = g int_sum 10;;\n"
+                                      "let () = int_print y;;";
   build(source);
 }

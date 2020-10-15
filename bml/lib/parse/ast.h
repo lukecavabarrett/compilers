@@ -14,6 +14,7 @@
 namespace ast {
 using namespace util;
 
+
 namespace {
 typedef sexp::sexp_of_t sexp_of_t;
 std::string char_to_html(char c) {
@@ -86,7 +87,7 @@ struct t : public locable, public sexp_of_t {
   using locable::locable;
   virtual free_vars_t free_vars() = 0;
   virtual capture_set capture_group() = 0;
-  virtual void compile(std::ostream &os, size_t stack_pos) = 0;
+  virtual void compile(sections_t s, size_t stack_pos) = 0;
 };
 typedef std::unique_ptr<t> ptr;
 }
@@ -104,6 +105,7 @@ struct t : public locable, sexp_of_t {
   virtual void globally_register(global_map &) = 0;
   virtual void globally_allocate(std::ostream &os) = 0;
   virtual void global_unroll(std::ostream &os) = 0;
+  virtual size_t locally_unroll(std::ostream &os,size_t stack_pos) = 0; // returns new stack_pos
 };
 typedef std::unique_ptr<t> ptr;
 }
@@ -117,7 +119,7 @@ struct single : public locable, sexp_of_t {
   virtual matcher::t &binder() const = 0;
   virtual free_vars_t free_vars() = 0;
   virtual capture_set capture_group() = 0;
-  virtual void compile_global(std::ostream &os, size_t stack_pos) = 0;
+  virtual void compile_global(sections_t s, size_t stack_pos) = 0;
   virtual ~single() = default;
 };
 
@@ -148,8 +150,12 @@ struct t : locable, sexp_of_t {
     return cs;
   }
 
-  void compile_global(std::ostream &os) {
-    for (auto &def : defs)def->compile_global(os, 0);
+  void compile_global(sections_t s) {
+    if(rec){
+      THROW_UNIMPLEMENTED
+      //globally allocate is not enough - we should actually allocate the blocks
+    }
+    for (auto &def : defs)def->compile_global(s, 0);
   }
 
   TO_SEXP(rec, defs);
@@ -179,8 +185,8 @@ struct literal : public t {
   literal(ast::literal::ptr &&v) : value(std::move(v)) {}
   free_vars_t free_vars() final { return {}; };
   capture_set capture_group() final { return {}; };
-  void compile(std::ostream &os, size_t stack_pos) final {
-    os << "mov rax, " << std::to_string(value->to_value()) << std::endl;
+  void compile(sections_t s, size_t stack_pos) final {
+    s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
   }
   TO_SEXP(value);
 };
@@ -190,11 +196,10 @@ struct identifier : public t {
   void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {};
   free_vars_t free_vars() final;
   const matcher::universal_matcher *definition_point;
-  const definition::function *closured; // If it's nullptr it means it have direct access to it
   identifier(std::string_view n) : name(n), definition_point(nullptr) {}
   capture_set capture_group() final;
   std::string_view name;
-  void compile(std::ostream &os, size_t stack_pos) final;
+  void compile(sections_t s, size_t stack_pos) final;
   TO_SEXP(name);
 };
 
@@ -205,7 +210,7 @@ struct constructor : public t {
   capture_set capture_group() final { return {}; };
   constructor(std::string_view n) : name(n) {}
   std::string_view name;
-  void compile(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
+  void compile(sections_t s, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(name);
 };
 
@@ -222,17 +227,17 @@ struct if_then_else : public t {
       : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
   free_vars_t free_vars() final { return join_free_vars(join_free_vars(condition->free_vars(), true_branch->free_vars()), false_branch->free_vars()); };
   capture_set capture_group() final { return join_capture_set(join_capture_set(condition->capture_group(), true_branch->capture_group()), false_branch->capture_group()); };
-  void compile(std::ostream &os, size_t stack_pos) final {
+  void compile(sections_t s, size_t stack_pos) final {
     static size_t if_id = 0;
     ++if_id;
-    condition->compile(os,stack_pos);
-    os << "cmp rax, 1\n"
+    condition->compile(s, stack_pos);
+    s.main << "cmp rax, 1\n"
           "je .L_IF_F_" << if_id << "\n";
-    true_branch->compile(os,stack_pos);
-    os << "jmp .L_IF_E_" << if_id << "\n";
-    os << " .L_IF_F_" << if_id << ":\n";
-    false_branch->compile(os,stack_pos);
-    os << " .L_IF_E_" << if_id << ":\n";
+    true_branch->compile(s, stack_pos);
+    s.main << "jmp .L_IF_E_" << if_id << "\n";
+    s.main << " .L_IF_F_" << if_id << ":\n";
+    false_branch->compile(s, stack_pos);
+    s.main << " .L_IF_E_" << if_id << ":\n";
 
   }
   TO_SEXP(condition, true_branch, false_branch);
@@ -256,16 +261,16 @@ struct build_tuple : public t {
     for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
     return fv;
   };
-  void compile(std::ostream &os, size_t stack_pos) final {
-    os << "push r12\n";
+  void compile(sections_t s, size_t stack_pos) final {
+    s.main << "push r12\n";
     ++stack_pos;
-    os << "mov edi, " << std::to_string(args.size() * 8) << "\n"
-       << "call malloc\n" << "mov r12, rax\n";;
+    s.main << "mov edi, " << std::to_string(args.size() * 8) << "\n"
+      << "call malloc\n" << "mov r12, rax\n";;
     for (int i = 0; i < args.size(); ++i) {
-      args.at(i)->compile(os, stack_pos);
-      os << "mov qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "], rax\n";
+      args.at(i)->compile(s, stack_pos);
+      s.main << "mov qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "], rax\n";
     }
-    os << "mov rax, r12\n"
+    s.main << "mov rax, r12\n"
           "pop r12\n";
     --stack_pos;
   }
@@ -284,12 +289,12 @@ struct fun_app : public t {
   }
   free_vars_t free_vars() final { return join_free_vars(f->free_vars(), x->free_vars()); }
   capture_set capture_group() final { return join_capture_set(f->capture_group(), x->capture_group()); }
-  void compile(std::ostream &os, size_t stack_pos) final {
-    f->compile(os,stack_pos);
-    os << "push rax\n"; ++stack_pos;
-    x->compile(os,stack_pos);
-    os << "pop rdi\n"; --stack_pos;
-    os << "mov rsi, rax\n"
+  void compile(sections_t s, size_t stack_pos) final {
+    f->compile(s, stack_pos);
+    s.main << "push rax\n"; ++stack_pos;
+    x->compile(s, stack_pos);
+    s.main << "pop rdi\n"; --stack_pos;
+    s.main << "mov rsi, rax\n"
           "call apply_fn\n";
   }
   TO_SEXP(f, x);
@@ -305,9 +310,9 @@ struct seq : public t {
   seq(expression::ptr &&a, expression::ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
   free_vars_t free_vars() final { return join_free_vars(a->free_vars(), b->free_vars()); };
   capture_set capture_group() final { return join_capture_set(a->capture_group(), b->capture_group()); }
-  void compile(std::ostream &os, size_t stack_pos) final {
-    a->compile(os, stack_pos);
-    b->compile(os, stack_pos);
+  void compile(sections_t s, size_t stack_pos) final {
+    a->compile(s, stack_pos);
+    b->compile(s, stack_pos);
   }
   TO_SEXP(a, b);
 };
@@ -349,7 +354,7 @@ struct match_with : public t {
     }
     return cs;
   }
-  void compile(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
+  void compile(sections_t s, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(what, branches);
 };
 
@@ -368,7 +373,7 @@ struct let_in : public t {
   capture_set capture_group() final {
     return d->capture_group(e->capture_group());
   };
-  void compile(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
+  void compile(sections_t s, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(d, e);
 };
 
@@ -415,9 +420,21 @@ struct universal_matcher : public t {
     os << asm_name() << " dq 0" << std::endl;
 
   }
+  void globally_allocate_funblock(std::ostream &os,size_t n_args) {
+    glo_fun_name=true;
+    os << asm_name() << " dq 1,"<<n_args<<","<<asm_name()<<"__fn\n" << std::endl;
+
+  }
   void global_unroll(std::ostream &os) final {
     os << "mov qword [" << asm_name() << "], rax" << std::endl;
   }
+  size_t locally_unroll(std::ostream &os,size_t stack_pos) final {
+    ++stack_pos;
+    stack_relative_pos = stack_pos;
+    os << "push rax  ; "<< name <<" is on position "<<stack_relative_pos<<" on the stack\n";
+    return stack_pos;
+  }
+
   void globally_evaluate(std::ostream &os) const {
     assert(top_level);
     if(glo_fun_name) {
@@ -440,6 +457,8 @@ struct anonymous_universal_matcher : public t {
   void globally_allocate(std::ostream &os) final { THROW_UNIMPLEMENTED; }
   void globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final { THROW_UNIMPLEMENTED; }
+  size_t locally_unroll(std::ostream &os,size_t stack_pos) final { THROW_UNIMPLEMENTED; }
+
   TO_SEXP()
 };
 
@@ -464,6 +483,8 @@ struct constructor_matcher : public t {
   }
   void globally_allocate(std::ostream &os) final { THROW_UNIMPLEMENTED; }
   void global_unroll(std::ostream &os) final { THROW_UNIMPLEMENTED; }
+  size_t locally_unroll(std::ostream &os,size_t stack_pos) final { THROW_UNIMPLEMENTED; }
+
   TO_SEXP(cons, arg); //TODO: arg is optional expect SEGFAULT
 };
 
@@ -479,6 +500,7 @@ struct literal_matcher : public t {
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
+  size_t locally_unroll(std::ostream &os,size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(value);
 };
 
@@ -511,6 +533,7 @@ struct tuple_matcher : public t {
     }
     os << "pop r12\n";
   }
+  size_t locally_unroll(std::ostream &os,size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   TO_SEXP(args);
 };
 
@@ -537,11 +560,16 @@ struct function : single {
     for (auto &m : args)m->bind(fv);
     return fv;
   };
+  bool is_capturing(const matcher::universal_matcher *m) const {
+    return std::binary_search(captures.begin(),captures.end(),m);
+  }
   capture_set capture_group() final {
     capture_set cs = body->capture_group();
     for (auto &m : args)m->bind(cs);
+
     captures.assign(cs.begin(), cs.end());
     std::sort(captures.begin(), captures.end());
+
     if (captures.size() == 1 && captures.front() == name.get()) {
       //TODO-somdeday: the function can be made pure
       // captures.clear();
@@ -549,8 +577,36 @@ struct function : single {
     }
     return cs;
   }
-  void compile_global(std::ostream &os, size_t stack_pos) final {
-    THROW_UNIMPLEMENTED;
+  void compile_global(sections_t s, size_t stack_pos) final {
+    assert(captures.empty());
+    name->globally_allocate_funblock(s.data,args.size());
+    std::stringstream this_fun;
+    size_t this_stack_pos = 0;
+    this_fun << name->asm_name() << "__fn:\n";
+    this_fun << "push r12\n" ; ++this_stack_pos;
+    this_fun << "mov r12, rdi\n";
+    bool should_skip = false;
+    // iterate the args in reverse order
+    for(auto arg_it = args.rbegin(); arg_it != args.rend(); ++ arg_it){
+      if(should_skip)this_fun << "mov r12, qword [r12+16]\n";
+      should_skip = true;
+      this_fun << "mov rax, qword [r12+24]\n";
+      this_stack_pos = (*arg_it)->locally_unroll(this_fun,this_stack_pos);
+    }
+    //TODO: make fun
+
+
+    body->compile(s.with_main(this_fun,this),this_stack_pos);
+
+    if(this_stack_pos>1){
+      this_fun << "add rsp, "<<(8*(this_stack_pos-1))<<" ; popping fun args \n";
+      this_stack_pos = 1;
+    }
+
+    this_fun << "pop r12\n" ; --this_stack_pos;
+    this_fun << "ret\n";
+    s.text << this_fun.str() << std::endl;
+
   }
 
   TO_SEXP(name, args, captures, body)
@@ -573,9 +629,10 @@ struct value : single {
   capture_set capture_group() final {
     return body->capture_group();
   }
-  void compile_global(std::ostream &os, size_t stack_pos) final {
-    body->compile(os, stack_pos); // the value is left on rax
-    binded->global_unroll(os); // take rax, unroll it onto globals.
+  void compile_global(sections_t s, size_t stack_pos) final {
+    binded->globally_allocate(s.data);
+    body->compile(s, stack_pos); // the value is left on rax
+    binded->global_unroll(s.main); // take rax, unroll it onto globals.
   }
   TO_SEXP(binded, body)
 };

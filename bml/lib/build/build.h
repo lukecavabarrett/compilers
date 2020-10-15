@@ -6,7 +6,6 @@
 void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m) {
   for (auto&[name, usages] : fv)
     if (auto it = m.find(name); it != m.end()) {
-
       for (auto id : usages)id->definition_point = it->second;
       it->second->usages.merge(std::move(usages));
     } else throw ast::unbound_value((*std::min_element(usages.begin(), usages.end(), [](const auto &i1, const auto &i2) { return i1->name.begin() < i2->name.begin(); }))->name);
@@ -19,13 +18,16 @@ void build(std::string_view s) {
   parse::tokenizer tk(s);
   ast::global_map globals;
   ast::matcher::universal_matcher int_sum("int_sum");
-  int_sum.top_level = int_sum.glo_fun_name = true;
+  int_sum.glo_fun_name = int_sum.top_level = true;
   globals.try_emplace("int_sum", &int_sum);
+  globals.try_emplace("+",&int_sum);
   ast::matcher::universal_matcher int_eq("int_eq");
-  int_eq.top_level = int_eq.glo_fun_name = true;
+  int_eq.glo_fun_name = int_eq.top_level = true;
   globals.try_emplace("int_eq", &int_eq);
+  globals.try_emplace("=",&int_eq);
+
   ast::matcher::universal_matcher int_print("int_print");
-  int_print.top_level = int_print.glo_fun_name = true;
+  int_print.glo_fun_name = int_print.top_level = true;
   globals.try_emplace("int_print", &int_print);
   std::stringstream data_section;
   data_section << "section .data\n"
@@ -116,7 +118,6 @@ void build(std::string_view s) {
   main_section << "main:" << std::endl;
   std::vector<ast::definition::ptr> defs;
   while (true) {
-
     if (tk.empty())break;
     if (tk.peek() == parse::LET) {
       //value definition
@@ -127,9 +128,16 @@ void build(std::string_view s) {
         ast::free_vars_t fv = def->free_vars();
         resolve_global_free_vars(std::move(fv), globals);
         for (auto &def : def->defs)def->binder().globally_register(globals);
-        for (auto &def : def->defs)def->binder().globally_allocate(data_section);
-        assert(def->capture_group().empty());
-        def->compile_global(main_section);
+        auto cg = def->capture_group();
+        if(!cg.empty()){
+
+          std::cerr << cg.size() << std::endl;
+          for(auto& m : cg){
+            std::cerr << m->name << std::endl;
+          }
+        }
+        assert(cg.empty());
+        def->compile_global(util::sections_t(data_section,text_section,main_section));
         defs.push_back(std::move(def));
 
       } catch (const util::error::message &e) {

@@ -54,29 +54,34 @@ std::string locable::to_html() const {
   return out;
 }
 
-
-namespace expression{
+namespace expression {
 
 free_vars_t identifier::free_vars() {
-  if(definition_point && definition_point->top_level) return {};
+  if (definition_point && definition_point->top_level) return {};
   return {{name, {this}}};
 }
 
 capture_set identifier::capture_group() {
   assert(definition_point); //TODO: internal fail
-  if(definition_point->top_level) return {};
+  if (definition_point->top_level) return {};
   return {definition_point};
 }
-void identifier::compile(std::ostream &os, size_t stack_pos) {
-  if(definition_point->top_level) {
-    definition_point->globally_evaluate(os);
+void identifier::compile(sections_t s, size_t stack_pos) {
+  if (definition_point->top_level) {
+    definition_point->globally_evaluate(s.main);
+  } else if (s.def_fun && s.def_fun->is_capturing(definition_point)) {
+    THROW_UNIMPLEMENTED
   } else {
-    THROW_UNIMPLEMENTED;
+
+    s.main << "mov rax, qword [rsp";
+    if (stack_pos > definition_point->stack_relative_pos) {
+      s.main << "+" << 8 * (stack_pos - definition_point->stack_relative_pos);
+    }
+    s.main << "]  ; retrieving " << name << " from local scope\n";
   }
 }
 
 }
-
 
 namespace definition {
 }
