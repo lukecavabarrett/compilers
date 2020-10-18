@@ -11,34 +11,43 @@
 #include <util/util.h>
 #include <forward_list>
 #include <unordered_set>
+#include <variant>
+#include <cassert>
 
 namespace util {
 
 namespace sexp {
 //the sexp type
-
-struct t {
+struct t;
+struct sexp_of_t {
+  virtual t to_sexp() const = 0;
+  std::string to_sexp_string() const;
+};
+struct t : public sexp_of_t {
+  t(const t &) = default;
   std::variant<std::string, std::vector<t>> value;
   t(std::string_view s) : value(std::string(s)) {}
   t(const char *s) : value(std::string(s)) {}
   t(std::initializer_list<t> l) : value(std::vector<t>(l)) {}
   t &at(size_t index) { return std::get<1>(value).at(index); }
   auto operator[](size_t index) { return at(index); }
-  auto begin() { return std::get<1>(value).begin(); }
-  auto end() { return std::get<1>(value).end(); }
-  auto size() { return std::get<1>(value).size(); }
-  bool is_atom() { return value.index() == 0; }
-  bool is_list() { return value.index() == 1; }
+  auto begin() const { return std::get<1>(value).cbegin(); }
+  auto end() const { return std::get<1>(value).cend(); }
+  auto size() const { return std::get<1>(value).size(); }
+  std::string_view atom() const { return std::get<0>(value); }
+  bool is_atom() const { return value.index() == 0; }
+  bool is_list() const { return value.index() == 1; }
   bool operator==(const t &o) const { return value == o.value; }
   bool operator!=(const t &o) const { return value != o.value; }
-
+  t to_sexp() const final { return *this; }
   std::ostream &to_stream(std::ostream &os) const {
     if (value.index() == 0) {
-      os << std::get<0>(value);
-      /* if(std::any_of(std::get<0>(value).begin(),std::get<0>(value).end(),::isspace))
-       {THROW_UNIMPLEMENTED}else{
-         os<<std::get<0>(value);
-       }*/
+      if (std::any_of(std::get<0>(value).begin(), std::get<0>(value).end(), ::isspace)) {
+        os << "\"" << std::get<0>(value) << "\"";
+      } else {
+        os << std::get<0>(value);
+      }
+
     } else {
       os << "(";
       bool pad = false;
@@ -51,6 +60,33 @@ struct t {
     }
     return os;
   }
+  std::ostream &to_stream_indent(std::ostream &os, size_t sh = 0) const {
+    if (value.index() == 0) {
+      while (sh--)os << "\t";
+      os << std::get<0>(value) << std::endl;
+      return os;
+    } else if (std::none_of(std::get<1>(value).begin(), std::get<1>(value).end(), [](const sexp::t &s) { return s.is_list(); })) {
+      while (sh--)os << "\t";
+      os << "(";
+      bool pad = false;
+      for (const t &x : std::get<1>(value)) {
+        if (pad)os << " ";
+        pad = true;
+        x.to_stream(os);
+      }
+      os << ")" << std::endl;
+      return os;
+    } else {
+      for (size_t s = sh; s--;)os << "\t";
+      os << "(\n";
+      for (const t &x : std::get<1>(value)) {
+        x.to_stream_indent(os, sh + 1);
+      }
+      while (sh--)os << "\t";
+      os << ")\n";
+    }
+    return os;
+  }
   std::string to_string() const {
     std::stringstream ss;
     to_stream(ss);
@@ -59,10 +95,85 @@ struct t {
 
 };
 
-struct sexp_of_t {
-  virtual t to_sexp() const = 0;
-  std::string to_sexp_string() const { return to_sexp().to_string(); }
+struct match {
+  struct any {
+    bool operator==(const any &) const { return true; }
+    bool operator!=(const any &) const { return false; }
+  };
+  struct none {
+    bool operator==(const none &) const { return true; }
+    bool operator!=(const none &) const { return false; }
+  };
+  match(const match &) = default;
+  std::variant<std::string, std::vector<match>, any, none> value;
+  match(std::string_view s) : value(std::string(s)) {}
+  match(const char *s) : value(std::string(s)) {}
+  match(std::initializer_list<match> l) : value(std::vector<match>(l)) {}
+  match(any a) : value(a) {assert(value.index()==2);}
+  match(none n) : value(n) {assert(value.index()==3);}
+  match &at(size_t index) { return std::get<1>(value).at(index); }
+  auto operator[](size_t index) { return at(index); }
+  auto begin() const { return std::get<1>(value).cbegin(); }
+  auto end() const { return std::get<1>(value).cend(); }
+  auto size() const { return std::get<1>(value).size(); }
+  std::string_view atom() const { return std::get<0>(value); }
+  bool is_atom() const { return value.index() == 0; }
+  bool is_list() const { return value.index() == 1; }
+  std::ostream &to_stream(std::ostream &os) const {
+    if (value.index() == 0) {
+      if (std::any_of(std::get<0>(value).begin(), std::get<0>(value).end(), ::isspace)) {
+        os << "\"" << std::get<0>(value) << "\"";
+      } else {
+        os << std::get<0>(value);
+      }
+
+    } else if (value.index() == 1) {
+      os << "(";
+      bool pad = false;
+      for (const auto &x : std::get<1>(value)) {
+        if (pad)os << " ";
+        pad = true;
+        x.to_stream(os);
+      }
+      os << ")";
+    } else if (value.index() == 3) {
+      os << "<*>";
+    } else {
+      os << "<X>";
+    }
+    return os;
+  }
+
+  std::string to_string() const {
+    std::stringstream ss;
+    to_stream(ss);
+    return ss.str();
+  }
+  bool operator==(const match &o) const { return value == o.value; }
+  bool operator!=(const match &o) const { return value != o.value; }
+  bool operator==(const t &s) const;
+  bool operator!=(const t &s) const;
+  //std::optional<std::pair<std::string, std::string>> test_match(const t &s) const;
 };
+
+std::ostream& operator<<(std::ostream& os, const t& s);
+std::ostream& operator<<(std::ostream& os, const match& m);
+
+bool operator==(const t &s, const match &m);
+bool operator!=(const t &s, const match &m);
+
+//#define EXPECT_SEXP_EQ(sexp_e, ... ) \
+//{                                     \
+//auto v = static_cast<util::sexp::match>( __VA_ARGS__ ).test_match( sexp_e ));; \
+//if (v.has_value()) EXPECT_EQ(v.value().first,v.value().second); \
+//}
+
+constexpr match::any any;
+constexpr match::none none;
+
+void expect_match(const sexp_of_t &s, const match &m);
+void expect_match(const t &s, const match &m);
+
 namespace __internal {
 
 struct try_get_as_string {
@@ -98,21 +209,21 @@ struct sexp_of_single {
 template<typename C>
 struct sexp_of_single<std::unique_ptr<C> > {
   static t get_sexp(const std::unique_ptr<C> &p) {
-    return sexp_of_single<C*>::get_sexp(p.get());
+    return sexp_of_single<C *>::get_sexp(p.get());
   }
 };
 
 template<typename C>
 struct sexp_of_single<std::shared_ptr<C> > {
   static t get_sexp(const std::shared_ptr<C> &p) {
-    return sexp_of_single<C*>::get_sexp(p.get());
+    return sexp_of_single<C *>::get_sexp(p.get());
   }
 };
 
 template<typename C>
 struct sexp_of_single<C *> {
   static t get_sexp(const C *p) {
-    return p== nullptr ? t("NULL") : sexp_of_single<C>::get_sexp(*p);
+    return p == nullptr ? t("NULL") : sexp_of_single<C>::get_sexp(*p);
   }
 };
 
@@ -134,11 +245,11 @@ struct sexp_of_single<std::forward_list<C>> {
   }
 };
 
-template<typename K,typename V>
-struct sexp_of_single<std::unordered_map<K,V>> {
-  static t get_sexp(const std::unordered_map<K,V> &m) {
+template<typename K, typename V>
+struct sexp_of_single<std::unordered_map<K, V>> {
+  static t get_sexp(const std::unordered_map<K, V> &m) {
     t s = {};
-    for (const auto&[k,v] : m)std::get<1>(s.value).push_back({sexp_of_single<K>::get_sexp(k),sexp_of_single<V>::get_sexp(v)});
+    for (const auto&[k, v] : m)std::get<1>(s.value).push_back({sexp_of_single<K>::get_sexp(k), sexp_of_single<V>::get_sexp(v)});
     return s;
   }
 };
@@ -147,12 +258,10 @@ template<typename T>
 struct sexp_of_single<std::unordered_set<T>> {
   static t get_sexp(const std::unordered_set<T> &m) {
     t s = {};
-    for (const T& x : m)std::get<1>(s.value).push_back(sexp_of_single<T>::get_sexp(x));
+    for (const T &x : m)std::get<1>(s.value).push_back(sexp_of_single<T>::get_sexp(x));
     return s;
   }
 };
-
-
 
 template<typename ...Ts>
 t make_from(const Ts &... fields) {
@@ -217,7 +326,7 @@ t prepend_type(t s) {
 }
 
 template<typename T>
-t make_sexp(const T& x){
+t make_sexp(const T &x) {
   return __internal::sexp_of_single<T>::get_sexp(x);
 }
 

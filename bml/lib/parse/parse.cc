@@ -35,16 +35,21 @@ std::string_view token_type_to_string(token_type t) {
 
 namespace patterns {
 
-template<token_type sep>
+template<token_type... sep>
 struct tk_sep {
-  static bool has_sep(const tokenizer &tk) { return tk.peek() == sep; }
-  static void consume_sep(tokenizer &tk) { tk.expect_pop(sep); }
+  typedef token sep_t;
+  static bool has_sep(const tokenizer &tk) { return ((tk.peek() == sep) || ... ); }
+  static sep_t consume_sep(tokenizer &tk) {
+    tk.expect_peek_any_of({sep...});
+    return tk.pop();
+  }
 };
 
 template<auto F>
 struct peek_sep {
+  typedef bool sep_t;
   static bool has_sep(const tokenizer &tk) { return F(tk.peek()); }
-  static void consume_sep(tokenizer &tk) {}
+  static sep_t consume_sep(tokenizer &tk) { return true; }
 };
 
 template<typename vec_type, auto vec_ptr, auto sub_method, typename sep>
@@ -63,19 +68,29 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_vec(tokenizer &tk)
 
 template<auto make_lr_type, auto sub_method, typename sep>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_r(tokenizer &tk) {
+  /*
+   Parse something of the form
+   A -> A
+   A op1 B op2 C ->  Lr( Lr(A,B) , C )
+   */
   auto l = sub_method(tk);
   while (sep::has_sep(tk)) {
-    sep::consume_sep(tk);
-    l = make_lr_type(std::move(l), sub_method(tk));
+    auto sepr = sep::consume_sep(tk);
+    l = make_lr_type(std::move(l), sub_method(tk), std::move(sepr));
   }
   return l;
 }
 
 template<auto make_lr_type, auto sub_method, typename sep>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &tk) {
+  /*
+   Parse something of the form
+   A -> A
+   A op2 B op1 C ->  Lr( A , Lr(B,C) )
+   */
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
-  sep::consume_sep(tk);
+  auto sepr = sep::consume_sep(tk);
   return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sub_method, sep>(tk));
 }
 
@@ -146,10 +161,16 @@ void tokenizer::expect_peek(token_type t) {
     throw error::expected_token_found_another(token_type_to_string(t), head.sv);
   }
 }
+void tokenizer::expect_peek_any_of(std::initializer_list<token_type> il) {
+  if(std::find(il.begin(),il.end(),head.type)==il.end()) {
+    throw error::unexpected_token(head.sv);
+  }
+}
 void tokenizer::unexpected_token() {
   throw error::unexpected_token(head.sv);
   //throw std::runtime_error("expected \"TK\", found another");
 }
+
 
 }
 namespace ast {
@@ -169,23 +190,38 @@ namespace expression {
 namespace {
 ptr parse_e_s(tokenizer &tk);
 ptr parse_e_t(tokenizer &tk);
+ptr parse_e_a(tokenizer &tk);
 ptr parse_e_f(tokenizer &tk);
 ptr parse_e_p(tokenizer &tk);
 bool parse_e_p_first(token_type);
 
+ptr make_seq(ptr &&a, ptr &&b, token) { return std::make_unique<seq>(std::move(a), std::move(b)); }
 ptr parse_e_s(tokenizer &tk) {
   using namespace patterns;
-  return parse_fold_r<std::make_unique<seq, ptr &&, ptr &&>, parse_e_t, tk_sep<SEMICOLON>>(tk);
+  return parse_fold_r<make_seq, parse_e_t, tk_sep<SEMICOLON>>(tk);
 }
 
 ptr parse_e_t(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<build_tuple, &build_tuple::args, parse_e_f, tk_sep<COMMA>>(tk);
+  return parse_vec<build_tuple, &build_tuple::args, parse_e_a, tk_sep<COMMA>>(tk);
 }
 
+ptr make_aritm_app(ptr &&left, ptr &&right, token t) { return std::make_unique<fun_app>(std::make_unique<fun_app>(std::make_unique<identifier>(t.sv),std::move(left)), std::move(right)); }
+ptr parse_e_a(tokenizer &tk) {
+  using namespace patterns;
+  return parse_fold_r<make_aritm_app, parse_e_f, tk_sep<PLUS,MINUS>>(tk);
+}
+
+ptr make_fun_app(ptr &&f, ptr &&x, bool) {
+  if(constructor* c =dynamic_cast<constructor*>(f.get()); c) {
+    if(c->arg)throw parse::error::report_token(x->loc,"unexpected "," too many argument for the constructor");
+    c->arg = std::move(x);
+    return std::move(f);
+  } else return std::make_unique<fun_app>(std::move(f), std::move(x));
+}
 ptr parse_e_f(tokenizer &tk) {
   using namespace patterns;
-  return parse_fold_r<std::make_unique<fun_app, ptr &&, ptr &&>, parse_e_p, peek_sep<parse_e_p_first>>(tk);
+  return parse_fold_r<make_fun_app, parse_e_p, peek_sep<parse_e_p_first>>(tk);
 }
 
 bool parse_e_p_first(token_type t) {
@@ -250,8 +286,8 @@ ptr parse(tokenizer &tk) {
         tk.expect_pop(ARROW);
         auto e = parse(tk);
         mtc->branches.emplace_back();
-        mtc->branches.back().pattern=std::move(m);
-        mtc->branches.back().result=std::move(e);
+        mtc->branches.back().pattern = std::move(m);
+        mtc->branches.back().result = std::move(e);
       }
       mtc->loc = itr_sv(loc_start, mtc->branches.back().result->loc.end());
       return std::move(mtc);
@@ -303,7 +339,7 @@ ptr parse_m_2(tokenizer &tk) {
       if (!parse_m_3_first(tk.peek_full())) return std::make_unique<constructor_matcher>(begin_sv);
 
       auto m = parse_m_3(tk);
-      return with_loc(std::make_unique<constructor_matcher>(std::move(m),begin_sv), itr_sv(begin_sv.begin(), m->loc.end()));
+      return with_loc(std::make_unique<constructor_matcher>(std::move(m), begin_sv), itr_sv(begin_sv.begin(), m->loc.end()));
     }
     default: { return parse_m_3(tk); }
   }

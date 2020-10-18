@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <sexp.h>
+#include <util/sexp.h>
 
 namespace util::sexp{
 namespace {
@@ -47,6 +47,22 @@ TEST(Sexp,Constructors) {
   EXPECT_EQ(s5[0],s1);
   EXPECT_EQ(s5[1],s3);
   EXPECT_EQ(s5[1][0],s5[0]);
+}
+
+TEST(Matcher,Constructor){
+  EXPECT_EQ(match(any).value.index(),2);
+  EXPECT_EQ(match(none).value.index(),3);
+  match m1 = {"John", any, "Appleseed"};
+  t j1 = {"John", "M." , "Appleseed"};
+  t j2 = {"John", "W." , "Appleseed"};
+  t j3 = {"John", {"FRS","OBE"} , "Appleseed"};
+  t j4 = {"John" , "Appleseed"};
+  //EXPECT_SEXP_EQ( j1, {"John"} );
+  /*m1.test_match(j1);
+  m1.test_match(j2);
+  m1.test_match(j3);
+  m1.test_match(j4);*/
+
 }
 
 

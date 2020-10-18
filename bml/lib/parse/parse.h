@@ -24,6 +24,12 @@ class t : public std::runtime_error {
   t() : std::runtime_error("parsing error") {}
 };
 
+class report_token : public t, public util::error::report_token_error {
+ public:
+  report_token(std::string_view found,std::string_view before,std::string_view after) : util::error::report_token_error(before, found, after) {}
+
+};
+
 class unexpected_token : public t, public util::error::report_token_error {
  public:
   unexpected_token(std::string_view found) : util::error::report_token_error("Token", found, "was not expected here") {}
@@ -107,6 +113,7 @@ class tokenizer {
   bool empty() const;
   void expect_pop(token_type);
   void expect_peek(token_type);
+  void expect_peek_any_of(std::initializer_list<token_type>);
   void unexpected_token();
   void print_errors();
  private:

@@ -8,6 +8,7 @@ target_include_directories(util
         ${CMAKE_CURRENT_SOURCE_DIR}
         )
 
+target_link_libraries(util gtest)
 target_compile_features(util PRIVATE cxx_std_17)
 
 add_executable(sexp_test sexp_test.cc)

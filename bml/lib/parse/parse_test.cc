@@ -4,52 +4,71 @@
 
 namespace {
 
-TEST(Parse, Matcher1) {
-  static constexpr std::string_view source = "Error _ , t ";
-  auto tks = parse::tokenizer(source);
-  auto ast = ast::matcher::parse(tks);
-  EXPECT_TRUE(tks.empty());
-}
-
 template<auto ParseFun>
-void parse_retrow(std::string_view source,std::string_view expected) {
-  auto tks = parse::tokenizer( source );
+void parse_rethrow(std::string_view source, std::string_view expected) {
+  auto tks = parse::tokenizer(source);
   try {
     auto ast = ParseFun(tks);
     EXPECT_TRUE(tks.empty());
-    EXPECT_EQ(ast->to_sexp_string(),expected);
-  } catch (const util::error::message& m) {
+    EXPECT_EQ(ast->to_sexp_string(), expected);
+  } catch (const util::error::message &m) {
     m.print(std::cout, source, "source");
-    FAIL();
+    throw std::runtime_error("parsing error");
+  }
+}
+
+template<auto ParseFun>
+void parse_rethrow_match(std::string_view source, util::sexp::match expected) {
+  auto tks = parse::tokenizer(source);
+  try {
+    auto ast = ParseFun(tks);
+    EXPECT_TRUE(tks.empty());
+    EXPECT_EQ(ast->to_sexp(), expected);
+  } catch (const util::error::message &m) {
+    m.print(std::cout, source, "source");
+    throw std::runtime_error("parsing error");
   }
 }
 
 #define MACROS_CONCAT_NAME_INNER(x, y) x##y
 #define MACROS_CONCAT_NAME(x, y) MACROS_CONCAT_NAME_INNER(x, y)
 #define TEST_PARSE_NS_IMPL(ns, test_name, source, expected) TEST ( \
-  Parse, test_name ) {                                             \
-  parse_retrow< ast:: ns ::parse >(source,expected);                  \
+  test_name, MACROS_CONCAT_NAME(test_name, __COUNTER__) ) {                                             \
+  EXPECT_NO_THROW(parse_rethrow< ast:: ns ::parse >(source,expected));                  \
 }
 
-#define TEST_PARSE_EXPRESSION(source, expected) TEST_PARSE_NS_IMPL( \
-  expression, MACROS_CONCAT_NAME(Expression, __COUNTER__), source,expected)
+#define TEST_PARSE_NS_MATCH_IMPL(ns, test_name, source, ...) TEST ( \
+  test_name, MACROS_CONCAT_NAME(test_name, __COUNTER__) ) {                                             \
+  EXPECT_NO_THROW(parse_rethrow_match< ast:: ns ::parse >(source,__VA_ARGS__));                  \
+}
+
+#define TEST_PARSE_EXPRESSION(source, ...) TEST_PARSE_NS_MATCH_IMPL( \
+  expression, Expression, source,__VA_ARGS__)
 #define TEST_PARSE_MATCHER(source, expected) TEST_PARSE_NS_IMPL( \
-  matcher, MACROS_CONCAT_NAME(Matcher, __COUNTER__), source,expected)
+  matcher, Matcher, source,expected)
 #define TEST_PARSE_DEFINITION(source, expected) TEST_PARSE_NS_IMPL( \
-  definition , MACROS_CONCAT_NAME(Definition, __COUNTER__), source,expected)
+  definition , Definition, source,expected)
 #define TEST_PARSE_TYPE(source, expected) TEST_PARSE_NS_IMPL( \
-  type::expression, MACROS_CONCAT_NAME(Type, __COUNTER__), source,expected)
+  type::expression, TypeExpression, source,expected)
 #define TEST_PARSE_TYPE_DECL(source, expected) TEST_PARSE_NS_IMPL( \
-  type::definition, MACROS_CONCAT_NAME(TypeDef, __COUNTER__), source,expected)
+  type::definition,TypeDef, source,expected)
 
+using namespace util;
 
-TEST_PARSE_EXPRESSION("Upper lower", "(ast::expression::fun_app (ast::expression::constructor Upper) (ast::expression::identifier lower))");
-TEST_PARSE_EXPRESSION("lower lower", "(ast::expression::fun_app (ast::expression::identifier lower) (ast::expression::identifier lower))");
-
-TEST_PARSE_MATCHER("Error _ , t ","(ast::matcher::tuple_matcher ((ast::matcher::constructor_matcher Error (ast::matcher::anonymous_universal_matcher)) (ast::matcher::universal_matcher t)))")
-TEST_PARSE_EXPRESSION("match t with\n"
-                      "| Some value -> Some (f value)\n"
-                      "| None -> None", "(ast::expression::match_with (ast::expression::identifier t) ((ast::expression::match_with::branch (ast::matcher::constructor_matcher Some (ast::matcher::universal_matcher value)) (ast::expression::fun_app (ast::expression::constructor Some) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier value)))) (ast::expression::match_with::branch (ast::matcher::constructor_matcher None NULL) (ast::expression::constructor None))))");
+TEST_PARSE_EXPRESSION("Upper lower", {"ast::expression::constructor","Upper",{"ast::expression::identifier","lower"}});
+TEST_PARSE_EXPRESSION("Upper", {"ast::expression::constructor", "Upper", "NULL"});
+TEST(Expression,MACROS_CONCAT_NAME(Expression,__COUNTER__)){
+    EXPECT_THROW(parse_rethrow<ast::expression::parse>("Upper x y", ""),std::runtime_error);
+}
+TEST_PARSE_EXPRESSION("lower lower", {"ast::expression::fun_app",{"ast::expression::identifier","lower"},{"ast::expression::identifier","lower"}});
+TEST_PARSE_EXPRESSION("45 + 25 - 93 + twice 97 + 21",
+                      {"ast::expression::fun_app", {"ast::expression::fun_app" , sexp::any, {"ast::expression::fun_app" , sexp::any,  }} , {"ast::expression::literal", sexp::any} });
+//TEST_PARSE_EXPRESSION("Error _ , t ", "(ast::expression::build_tuple)")
+//TEST_PARSE_EXPRESSION("match t with\n"
+//                      "| Some value -> Some (f value)\n"
+//                      "| None -> None",
+//                      "(ast::expression::match_with (ast::expression::identifier t) ((ast::expression::match_with::branch (ast::matcher::constructor_matcher Some (ast::matcher::universal_matcher value)) (ast::expression::fun_app (ast::expression::constructor Some) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier value)))) (ast::expression::match_with::branch (ast::matcher::constructor_matcher None NULL) (ast::expression::constructor None))))");
+TEST_PARSE_MATCHER("Error _ , t ", "(ast::matcher::tuple_matcher ((ast::matcher::constructor_matcher Error (ast::matcher::anonymous_universal_matcher)) (ast::matcher::universal_matcher t)))")
 TEST_PARSE_DEFINITION("let rec f x = f x and x = f () ",
                       "(ast::definition::t 1 ((ast::definition::function (ast::matcher::universal_matcher f) ((ast::matcher::universal_matcher x)) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier x))) (ast::definition::value (ast::matcher::universal_matcher x) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::literal (ast::literal::unit ()))))))");
 

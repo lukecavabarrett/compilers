@@ -45,7 +45,9 @@ TEST(Bind, Expression3) {
 
 }
 
-TEST(Bind, Expression4) {
+
+
+TEST(Bind,Expression4){
   static constexpr std::string_view source = "let apply_double f =\n"
                                              "let g x = f (f x) in\n"
                                              "g";
@@ -53,10 +55,14 @@ TEST(Bind, Expression4) {
   auto ast = ast::definition::parse(tks);
   auto fv1 = ast->free_vars();
   EXPECT_EQ(util::sexp::make_sexp(fv1).to_string(),"()");
-  auto cs = ast->capture_group();
-  EXPECT_EQ(ast->to_sexp_string(),"(ast::definition::t 0 ((ast::definition::function (ast::matcher::universal_matcher apply_double) ((ast::matcher::universal_matcher f)) () "
-                                  "(ast::expression::let_in (ast::definition::t 0 "
-                                  "((ast::definition::function (ast::matcher::universal_matcher g) ((ast::matcher::universal_matcher x)) ((ast::matcher::universal_matcher f)) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::fun_app (ast::expression::identifier f) (ast::expression::identifier x)))))) (ast::expression::identifier g)))))");
+}
+
+TEST(Bind, FreeVars) {
+  static constexpr std::string_view source = "Some (x+y+z);;";
+  auto tks = parse::tokenizer(source);
+  auto ast = ast::expression::parse(tks);
+  auto fv = ast->free_vars();
+  EXPECT_EQ(fv.size(),4);
 }
 
 TEST(Bind, MatchWhatAfterVars) {
