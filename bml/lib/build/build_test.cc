@@ -4,7 +4,12 @@
 #include <build/build.h>
 #define target  "/home/luke/CLionProjects/compilers/bml/output"
 
-void test_build(std::string_view source, std::string_view expected_output, int expected_exit_code = 0) {
+std::string load_file(const char* path){
+  std::ifstream f(path);
+  return std::string( (std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
+}
+
+void test_build(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr="") {
   std::ofstream oasm;
   oasm.open(target ".asm");
   ASSERT_NO_THROW(build(source, oasm));
@@ -12,14 +17,9 @@ void test_build(std::string_view source, std::string_view expected_output, int e
 
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o -o " target), 0);
-  FILE *fp = popen(target, "r");
-  std::string output;
-  std::array<char, 128> buffer;
-  while (std::fgets(buffer.data(), 128, fp) != NULL) {
-    output += buffer.data();
-  }
-  int exit_code = WEXITSTATUS(pclose(fp));
-  EXPECT_EQ(output, expected_output);
+  int exit_code = WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout"));
+  EXPECT_EQ(load_file(target ".stdout"), expected_stdout);
+  EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
   EXPECT_EQ(exit_code, expected_exit_code);
 }
 
@@ -97,7 +97,7 @@ TEST(Build, OptionMapNone) {
 TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print Another;;\n", "");
+             "let _ = option_map int_print Another;;\n", "",1,"match failed\n");
 }
 
 /*

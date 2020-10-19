@@ -700,6 +700,8 @@ struct constructor_matcher : public t {
     assert(definition_point);
     assert(definition_point->is_immediate() == (arg == nullptr));
     if (arg) {
+      os << "test al, 1\n"
+            "jne " << on_fail << "\n";
       os << "cmp qword [rax], " << definition_point->tag << " ; Tag = " << definition_point->name << "\n";
       os << "jne " << on_fail << "\n";
       os << "mov rax, qword [rax+8]\n";
