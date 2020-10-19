@@ -47,9 +47,28 @@ struct simple3  : public simple1, public texp::texp_of_t {
 
 };
 
+struct simple4 :  public texp::texp_of_t {
+ TO_TEXP_EMPTY();
+};
+
+
+struct simple5 :  public texp::texp_of_t {
+  simple3 * other;
+  template<typename Fun>
+  simple5(simple3 *o,Fun& f) : other(o), f(f){}
+  std::function<int(int)> f;
+ TO_TEXP(f,other);
+};
+
+int incr(int x){return ++x;}
+
 TEST(Texp,Obj){
   texp_equal(texp::make(simple1({.x=3,.y=3.14,.zs={1,2,3},.name="Jack"})),"simple1 = <abstr>");
   texp_equal(texp::make(simple2({.x=3,.y=3.14,.zs={1,2,3},.name="Jack"})),"simple2{name : 'Jack', y : 3.140000, zs : [1, 2, 3], x : 3}");
   texp_equal(texp::make(simple3({.x=3,.y=3.14,.zs={1,2,3},.name="Jack"})),"simple3{inst : simple1 = <abstr>, name : 'Jack', y : 3.140000, zs : [1, 2, 3], x : 3}");
+  texp_equal(texp::make(simple4()),"simple4{}");
+
+  texp_equal(texp::make(simple5(new simple3({.x=3,.y=3.14,.zs={1,2,3},.name="Jack"}), incr)),"simple5{other : simple3{inst : simple1 = <abstr>, name : 'Jack', y : 3.140000, zs : [1, 2, 3], x : 3}, f : std::function<int (int)> = <abstr>}");
   texp_equal(simple2::match_texp({.x=3}),"simple2::__match{name : <any>, y : <any>, zs : <any>, x : 3}");
+
 }

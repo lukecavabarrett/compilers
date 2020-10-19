@@ -49,7 +49,10 @@ struct list : public t {
 
 struct object : public t {
   std::string name;
-  std::unordered_map<std::string_view,ptr> fields;
+  object() = default;
+  object(object&&) = default;
+  object(std::string_view name) : name(name) {}
+  std::vector<std::pair<std::string_view,ptr>> fields;
   void to_stream(std::ostream& os) const final {
     os << name << "{";
     bool comma = false;
@@ -108,6 +111,12 @@ struct stringible : public t {
   T value;
   stringible(const T& v) : value(v) {}
   void to_stream(std::ostream& os) const final { os << std::to_string(value);/*<<":"<< type_name<T>();*/ }
+};
+
+struct boolean : public t {
+  bool value;
+  boolean(bool v) : value(v) {}
+  void to_stream(std::ostream& os) const final { os << (value ? "true" : "false"); }
 };
 
 template<typename T>
@@ -185,7 +194,7 @@ struct texp_of_single<std::shared_ptr<C> > {
 template<typename C>
 struct texp_of_single<C *> {
   static ptr get_texp(const C *p) {
-    return p == nullptr ? std::make_unique<null> : texp_of_single<C>::get_texp(*p);
+    return (p == nullptr) ? std::make_unique<null>() : texp_of_single<C>::get_texp(*p);
   }
 };
 
@@ -234,6 +243,13 @@ struct texp_of_single<std::set<T>> {
   }
 };
 
+template<>
+struct texp_of_single<bool> {
+  static ptr get_texp(bool m) {
+    return std::make_unique<boolean>(m);
+  }
+};
+
 
 
 template<typename T,typename ...Ts>
@@ -245,9 +261,16 @@ ptr make_from_object(std::string_view comma_separated_names,const Ts &... fields
   o->name = type_name<T>();
   for(t* p : {texp_of_single<Ts>::get_texp(fields).release() ...}){
     auto itb = std::find(ita,comma_separated_names.end(),',');
-    o->fields.try_emplace(itr_sv(ita,itb),p);
+    o->fields.emplace_back(itr_sv(ita,itb),p);
     ita = itb+1;
   }
+  return std::move(o);
+}
+
+template<typename T>
+ptr make_from_empty_object() {
+  auto o = std::make_unique<object>();
+  o->name = type_name<T>();
   return std::move(o);
 }
 
@@ -261,11 +284,13 @@ ptr make_object_from_texps(std::string_view comma_separated_names,Ts &... fields
   for(t* p : {fields.p.release() ...}){
     auto itb = std::find(ita,comma_separated_names.end(),',');
     if(p== nullptr)p = new any();
-    o->fields.try_emplace(itr_sv(ita,itb),p);
+    o->fields.emplace_back(itr_sv(ita,itb),p);
     ita = itb+1;
   }
   return std::move(o);
 }
+
+
 /*
 template<typename T>
 ptr make_object_from_texps(std::string_view comma_separated_names) {
@@ -312,6 +337,11 @@ struct ptr_init {
 
 };
 
+template<typename T>
+ptr make_texp(const T &x) {
+  return __internal::texp_of_single<T>::get_texp(x);
+}
+
 }
 
 }
@@ -319,7 +349,13 @@ struct ptr_init {
 #define TO_TEXP(...) \
  public:\
 util::texp::ptr to_texp() const final {\
-return  ::util::texp::__internal::make_from_object< std::remove_cv_t< decltype(*this)> >( #__VA_ARGS__ , __VA_ARGS__ );\
+return  ::util::texp::__internal::make_from_object< std::remove_cv_t< decltype(*this)> >(  #__VA_ARGS__ , __VA_ARGS__  );\
+}
+
+#define TO_TEXP_EMPTY()\
+ public:\
+util::texp::ptr to_texp() const final {\
+return  ::util::texp::__internal::make_from_empty_object< std::remove_cv_t< decltype(*this)> >(  );\
 }
 
 #endif //COMPILERS_BML_LIB_UTIL_TEXP_H_

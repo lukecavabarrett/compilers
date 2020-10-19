@@ -5,7 +5,7 @@
 #include <variant>
 #include <bind.h>
 #include <util/util.h>
-#include <util/sexp.h>
+#include <util/texp.h>
 #include <forward_list>
 #include <unordered_set>
 #include <cinttypes>
@@ -15,7 +15,7 @@ namespace ast {
 using namespace util;
 
 namespace {
-typedef sexp::sexp_of_t sexp_of_t;
+typedef texp::texp_of_t texp_of_t;
 std::string char_to_html(char c) {
   if (c == ' ')return "&nbsp;";
   if (c == '\n')return "<br>";
@@ -88,7 +88,7 @@ namespace type {
 
 namespace expression {
 
-struct t : public locable, public sexp_of_t {
+struct t : public locable, public texp_of_t {
 };
 typedef std::unique_ptr<t> ptr;
 
@@ -96,19 +96,19 @@ struct identifier : public t {
   typedef std::unique_ptr<identifier> ptr;
   std::string_view name;
   identifier(std::string_view s) : name(s) {}
-  TO_SEXP(name);
+  TO_TEXP(name);
 }; //e.g. 'a or int
 struct function : public t {
   ptr from, to;
   function(ptr &&f, ptr &&x) : from(std::move(f)), to(std::move(x)) { loc = unite_sv(from, to); }
-  TO_SEXP(from, to);
+  TO_TEXP(from, to);
 };
 struct product : public t {
   typedef std::unique_ptr<product> ptr;
 
   std::vector<expression::ptr> ts; //size>=2
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
-  TO_SEXP(ts);
+  TO_TEXP(ts);
 };
 struct tuple : public t {
   typedef std::unique_ptr<tuple> ptr;
@@ -116,35 +116,35 @@ struct tuple : public t {
   std::vector<expression::ptr> ts; //size>=2
   tuple(expression::ptr &&x) { ts.push_back(std::move(x)); }
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
-  TO_SEXP(ts);
+  TO_TEXP(ts);
 };
 struct constr : public t {
   ptr x, f;
   constr(ptr &&xx, ptr &&ff) : x(std::move(xx)), f(std::move(ff)) { loc = itr_sv(x->loc.begin(), f->loc.end()); }
-  TO_SEXP(x, f)
+  TO_TEXP(x, f)
 };
 
 }
 
 namespace definition {
 
-struct param : public locable, public sexp_of_t {
+struct param : public locable, public texp_of_t {
   typedef std::unique_ptr<param> ptr;
   param(std::string_view s) : name(s) {}
   std::string_view name;
-  TO_SEXP(name);
+  TO_TEXP(name);
 };
 
-struct single : public locable, public sexp_of_t {
+struct single : public locable, public texp_of_t {
   typedef std::unique_ptr<single> ptr;
   std::vector<param::ptr> params;
   std::string_view name;
 };
 
-struct t : public locable, public sexp_of_t {
+struct t : public locable, public texp_of_t {
   bool nonrec = false;
   std::vector<single::ptr> defs;
-  TO_SEXP(nonrec, defs);
+  TO_TEXP(nonrec, defs);
 };
 typedef std::unique_ptr<t> ptr;
 
@@ -152,22 +152,22 @@ struct single_texpr : public single {
   typedef std::unique_ptr<single_texpr> ptr;
 
   expression::ptr type;
-  TO_SEXP(name, type);
+  TO_TEXP(name, type);
 };
 
 struct single_variant : public single {
   typedef std::unique_ptr<single_variant> ptr;
 
-  struct constr : public sexp_of_t {
+  struct constr : public texp_of_t {
     bool is_immediate() const { return type == nullptr; }
     uint64_t tag;
     std::string_view name;
     expression::ptr type;
-    TO_SEXP(name, type);
+    TO_TEXP(name, type);
   };
 
   std::vector<constr> variants;
-  TO_SEXP(name, variants);
+  TO_TEXP(name, variants);
 
 };
 
@@ -178,7 +178,7 @@ struct single_variant : public single {
 typedef std::unordered_map<std::string_view, ast::type::definition::single_variant::constr *> constr_map;
 //Base definitions
 namespace expression {
-struct t : public locable, public sexp_of_t {
+struct t : public locable, public texp_of_t {
   using locable::locable;
   virtual free_vars_t free_vars() = 0;
   virtual capture_set capture_group() = 0;
@@ -195,7 +195,7 @@ struct universal_matcher;
 typedef std::unordered_map<std::string_view, matcher::universal_matcher *> global_map;
 
 namespace matcher {
-struct t : public locable, sexp_of_t {
+struct t : public locable, texp_of_t {
   virtual void bind(free_vars_t &) = 0;
   virtual void bind(capture_set &) = 0;
   virtual void bind(const constr_map &) = 0;
@@ -210,7 +210,7 @@ typedef std::unique_ptr<t> ptr;
 
 namespace definition {
 
-struct single : public locable, sexp_of_t {
+struct single : public locable, texp_of_t {
   typedef std::unique_ptr<single> ptr;
   expression::ptr body;
   single(expression::ptr &&b) : body(std::move(b)) {}
@@ -224,7 +224,7 @@ struct single : public locable, sexp_of_t {
 
 struct function;
 
-struct t : locable, sexp_of_t {
+struct t : locable, texp_of_t {
   bool rec = false;
   std::vector<single::ptr> defs;
   std::string html_description() const final { return "Definition(s)"; }
@@ -261,14 +261,14 @@ struct t : locable, sexp_of_t {
     for (auto &d : defs)d->bind(cm);
   }
 
-  TO_SEXP(rec, defs);
+  TO_TEXP(rec, defs);
 };
 typedef std::unique_ptr<t> ptr;
 
 }
 
 namespace literal {
-struct t : public sexp_of_t {
+struct t : public texp_of_t {
   virtual std::string html_description() const = 0;
   virtual ~t() = default;
   virtual uint64_t to_value() const = 0;
@@ -292,7 +292,7 @@ struct literal : public t {
     s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
   }
   void bind(const constr_map &) final {}
-  TO_SEXP(value);
+  TO_TEXP(value);
 };
 
 struct identifier : public t {
@@ -305,7 +305,7 @@ struct identifier : public t {
   std::string_view name;
   void compile(sections_t s, size_t stack_pos) final;
   void bind(const constr_map &) final {}
-  TO_SEXP(name);
+  TO_TEXP(name);
 };
 
 struct constructor : public t {
@@ -342,7 +342,7 @@ struct constructor : public t {
     }
     if (arg)arg->bind(cm);
   }
-  TO_SEXP(name, arg);
+  TO_TEXP(name, arg);
 };
 
 struct if_then_else : public t {
@@ -376,7 +376,7 @@ struct if_then_else : public t {
     true_branch->bind(cm);
     false_branch->bind(cm);
   }
-  TO_SEXP(condition, true_branch, false_branch);
+  TO_TEXP(condition, true_branch, false_branch);
 };
 
 struct build_tuple : public t {
@@ -413,7 +413,7 @@ struct build_tuple : public t {
   void bind(const constr_map &cm) final {
     for (auto &p : args)p->bind(cm);
   }
-  TO_SEXP(args);
+  TO_TEXP(args);
 };
 
 struct fun_app : public t {
@@ -442,7 +442,7 @@ struct fun_app : public t {
     f->bind(cm);
     x->bind(cm);
   }
-  TO_SEXP(f, x);
+  TO_TEXP(f, x);
 };
 
 struct seq : public t {
@@ -463,7 +463,7 @@ struct seq : public t {
     a->bind(cm);
     b->bind(cm);
   }
-  TO_SEXP(a, b);
+  TO_TEXP(a, b);
 };
 
 struct match_with : public t {
@@ -476,11 +476,11 @@ struct match_with : public t {
     }
   };
   typedef std::unique_ptr<match_with> ptr;
-  struct branch : public sexp_of_t {
+  struct branch : public texp_of_t {
     matcher::ptr pattern;
     expression::ptr result;
 
-    TO_SEXP(pattern, result)
+    TO_TEXP(pattern, result)
   };
   expression::ptr what;
   std::vector<branch> branches;
@@ -512,7 +512,7 @@ struct match_with : public t {
     for (auto&[p, r] : branches) {
       if (branch_id)s.main << ".MATCH_WITH_" << match_id << "_" << branch_id << "\n";
       std::string on_fail =( branch_id < branches.size() - 1) ? std::string(".MATCH_WITH_").append(std::to_string(match_id)).append("_").append(std::to_string(branch_id+1)) : "fail_match";
-      s.main << "; case " << p->to_sexp_string() << "\n";
+      s.main << "; case " << p->to_texp()->to_string() << "\n";
       size_t successful_stack_pos = p->test_locally_unroll(s.main, stack_pos, stack_pos, on_fail);
       if(successful_stack_pos>stack_pos) s.main << "sub rsp, "<<8*(successful_stack_pos-stack_pos)<<"; confirming space for accepted pattern\n";
       r->compile(s, successful_stack_pos);
@@ -530,7 +530,7 @@ struct match_with : public t {
     }
     what->bind(cm);
   }
-  TO_SEXP(what, branches);
+  TO_TEXP(what, branches);
 };
 
 struct let_in : public t {
@@ -553,7 +553,7 @@ struct let_in : public t {
     d->bind(cm);
     e->bind(cm);
   }
-  TO_SEXP(d, e);
+  TO_TEXP(d, e);
 };
 
 }
@@ -632,7 +632,7 @@ struct universal_matcher : public t {
   }
   std::string_view name;
   usage_list usages;
-  TO_SEXP(name)
+  TO_TEXP(name)
 };
 
 struct anonymous_universal_matcher : public t {
@@ -648,7 +648,7 @@ struct anonymous_universal_matcher : public t {
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { return stack_pos; }
 
-  TO_SEXP()
+  TO_TEXP_EMPTY()
 };
 
 struct constructor_matcher : public t {
@@ -713,7 +713,7 @@ struct constructor_matcher : public t {
     }
   }
 
-  TO_SEXP(cons, arg); //TODO: arg is optional expect SEGFAULT
+  TO_TEXP(cons, arg); //TODO: arg is optional expect SEGFAULT
 };
 
 struct literal_matcher : public t {
@@ -732,7 +732,7 @@ struct literal_matcher : public t {
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { THROW_UNIMPLEMENTED; }
 
-  TO_SEXP(value);
+  TO_TEXP(value);
 };
 
 struct tuple_matcher : public t {
@@ -771,7 +771,7 @@ struct tuple_matcher : public t {
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { THROW_UNIMPLEMENTED; }
 
-  TO_SEXP(args);
+  TO_TEXP(args);
 };
 
 }
@@ -853,7 +853,7 @@ struct function : single {
 
   }
 
-  TO_SEXP(name, args, body)
+  TO_TEXP(name, args, body)
 };
 
 struct value : single {
@@ -881,7 +881,7 @@ struct value : single {
     body->compile(s, stack_pos); // the value is left on rax
     binded->global_unroll(s.main); // take rax, unroll it onto globals.
   }
-  TO_SEXP(binded, body)
+  TO_TEXP(binded, body)
 };
 
 }
@@ -893,7 +893,7 @@ struct integer : public t {
 
   int64_t value;
   integer(int64_t value) : value(value) {}
-  TO_SEXP(value)
+  TO_TEXP(value)
   uint64_t to_value() const final {
     return uint64_t((value << 1) | 1);
   }
@@ -904,20 +904,20 @@ struct boolean : public t {
   bool value;
   boolean(bool value) : value(value) {}
   uint64_t to_value() const final { return value; }
-  TO_SEXP(value)
+  TO_TEXP(value)
 };
 struct unit : public t {
   std::string html_description() const final { return "Unit Literal"; }
   unit() {}
   uint64_t to_value() const final { return 0; }
-  TO_SEXP("()")
+  TO_TEXP("()")
 };
 struct string : public t {
   std::string html_description() const final { return "String Literal"; }
   std::string value;
   string(std::string_view value) : value(value) {}
   uint64_t to_value() const final { THROW_UNIMPLEMENTED; }
-  TO_SEXP(value)
+  TO_TEXP(value)
 };
 }
 
