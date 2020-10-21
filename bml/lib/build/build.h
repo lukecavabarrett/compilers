@@ -17,22 +17,22 @@ void build(std::string_view s, std::ostream &target) {
   parse::tokenizer tk(s);
   ast::global_map globals;
   ast::matcher::universal_matcher int_sum("int_sum");
-  int_sum.glo_fun_name = int_sum.top_level = true;
+  int_sum.use_as_immediate = int_sum.top_level = true;
   globals.try_emplace("int_sum", &int_sum);
   globals.try_emplace("+", &int_sum);
 
   ast::matcher::universal_matcher int_sub("int_sub");
-  int_sub.glo_fun_name = int_sub.top_level = true;
+  int_sub.use_as_immediate = int_sub.top_level = true;
   globals.try_emplace("int_sub", &int_sub);
   globals.try_emplace("-", &int_sub);
 
   ast::matcher::universal_matcher int_eq("int_eq");
-  int_eq.glo_fun_name = int_eq.top_level = true;
+  int_eq.use_as_immediate = int_eq.top_level = true;
   globals.try_emplace("int_eq", &int_eq);
   globals.try_emplace("=", &int_eq);
 
   ast::matcher::universal_matcher int_print("int_print");
-  int_print.glo_fun_name = int_print.top_level = true;
+  int_print.use_as_immediate = int_print.top_level = true;
   globals.try_emplace("int_print", &int_print);
 
   ast::constr_map constr_map;
@@ -56,7 +56,7 @@ void build(std::string_view s, std::ostream &target) {
         def->bind(constr_map);
         ast::free_vars_t fv = def->free_vars();
         resolve_global_free_vars(std::move(fv), globals);
-        for (auto &def : def->defs)def->binder().globally_register(globals);
+        for (auto &def : def->defs)def.name->globally_register(globals);
         auto cg = def->capture_group();
         assert(cg.empty());
         def->compile_global(util::sections_t(data_section, text_section, main_section));
@@ -98,5 +98,12 @@ void build(std::string_view s, std::ostream &target) {
   target << data_section.str() << std::endl << text_section.str() << std::endl << main_section.str() << std::endl;
 
 }
+
+/*
+ IDEA for tests:
+ 1. let (a,b) = fun () -> 3 ;;  // Error: This expression should not be a function, the expected type is 'a * 'b
+ 2. let rec x = a () and y = 3 + 4 and z = Some x ;; // OK
+ Int a let rec, every right hand side should be either free from siblings or 
+ */
 
 #endif //COMPILERS_BML_LIB_BUILDER_BUILD_H_

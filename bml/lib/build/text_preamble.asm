@@ -13,45 +13,36 @@ fail_match:
 
 apply_fn:
         push    rbp
-        mov     rbp, rdi
-        mov     edi, 32
+        mov     rbp, rsi
         push    rbx
-        mov     rbx, rsi
+        mov     rbx, rdi
+        mov     edi, 32
         sub     rsp, 8
         call    malloc
-        mov     rcx, qword [rbp+8]
+        mov     rcx, qword [rbx+8]
         mov     qword [rax], 5
         lea     rdx, [rcx-1]
-        mov     qword [rax+16], rbp
+        mov     qword [rax+16], rbx
         mov     qword [rax+8], rdx
-        mov     qword [rax+24], rbx
+        mov     qword [rax+24], rbp
         test    rdx, rdx
-        je      .L18
+        je      .L13
         add     rsp, 8
         pop     rbx
         pop     rbp
         ret
-.L7:
-        mov     rbp, qword [rbp+16]
-.L18:
-        mov     rdx, qword [rbp+0]
-        cmp     rdx, 5
-        je      .L7
-        mov     rcx, qword [rbp+16]
-        cmp     rdx, 1
-        je      .L19
-        add     rsp, 8
-        mov     rsi, rbp
-        mov     rdi, rax
-        pop     rbx
-        pop     rbp
-        jmp     rcx
-.L19:
+.L9:
+        mov     rbx, qword [rbx+16]
+.L13:
+        cmp     qword [rbx], 5
+        je      .L9
+        mov     rdx, qword [rbx+16]
         add     rsp, 8
         mov     rdi, rax
         pop     rbx
         pop     rbp
-        jmp     rcx
+        jmp     rdx
+
 int_sum_fn:
         mov     rax, qword [rdi+16]
         mov     rdx, qword [rdi+24]

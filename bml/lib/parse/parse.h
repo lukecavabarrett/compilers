@@ -13,7 +13,7 @@
 namespace parse {
 enum token_type {
   LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE,
-  EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH,
+  EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, FUN,
   COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
   STAR, SLASH, TYPE, NONREC, OF, END_OF_INPUT
 };
@@ -26,7 +26,7 @@ class t : public std::runtime_error {
 
 class report_token : public t, public util::error::report_token_error {
  public:
-  report_token(std::string_view found,std::string_view before,std::string_view after) : util::error::report_token_error(before, found, after) {}
+  report_token(std::string_view found, std::string_view before, std::string_view after) : util::error::report_token_error(before, found, after) {}
 
 };
 
@@ -52,6 +52,7 @@ constexpr auto tokens_map = util::make_array(
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},
     st{"let", LET}, st{"rec", REC},
+    st{"fun",FUN},
     st{"nonrec", NONREC}, st{"of", OF},
     st{"in", IN}, st{"and", AND},
     st{"with", WITH}, st{"match", MATCH},

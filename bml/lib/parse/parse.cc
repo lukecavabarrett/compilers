@@ -299,6 +299,17 @@ ptr parse(tokenizer &tk) {
       auto e = parse(tk);
       return with_loc(std::make_unique<let_in>(std::move(d), std::move(e)), itr_sv(loc_start, e->loc.end()));
     }
+    case FUN: {
+      auto loc_start = tk.peek_sv().begin();
+      tk.expect_pop(FUN);
+      std::vector<matcher::ptr> args;
+      while(!tk.empty() && tk.peek()!=ARROW){
+        args.push_back(matcher::parse(tk));
+      }
+      tk.expect_pop(ARROW);
+      auto body = parse(tk);
+      return with_loc(std::make_unique<fun>(std::move(args), std::move(body)), itr_sv(loc_start, body->loc.end()));
+    }
     default:return parse_e_s(tk);
   }
 }
@@ -419,26 +430,24 @@ ptr parse(tokenizer &tk) {
     auto loc_start = tk.peek_sv().begin();
     auto m = matcher::parse(tk);
     if (dynamic_cast<matcher::universal_matcher *>(m.get()) && tk.peek() != EQUAL) {
-      //function definition
-      function::ptr fundef = std::make_unique<function>();
-      fundef->name.reset(dynamic_cast<matcher::universal_matcher *>(m.release()));
-      while (tk.peek() != EQUAL) {
-        auto m = matcher::parse(tk);
-        fundef->args.push_back(std::move(m));
-      }
+      //function alternative definition
+      std::vector<matcher::ptr> args;
+      //
+      //fundef->name.reset(dynamic_cast<matcher::universal_matcher *>(m.release()));
+      while (tk.peek() != EQUAL) args.push_back(matcher::parse(tk));
+
       tk.expect_pop(EQUAL);
-      auto e = expression::parse(tk);
-      fundef->body = std::move(e);
-      fundef->loc = itr_sv(fundef->name->loc.begin(), fundef->body->loc.end());
-      defs->defs.push_back(std::move(fundef));
+      auto fun = std::make_unique<expression::fun>(std::move(args),expression::parse(tk));
+
+      fun->loc = itr_sv(m->loc.begin(), fun->body->loc.end());
+
+      defs->defs.emplace_back(std::move(m),std::move(fun));
     } else {
-      //value binding
       tk.expect_pop(EQUAL);
-      auto e = expression::parse(tk);
-      defs->defs.push_back(with_loc(std::make_unique<value>(std::move(m), std::move(e)), itr_sv(loc_start, e->loc.end())));
+      defs->defs.emplace_back(std::move(m), expression::parse(tk));
     }
   } while (tk.peek() == AND);
-  defs->loc = itr_sv(loc_start, defs->defs.back()->loc.end());
+  defs->loc = itr_sv(loc_start, defs->defs.back().e->loc.end());
   defs->rec = rec;
   return std::move(defs);
 

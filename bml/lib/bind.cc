@@ -1,4 +1,3 @@
-#include <bind.h>
 /*
 
  Let's discuss some dynamics here a little bit.

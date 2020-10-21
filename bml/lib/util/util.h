@@ -8,18 +8,18 @@
 #include <algorithm>
 #include <fstream>
 #include <streambuf>
-namespace ast::definition{
-struct function;
+namespace ast::expression{
+struct fun;
 }
 namespace util {
 
 
 struct sections_t {
   std::ostream &data, &text, &main;
-  ast::definition::function* def_fun;
+  ast::expression::fun* def_fun;
   sections_t(const sections_t&) = default;
-  sections_t(std::ostream& d,std::ostream& t, std::ostream& m, ast::definition::function* df = nullptr) : data(d), text(t), main(m), def_fun(df) {}
-  sections_t with_main(std::ostream& os,ast::definition::function* df)  {
+  sections_t(std::ostream& d,std::ostream& t, std::ostream& m, ast::expression::fun* df = nullptr) : data(d), text(t), main(m), def_fun(df) {}
+  sections_t with_main(std::ostream& os,ast::expression::fun* df)  {
     return sections_t(data,text,os, df);
   }
   sections_t with_main(std::ostream& os)  {
@@ -80,5 +80,6 @@ bool is_in(const T &v, std::initializer_list<T> lst) {
 #define TOSTRING(x) STRINGIFY(x)
 #define AT __FILE__ ":" TOSTRING(__LINE__)
 #define THROW_UNIMPLEMENTED throw std::runtime_error( AT ": unimplemented" );
+#define THROW_WORK_IN_PROGRESS throw std::runtime_error( AT ": work in progress" );
 
 #endif //COMPILERS_BML_LIB_UTIL_H_

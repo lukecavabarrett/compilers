@@ -4,12 +4,12 @@
 #include <build/build.h>
 #define target  "/home/luke/CLionProjects/compilers/bml/output"
 
-std::string load_file(const char* path){
+std::string load_file(const char *path) {
   std::ifstream f(path);
-  return std::string( (std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
+  return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
-void test_build(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr="") {
+void test_build(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr = "") {
   std::ofstream oasm;
   oasm.open(target ".asm");
   ASSERT_NO_THROW(build(source, oasm));
@@ -23,14 +23,11 @@ void test_build(std::string_view source, std::string_view expected_stdout, int e
   EXPECT_EQ(exit_code, expected_exit_code);
 }
 
-TEST(BuildPiecewise, Expression) {
-  constexpr std::string_view source = "int_print (int_sum 4 5)";
-  parse::tokenizer tk(source);
-  auto e = ast::expression::parse(tk);
-  EXPECT_EQ(e->to_sexp_string(),
-            "(ast::expression::fun_app (ast::expression::identifier int_print) (ast::expression::fun_app (ast::expression::fun_app (ast::expression::identifier int_sum) (ast::expression::literal (ast::literal::integer 4))) (ast::expression::literal (ast::literal::integer 5))))");
-  auto fv = e->free_vars();
-  EXPECT_EQ(fv.size(), 2);
+TEST(Build, Expression0) {
+  constexpr std::string_view source = "let answer = 42;;"
+                                      "let () = int_print 42;;\n";
+  test_build(source, "42\n");
+
 }
 
 TEST(Build, Expression1) {
@@ -97,16 +94,80 @@ TEST(Build, OptionMapNone) {
 TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print Another;;\n", "",1,"match failed\n");
+             "let _ = option_map int_print Another;;\n", "", 1, "match failed\n");
 }
 
-/*
-TEST(Build, MaybeAddition) {
+TEST(Build, ApplyTwice) {
+  test_build("let apply_twice f x = f (f x);;\n"
+             "let plus_two = apply_twice (fun x -> x + 1);;\n"
+             "let () = int_print (plus_two 40);;\n", "42\n");
+}
+
+TEST(Build, ApplyTwiceOnSteroids) {
+  test_build("let apply_twice f x = f (f x);;\n"
+             "let () = int_print (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4\n");
+}
+
+TEST(Build, FnCompose) {
+  test_build("let fn_compose g f x = g (f x);;\n"
+             "let () = int_print (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26\n");
+}
+
+TEST(Build, OptionMap) {
   test_build("type int_option = | None | Some of int ;;\n"
-             "let option_bind f x = match x with | None -> None | Some x -> Some (f x);;\n"
+             "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;"
+             "let Some ans = maybe_add (Some 10) 1;;\n"
+             "let () = int_print ans;;\n", "11\n");
+}
+
+TEST(Build, MaybeAdditionWrong) {
+  test_build("type int_option = | None | Some of int ;;\n"
+             "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
+             "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
+             "let maybe_sum x y = option_map (maybe_add y) x;;\n"
+             "let Some (Some ans) = maybe_sum (Some 10) (Some 100);;\n"
+             "let () = int_print ans;;\n", "110\n");
+}
+
+TEST(Build, MaybeAdditionCorrect) {
+  test_build("type int_option = | None | Some of int ;;\n"
+             "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
+             "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
+             "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_bind (maybe_add y) x;;\n"
-             "let Some ans = maybe_sum (Some 10) (Some 100) (Some 1);;\n"
-             "let () = int_print ans;;\n", "111\n");
-}*/
+             "let maybe_print x = match x with | None -> int_print (0-1) | Some x -> int_print x;;\n"
+             "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
+             "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
+             "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
+             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110\n-1\n-1\n-1\n");
+}
+
+TEST(Build,NonGlobalFunction){
+  test_build("let play_with x = int_print x; (let y = x + x in y);;\n"
+             "let ans = play_with 10;;"
+             "let () = int_print ans;;","10\n20\n");
+}
+
+TEST(Build, Malloc){
+  test_build("type option = | Some of int;;\n"
+             "let heap_big_tuple = Some (1,2,3,4,5,6,7);;\n"
+             "let stck_big_tuple = 1,2,3,4,5,6,7;;","");
+}
+
+TEST(Build, CaptureX) {
+  test_build("let plus_x x = (fun y -> x + y);;\n"
+             "let plus_3 = plus_x 3;;\n"
+             "let () = int_print (plus_3 4);;","7\n");
+}
+
+
+/*
+TEST(Build,CaptureX) {
+  test_build("type int_option = | None | Some of int ;;\n"
+             "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
+             "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
+             "let maybe_sum y x = option_bind (fun x -> option_map (fun y -> x + y) y) x;;\n","");
+}
+*/
 
