@@ -104,6 +104,8 @@ TEST_PARSE_TYPE("int * bool list", "ast::type::expression::product{ts : [ast::ty
 );
 TEST_PARSE_TYPE("int * (bool list)", "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::constr{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
 );
+TEST_PARSE_TYPE("int -> int","ast::type::expression::function{from : ast::type::expression::identifier{name : 'int'},  to : ast::type::expression::identifier{name : 'int'}}"
+);
 TEST_PARSE_TYPE("'a list -> int", "ast::type::expression::function{from : ast::type::expression::constr{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}},  to : ast::type::expression::identifier{name : 'int'}}"
 );
 TEST_PARSE_TYPE("'a list -> ('a -> 'a -> bool) -> unit -> 'a list",

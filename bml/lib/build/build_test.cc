@@ -143,31 +143,80 @@ TEST(Build, MaybeAdditionCorrect) {
              "let _ = maybe_print (maybe_sum (None) (None));;\n", "110\n-1\n-1\n-1\n");
 }
 
-TEST(Build,NonGlobalFunction){
+TEST(Build, NonGlobalFunction) {
   test_build("let play_with x = int_print x; (let y = x + x in y);;\n"
              "let ans = play_with 10;;"
-             "let () = int_print ans;;","10\n20\n");
+             "let () = int_print ans;;", "10\n20\n");
 }
 
-TEST(Build, Malloc){
+TEST(Build, Malloc) {
   test_build("type option = | Some of int;;\n"
              "let heap_big_tuple = Some (1,2,3,4,5,6,7);;\n"
-             "let stck_big_tuple = 1,2,3,4,5,6,7;;","");
+             "let stck_big_tuple = 1,2,3,4,5,6,7;;", "");
 }
 
 TEST(Build, CaptureX) {
   test_build("let plus_x x = (fun y -> x + y);;\n"
              "let plus_3 = plus_x 3;;\n"
-             "let () = int_print (plus_3 4);;","7\n");
+             "let () = int_print (plus_3 4);;", "7\n");
 }
 
-
-/*
-TEST(Build,CaptureX) {
+TEST(Build, CaptureMaybeSum) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
-             "let maybe_sum y x = option_bind (fun x -> option_map (fun y -> x + y) y) x;;\n","");
+             "let maybe_sum y x = option_bind (fun x -> option_map (fun y -> x + y) y) x;;\n"
+             "let maybe_print x = match x with | None -> int_print (0-1) | Some x -> int_print x;;\n"
+             "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
+             "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
+             "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
+             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110\n-1\n-1\n-1\n");
 }
-*/
+
+TEST(Build, LongSum) {
+  test_build("let long_sum a b c d e f g h i j k = a+b+c+d+e+f+g+h+i+j+k;;\n"
+             "let ans = long_sum 1 2 3 4 5 6 7 8 9 10 11;;\n"
+             "let () = int_print ans ;;", "66\n");
+}
+
+TEST(Build, DeepCapture) {
+  test_build("let deep_capture x = fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> x ;;"
+             "      let () = int_print (deep_capture 1729 () () () () () () ());;", "1729\n");
+}
+
+TEST(Build, ManyMatchers) {
+  test_build("type t = | Void | Int of int | Tuple of int * t ;;\n"
+             "let f x = match x with\n"
+             "| Void -> 0\n"
+             "| Int 0 -> 1\n"
+             "| Int 1 -> 2\n"
+             "| Int x -> 3\n"
+             "| Tuple (0,_) -> 4\n"
+             "| Tuple (x,Void) -> 5 + x\n"
+             "| Tuple (x,Int y) -> 6 + x + y\n"
+             "| Tuple (x,Tuple (y, Tuple (z,_))) -> 7 + x + y +z\n"
+             "| Tuple (x, t) -> 8 + x;;\n"
+             "let g x = int_print (f x);;\n"
+             "let () = g Void;;\n"
+             "let () = g (Int 0);;\n"
+             "let () = g (Int 1);;\n"
+             "let () = g (Int 64);;\n"
+             "let () = g (Tuple (0,Int 3));;\n"
+             "let () = g (Tuple (1000,Void));;\n"
+             "let () = g (Tuple (1000,Int 100));;\n"
+             "let () = g (Tuple (1000,Tuple(10000, Tuple(100,Void))));;\n"
+             "let () = g (Tuple (1000,Void));;\n", "0\n1\n2\n3\n4\n1005\n1106\n11107\n1005\n");
+}
+
+
+TEST(Build, MatchersTheRevenge) {
+  test_build("type t = | Null | Triple of (int * int) * int;;\n"
+             "let f x = match x with\n"
+             "| Null -> 0\n"
+             "| Triple ((x,y),z) -> x + y + z;;\n"
+             "let g x = int_print (f x);;\n"
+             "let () = g Null;;\n"
+             "let () = g (Triple ((1,10),100));;\n", "0\n111\n");
+}
+
 

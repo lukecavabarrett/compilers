@@ -35,6 +35,16 @@ class unbound_constructor : public std::runtime_error, public util::error::repor
   unbound_constructor(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Unbound constructor ", value, "; maybe you mispelt something.") {}
 };
 
+class constructor_shouldnt_take_arg : public std::runtime_error, public util::error::report_token_error {
+ public:
+  constructor_shouldnt_take_arg(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Constructor ", value, "; should not have an arg") {}
+};
+
+class constructor_should_take_arg : public std::runtime_error, public util::error::report_token_error {
+ public:
+  constructor_should_take_arg(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Constructor ", value, "; should have an arg") {}
+};
+
 }
 
 struct locable {
@@ -293,6 +303,7 @@ struct fun : public t {
   void compile(sections_t s, size_t stack_pos) final;
   void bind(const constr_map &cm) final;
   bool is_capturing(const matcher::universal_matcher *m) const;
+  size_t capture_index(const matcher::universal_matcher *m) const;
  TO_TEXP(args, body);
 };
 
@@ -305,6 +316,7 @@ struct t : public locable, texp_of_t {
   virtual void bind(const constr_map &) = 0;
   virtual void globally_register(global_map &) = 0;
   virtual void globally_allocate(std::ostream &os) = 0;
+  virtual size_t unrolled_size() const = 0;
   virtual void global_unroll(std::ostream &os) = 0; // match value in rax, unrolling on globals
   virtual size_t locally_unroll(std::ostream &os, size_t stack_pos) = 0;  // match value in rax, unrolling on stack; returns new stack_pos
   virtual size_t test_locally_unroll(std::ostream &os,
@@ -335,6 +347,7 @@ struct universal_matcher : public t {
   void globally_allocate_constrblock(std::ostream &os, const type::definition::single_variant::constr &constr);
   void globally_allocate_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
   void global_unroll(std::ostream &os) final;
+  size_t unrolled_size() const final {return 1;}
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
   void globally_evaluate(std::ostream &os) const;
@@ -351,6 +364,7 @@ struct anonymous_universal_matcher : public t {
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
+  size_t unrolled_size() const final {return 0;}
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { return stack_pos; }
 
@@ -370,6 +384,7 @@ struct constructor_matcher : public t {
   void bind(const constr_map &cm) final;
   void globally_allocate(std::ostream &os) final { if (arg)arg->globally_allocate(os); }
   void global_unroll(std::ostream &os) final;
+  size_t unrolled_size() const final {return arg ? arg->unrolled_size() : 0;}
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
  TO_TEXP(cons, arg);
@@ -385,8 +400,9 @@ struct literal_matcher : public t {
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
+  size_t unrolled_size() const final {return 0;}
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { THROW_UNIMPLEMENTED; }
+  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
 
  TO_TEXP(value);
 };
@@ -399,11 +415,11 @@ struct tuple_matcher : public t {
   void bind(const constr_map &cm) final;
 
   void globally_allocate(std::ostream &os) final;
-
+  size_t unrolled_size() const final ;
   void globally_register(global_map &m) final;
   void global_unroll(std::ostream &os) final;
-  size_t locally_unroll(std::ostream &os, size_t stack_pos) final { THROW_UNIMPLEMENTED; }
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { THROW_UNIMPLEMENTED; }
+  size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
+  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
 
  TO_TEXP(args);
 };
@@ -435,7 +451,7 @@ struct unit : public t {
 struct string : public t {
   std::string value;
   string(std::string_view value) : value(value) {}
-  uint64_t to_value() const final { THROW_UNIMPLEMENTED; }
+  uint64_t to_value() const final;
  TO_TEXP(value)
 };
 }

@@ -90,7 +90,7 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &
    */
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
-  auto sepr = sep::consume_sep(tk);
+  sep::consume_sep(tk);
   return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sub_method, sep>(tk));
 }
 

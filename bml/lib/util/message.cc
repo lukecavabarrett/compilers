@@ -30,7 +30,7 @@ void message::print(std::ostream &os, std::string_view file, std::string_view fi
   std::string_view tk = get_code_token();
   std::size_t posy, posx;
   os << bold_style;
-  if (!file.empty()) {
+  if (!file.empty() && tk.begin() >= file.begin() && tk.end()<=file.end()) {
     posy = std::count(file.begin(), tk.begin(), 10) + 1;
     posx = std::distance(std::find(std::string_view::const_reverse_iterator(tk.begin() + 1), file.crend(), 10).base(), tk.begin()) + 1;
     os << filename << sep << posy << sep << posx << ssep;
@@ -38,7 +38,7 @@ void message::print(std::ostream &os, std::string_view file, std::string_view fi
   os << err_style << err_type << ssep << clear_style;
   print_content(os);
   os << std::endl;
-  if (!file.empty()) {
+  if (!file.empty() && tk.begin() >= file.begin() && tk.end()<=file.end()) {
 
     auto it_endline = tk.begin();
     if (auto ite = std::find(tk.begin(), tk.end(), 10);ite != tk.end()) {
