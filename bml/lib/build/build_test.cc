@@ -208,6 +208,12 @@ TEST(Build, ManyMatchers) {
              "let () = g (Tuple (1000,Void));;\n", "0\n1\n2\n3\n4\n1005\n1106\n11107\n1005\n");
 }
 
+TEST(Build, DeepMatchers) {
+  test_build("let f ((x,y),z) = x + y + z;;\n"
+             "let () = int_print (f ((1,10),100));;\n", "111\n");
+  test_build("let f (((((a,b),c),d),e),f) = a+b+c+d+e+f ;;\n"
+             "let () = int_print (f  (((((1,2),4),8),16),32) );;\n", "63\n");
+}
 
 TEST(Build, MatchersTheRevenge) {
   test_build("type t = | Null | Triple of (int * int) * int;;\n"
@@ -219,4 +225,92 @@ TEST(Build, MatchersTheRevenge) {
              "let () = g (Triple ((1,10),100));;\n", "0\n111\n");
 }
 
+TEST(Build, ListUtils1) {
+  test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
+             "let rec length l = match l with\n"
+             "| Null -> 0\n"
+             "| Cons (_,xs) -> (length xs) + 1;;\n"
+             "let () = int_print (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3\n");
+}
 
+TEST(Build, ListUtils2) {
+  test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
+             "let rec print_list l = match l with\n"
+             "| Null -> ()\n"
+             "| Cons (x,xs) -> int_print x; print_list xs;;\n"
+             "let () = print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", "1\n2\n3\n");
+}
+
+TEST(Build, InfiniteList) {
+  test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
+             "let rec length l = match l with\n"
+             "| Null -> 0\n"
+             "| Cons (_,xs) -> (length xs) + 1;;\n"
+             "let rec a = Cons(1,a);;\n"
+             "let () = int_print (length a) ;;", "", 139, "timeout: the monitored command dumped core\nSegmentation fault\n");
+}
+
+TEST(Build, TakeFromInfiniteList){
+  test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
+             "let rec print_list l = match l with\n"
+             "| Null -> ()\n"
+             "| Cons (x,xs) -> int_print x; print_list xs;;\n"
+             "let rec take l n = if (int_eq n 0) then Null else match l with\n"
+             "| Null -> Null\n"
+             "| Cons (x,xs) -> Cons (x,take xs (n-1))\n;;"
+             "let rec a = Cons(1,a);;\n"
+             "let () =  print_list (take a 4) ;;\n"
+             "let rec b = Cons(2,c) and c = Cons(3,b);;\n"
+             "let () =  print_list (take b 8) ;;", "1\n1\n1\n1\n2\n3\n2\n3\n2\n3\n2\n3\n");
+
+}
+
+#define floyd_algo "    let rec run_until_equal f tortoise hare =\n"\
+"    if (int_eq tortoise hare) then (tortoise,hare)\n"\
+"    else run_until_equal f (f tortoise) (f (f hare)) ;;\n"\
+\
+"    let rec find_mu f tortoise hare mu =\n"\
+"    if (int_eq tortoise hare) then (tortoise,hare,mu)\n"\
+"    else find_mu f (f tortoise) (f hare) (mu+1) ;;\n"\
+\
+"    let rec find_lam f tortoise hare lam = \n"\
+"    if (int_eq tortoise hare) then lam else\n"\
+"    find_lam f tortoise (f hare) (lam +1) ;;\n"\
+\
+"let floyd f x0 = \n"\
+"    let tortoise = f x0 in\n"\
+"    let hare = f tortoise in\n"\
+"    let tortoise,hare = run_until_equal f tortoise hare in\n"\
+"    let tortoise,hare,mu = find_mu f x0 hare 0 in\n"\
+"    let lam = find_lam f tortoise (f tortoise) 1 in\n"\
+"    (lam,mu)        ;;\n"
+
+
+TEST(Build, TortoiseAndHare_Numbers) {
+
+  test_build(
+      floyd_algo
+      "type 'a list = | Null | Cons of 'a * 'a list;;\n"
+
+      "let (lam,mu) = floyd (fun x -> match x with | 10 -> 5 | x -> x+1) 0;;\n"
+      "let () = int_print lam; int_print mu;;\n"     , "6\n5\n");
+}
+
+TEST(Build, TortoiseAndHare_Simple) {
+  test_build(
+      floyd_algo
+      "type 'a list = | Null | Cons of 'a * 'a list;;\n"
+
+      "let list_examine_cycle l = \n"
+      " let (lam,mu) = floyd (fun Cons(_,xs) -> xs) l in\n"
+      "int_print lam; int_print mu;;\n"
+
+      "let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;\n"
+
+      "let () = list_examine_cycle c;;", "2\n4\n");
+}
+
+/*
+
+*/
+//Test IDEA: let rec x = Some y and y = f ();;

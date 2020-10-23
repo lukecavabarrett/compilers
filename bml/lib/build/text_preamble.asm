@@ -67,8 +67,6 @@ int_eq_fn:
         mov     rax, qword [rdi+16]
         mov     rdx, qword [rdi+24]
         mov     rax, qword [rax+24]
-        sar     rdx, 1
-        sar     rax, 1
         cmp     rax, rdx
         jnz .unequal
         mov rax, 3
