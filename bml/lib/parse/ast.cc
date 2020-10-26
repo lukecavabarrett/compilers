@@ -72,7 +72,10 @@ free_vars_t constructor::free_vars() {
   if (arg)return arg->free_vars();
   return {};
 }
-capture_set constructor::capture_group() { return {}; }
+capture_set constructor::capture_group() {
+  if (arg)arg->capture_group();
+  return {};
+}
 constructor::constructor(std::string_view n) : name(n) {}
 void constructor::compile(sections_t s, size_t stack_pos) {
   assert(definition_point);
@@ -389,9 +392,10 @@ void t::compile_global(sections_t s) {
     //THROW_UNIMPLEMENTED
 
   }
-  for (auto &def : defs)if(def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())){
+  for (auto &def : defs)
+    if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
       dynamic_cast<matcher::universal_matcher *>(def.name.get())->use_as_immediate = true;
-  }
+    }
   for (auto &def : defs) {
     matcher::universal_matcher *name = dynamic_cast<matcher::universal_matcher *>(def.name.get());
     if (name && def.is_fun()) {
@@ -642,7 +646,7 @@ namespace literal {
 uint64_t integer::to_value() const {
   return uint64_t((value << 1) | 1);
 }
-uint64_t boolean::to_value() const { return value; }
+uint64_t boolean::to_value() const { return value ? 3 : 1; }
 uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
 }
 size_t matcher::literal_matcher::test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) {

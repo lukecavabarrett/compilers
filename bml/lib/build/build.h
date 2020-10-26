@@ -35,6 +35,14 @@ void build(std::string_view s, std::ostream &target) {
   int_print.use_as_immediate = int_print.top_level = true;
   globals.try_emplace("int_print", &int_print);
 
+  ast::matcher::universal_matcher int_println("int_println");
+  int_println.use_as_immediate = int_println.top_level = true;
+  globals.try_emplace("int_println", &int_println);
+
+  ast::matcher::universal_matcher int_le("int_le");
+  int_le.use_as_immediate = int_le.top_level = true;
+  globals.try_emplace("int_le", &int_le);
+
   ast::constr_map constr_map;
 
   std::stringstream data_section;

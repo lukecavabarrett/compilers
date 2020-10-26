@@ -68,11 +68,23 @@ int_eq_fn:
         mov     rdx, qword [rdi+24]
         mov     rax, qword [rax+24]
         cmp     rax, rdx
-        jnz .unequal
+        jnz .ret_false
         mov rax, 3
         ret
-.unequal:
+.ret_false:
         mov     rax, 1
+        ret
+
+int_le_fn:
+        mov     rsi, qword [rdi+16]
+        mov     rdi, qword [rdi+24]
+        mov     rsi, qword [rsi+24]
+        sar     rdi, 1
+        sar     rsi, 1
+        xor     eax,eax
+        cmp    rsi, rdi
+        setl    al
+        lea     rax, qword [rax+1+rax]
         ret
 
 int_print_fn:
@@ -80,6 +92,17 @@ int_print_fn:
         mov     rsi, qword [rdi+24]
         xor     eax, eax
         mov     edi, int_format
+        sar     rsi, 1
+        call    printf
+        xor     eax, eax
+        add     rsp, 8
+        ret
+
+int_println_fn:
+        sub     rsp, 8
+        mov     rsi, qword [rdi+24]
+        xor     eax, eax
+        mov     edi, intln_format
         sar     rsi, 1
         call    printf
         xor     eax, eax

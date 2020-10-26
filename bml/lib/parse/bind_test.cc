@@ -101,4 +101,27 @@ TEST(Bind, RightCaptureSet) {
   EXPECT_EQ(util::texp::make_texp(odd.captures)->to_string(), "[ast::matcher::universal_matcher{name : 'prev'}, ast::matcher::universal_matcher{name : 'even'}, ast::matcher::universal_matcher{name : 'is_zero'}]");
 }
 
+TEST(Bind, CaptureSet) {
+  static constexpr std::string_view source = "let rec iota n = Item (n, (fun () -> iota (n+1)) );;";
+  auto tks = parse::tokenizer(source);
+  auto ast = ast::definition::parse(tks);
+  auto fv = ast->free_vars();
+  EXPECT_EQ(util::texp::make(fv)->to_string(), "{'+' : [ast::expression::identifier{name : '+'}]}");
+  ast::matcher::universal_matcher plus("+");
+  plus.use_as_immediate = plus.top_level = true;
+  fv.at("+").front()->definition_point = &plus;
+  ast::matcher::universal_matcher& iota_name = *dynamic_cast<ast::matcher::universal_matcher*>(ast->defs.at(0).name.get());
+  iota_name.top_level = iota_name.use_as_immediate = true;
+  auto cs = ast->capture_group();
+  EXPECT_TRUE(cs.empty());
+  ast::expression::fun &iota = *dynamic_cast<ast::expression::fun *>(ast->defs.at(0).e.get());
+  EXPECT_TRUE(iota.captures.empty());
+  ast::expression::fun &inner = *dynamic_cast<ast::expression::fun *>(
+      dynamic_cast<ast::expression::build_tuple *>(
+          dynamic_cast<ast::expression::constructor *>(iota.body.get())->arg.get()
+          )->args.at(1).get());
+  EXPECT_EQ(inner.captures.size(),1);
+
+}
+
 }
