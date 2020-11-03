@@ -409,7 +409,7 @@ void t::compile_global(sections_t s) {
       assert(name->use_as_immediate);
       size_t i = 0;
       for (auto &e : e->args) {
-        e->compile(s, 0);
+        e->compile_as_function(s, 0);
         s.main << "mov qword[" << name->asm_name();
         if (i)s.main << "+" << (8 * i);
         s.main << "], rax\n";

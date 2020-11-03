@@ -82,5 +82,6 @@ bool is_in(const T &v, std::initializer_list<T> lst) {
 #define AT __FILE__ ":" TOSTRING(__LINE__)
 #define THROW_UNIMPLEMENTED throw std::runtime_error( AT ": unimplemented" );
 #define THROW_WORK_IN_PROGRESS throw std::runtime_error( AT ": work in progress" );
+#define THROW_INTERNAL_ERROR throw std::runtime_error( AT ": internal_error" );
 
 #endif //COMPILERS_BML_LIB_UTIL_H_
