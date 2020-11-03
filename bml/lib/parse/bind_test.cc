@@ -97,8 +97,8 @@ TEST(Bind, RightCaptureSet) {
   EXPECT_EQ(d.defs.size(), 2);
   const ast::expression::fun &even = *dynamic_cast<const ast::expression::fun *>(d.defs.at(0).e.get());
   const ast::expression::fun &odd = *dynamic_cast<const ast::expression::fun *>(d.defs.at(1).e.get());
-  EXPECT_EQ(util::texp::make_texp(even.captures)->to_string(), "[ast::matcher::universal_matcher{name : 'prev'}, ast::matcher::universal_matcher{name : 'is_zero'}, ast::matcher::universal_matcher{name : 'odd'}]");
-  EXPECT_EQ(util::texp::make_texp(odd.captures)->to_string(), "[ast::matcher::universal_matcher{name : 'prev'}, ast::matcher::universal_matcher{name : 'even'}, ast::matcher::universal_matcher{name : 'is_zero'}]");
+  EXPECT_EQ(util::texp::make_texp(even.captures)->to_string(), "[ast::matcher::universal_matcher{name : 'odd'}, ast::matcher::universal_matcher{name : 'is_zero'}, ast::matcher::universal_matcher{name : 'prev'}]");
+  EXPECT_EQ(util::texp::make_texp(odd.captures)->to_string(), "[ast::matcher::universal_matcher{name : 'even'}, ast::matcher::universal_matcher{name : 'is_zero'}, ast::matcher::universal_matcher{name : 'prev'}]");
 }
 
 TEST(Bind, CaptureSet) {

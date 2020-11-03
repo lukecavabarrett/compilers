@@ -1,4 +1,4 @@
-add_library(ir STATIC ir.cc)
+add_library(ir STATIC ir.cc lang.cc)
 target_include_directories(ir
         PUBLIC
         $<INSTALL_INTERFACE:include>

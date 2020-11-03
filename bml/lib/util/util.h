@@ -27,6 +27,7 @@ struct sections_t {
   }
 };
 
+
 std::string load_file(std::string_view path);
 
 class formatter {

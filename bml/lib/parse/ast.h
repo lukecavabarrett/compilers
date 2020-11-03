@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <cinttypes>
 #include <cassert>
+#include <ir/lang.h>
 
 namespace ast {
 using namespace util;
@@ -183,7 +184,8 @@ struct t : public locable, public texp_of_t {
   using locable::locable;
   virtual free_vars_t free_vars() = 0; // computes the free variable of an expression
   virtual capture_set capture_group() = 0; // computes the set of non-global universal_macthers free in e
-  virtual void compile(sections_t s, size_t stack_pos) = 0;
+  virtual void compile(sections_t s, size_t stack_pos) = 0; // generate code putting the result on rax
+  //virtual ir::lang::var ir_compile() = 0; // generate ir code, putting result on a variable
   virtual void bind(const constr_map &) = 0;
 };
 
