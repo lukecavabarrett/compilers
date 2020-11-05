@@ -23,7 +23,9 @@ struct memory_access;
 struct malloc;
 struct apply_fn;
 typedef std::unique_ptr<ternary> branch;
-typedef std::variant<constant, global, copy, memory_access, malloc, apply_fn, branch> t;
+struct unary_op;
+struct binary_op;
+typedef std::variant<constant, global, copy, memory_access, malloc, apply_fn, branch, unary_op, binary_op> t;
 }
 struct assign;
 struct write_uninitialized_mem;
@@ -37,6 +39,7 @@ struct var {
   constexpr explicit var(uint64_t id) : id(id) {}
   static inline uint64_t id_factory = 1;
   explicit var() : id(++id_factory) {}
+  explicit var(std::string_view name) : id(++id_factory) {maybe_names.try_emplace(id,name);}
   var(const var &) = default;
   var(var &&) = default;
   var &operator=(const var &) = default;
@@ -47,7 +50,11 @@ struct var {
   instruction::assign assign(rhs_expr::t &&) const;
   bool operator==(const var &v) const { return id == v.id; }
   bool operator!=(const var &v) const { return id != v.id; }
-  void print(std::ostream &os) const { if (id)os << "var_" << id; else os << "var_argv"; }
+  void print(std::ostream &os) const {
+    if(maybe_names.contains(id))os<<maybe_names.at(id)<<"_"<<id;
+    else os << "var__" << id;
+  }
+  static std::unordered_map<uint64_t,std::string> maybe_names;
 };
 constexpr var argv_var(0);
 namespace instruction {
@@ -65,7 +72,38 @@ struct memory_access {
 };
 struct malloc { size_t size; };
 struct apply_fn { var f, x; };
-//TODO: add unary_op, binary_op
+struct binary_op {
+  enum ops { add, sub };
+  static std::string_view ops_to_string(ops op) {
+    switch (op) {
+      case add:return "add";
+      case sub:return "sub";
+      default:THROW_UNIMPLEMENTED;
+    }
+  }
+  static bool is_commutative(ops op){
+    switch (op) {
+      case add:return true;
+      case sub:return false;
+      default:THROW_UNIMPLEMENTED;
+    }
+  }
+  ops op;
+  var x1, x2;
+};
+
+struct unary_op {
+  enum ops { sal, sar };
+  static std::string_view ops_to_string(ops op) {
+    switch (op) {
+      case sal:return "sal";
+      case sar:return "sar";
+      default:THROW_UNIMPLEMENTED;
+    }
+  }
+  ops op;
+  var x;
+};
 }
 struct assign {
   var dst;
@@ -78,17 +116,16 @@ struct write_uninitialized_mem {
 };
 struct cmp_vars {
   var v1, v2;
-  enum cmp_ops { test, cmp }; //TODO: add others
-  static std::string_view ops_to_string(cmp_ops op){
+  enum ops { test, cmp }; //TODO: add others
+  static std::string_view ops_to_string(ops op) {
     switch (op) {
 
       case test:return "test";
       case cmp:return "cmp";
-      default:
-      THROW_UNIMPLEMENTED;
+      default:THROW_UNIMPLEMENTED;
     }
   }
-  cmp_ops op;
+  ops op;
 };
 };
 
@@ -106,7 +143,7 @@ struct ternary {
   enum jmp_instr { jmp, jne, jle, jz }; //TODO: add others
   jmp_instr cond;
   scope nojmp_branch, jmp_branch;
-  std::string_view ops_to_string(){
+  std::string_view ops_to_string() {
     switch (cond) {
 
       case jmp:return "jmp";
@@ -114,8 +151,7 @@ struct ternary {
 
       case jle:return "jle";
       case jz:return "jz";
-      default:
-        THROW_UNIMPLEMENTED
+      default:THROW_UNIMPLEMENTED
     }
   }
 };

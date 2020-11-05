@@ -19,6 +19,9 @@ struct overloaded : Ts ... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace ir::lang {
+
+std::unordered_map<uint64_t, std::string> var::maybe_names = {{0, "__argv"}};
+
 rhs_expr::memory_access var::operator*() const {
   return rhs_expr::memory_access{.base = *this, .block_offset = 0};
 }
@@ -64,8 +67,8 @@ void scope::push_back(instruction::t &&i) {
 }
 
 enum register_t {
-  rax = 0, rcx = 1, rdx = 2, r8 = 3, r9 = 4, r10 = 5, r11 = 6, // volatiles (caller-saved)
-  rbx = 7, rbp = 8, rdi = 9, rsi = 10, r12 = 11, r13 = 12, r14 = 13, r15 = 14, // non-volatile (callee-saved)
+  rbx = 0, rbp = 1, rsi = 2, r12 = 3, r13 = 4, r14 = 5, r15 = 6, // non-volatile (callee-saved)
+  rdi = 7, rax = 8, rcx = 9, rdx = 10, r8 = 11, r9 = 12, r10 = 13, r11 = 14, // volatiles (caller-saved)
   // rsp is not managed this way// non-volatile (callee-saved)
 };
 namespace reg {
@@ -113,25 +116,66 @@ std::string_view to_string(register_t r) {
   THROW_INTERNAL_ERROR
 }
 constexpr auto all = util::make_array(rax, rcx, rdx, r8, r9, r10, r11, rbx, rbp, rdi, rsi, r12, r13, r14, r15);
+constexpr auto non_volatiles = util::make_array(rbx, rbp, rsi, r12, r13, r14, r15);
 };
 
 namespace var_loc {
-struct unborn {};
-struct dead {};
-struct constant { uint64_t v; };
-struct global { std::string name; };
-struct on_stack { size_t p; };
-struct on_reg { register_t r; };
+struct unborn { bool operator==(const unborn &) const { return true; }};
+struct dead { bool operator==(const dead &) const { return true; }};
+struct constant { uint64_t v; bool operator==(const constant &c) const { return c.v == v; }};
+struct global { std::string name; bool operator==(const global &g) const { return g.name == name; }};
+struct on_stack { size_t p; bool operator==(const on_stack &s) const { return s.p == p; }};
+struct on_reg { register_t r; bool operator==(const on_reg &reg) const { return reg.r == r; }};
 typedef std::variant<unborn, dead, constant, global, on_stack, on_reg> variant;
+typedef std::variant<on_stack, on_reg> act_variant;
+bool is_dead(const variant &v) {
+  return std::holds_alternative<dead>(v);
+}
+bool is_stored(const variant &v) {
+  return std::holds_alternative<on_stack>(v) || std::holds_alternative<on_reg>(v);
+}
+void print(const variant &v, std::ostream &os) {
+  std::visit(overloaded{
+      [&](const unborn &) { os << "unborn"; },
+      [&](const dead &) { os << "dead"; },
+      [&](const constant &c) { os << "constant " << c.v; },
+      [&](const global &g) { os << "global " << g.name; },
+      [&](const on_stack &s) { os << "on_stack[" << s.p << "]"; },
+      [&](const on_reg &r) { os << "on_reg " << reg::to_string(r.r); },
+  }, v);
+}
+void print(const act_variant &v, std::ostream &os) {
+  std::visit(overloaded{
+      [&](const on_stack &s) { os << "on_stack[" << s.p << "]"; },
+      [&](const on_reg &r) { os << "on_reg " << reg::to_string(r.r); },
+  }, v);
+}
 };
 typedef var_loc::variant location_t;
+typedef var_loc::act_variant act_location_t;
 namespace content_opts {
 struct free { bool operator==(const free &) const { return true; }};
 struct saved_reg { register_t r; bool operator==(const saved_reg &sr) const { return r == sr.r; }};
 struct store_var { var v; bool operator==(const store_var &sv) const { return v == sv.v; }};
 typedef std::variant<free, saved_reg, store_var> variant;
+bool is_free(const variant &v) {
+  return std::holds_alternative<free>(v);
+}
+void print(const variant &v, std::ostream &os) {
+  std::visit(overloaded{
+      [&](const free &) { os << "free"; },
+      [&](const saved_reg &r) { os << "saved " << reg::to_string(r.r); },
+      [&](const store_var &v) { v.v.print(os); }
+  }, v);
+}
 };
 typedef content_opts::variant content_t;
+
+template<typename T, typename V>
+bool contains(const V &v, const T &k) {
+  for (const auto &x : v)if (x == k)return true;
+  return false;
+}
 
 template<typename T>
 struct lru_list {
@@ -176,19 +220,197 @@ struct lru_list {
 
 struct context_t {
   std::unordered_map<var, location_t> vars;
+  std::array<act_location_t, reg::non_volatiles.size()> saved;
   std::array<content_t, reg::all.size()> regs;
   std::vector<content_t> stack;
   lru_list<register_t> lru;
+  static context_t merge(context_t c1, std::ostream &os1, context_t c2, std::ostream &os2) {
+    //remove non-intersected deads
+    //assert everything outside intersection ij only deads
+
+    std::erase_if(c1.vars, [&](const auto &k_v) {
+      if (c2.vars.contains(k_v.first))return false;
+      assert(var_loc::is_dead(k_v.second));
+      return true;
+    });
+    std::erase_if(c1.vars, [&](const auto &k_v) {
+      if (c2.vars.contains(k_v.first))return false;
+      assert(var_loc::is_dead(k_v.second));
+      return true;
+    });
+
+    bool stored_mismatch = false;
+    for (const auto&[k, v] : c1.vars) {
+      assert(c2.vars.contains(k));
+      if (var_loc::is_stored(v) != var_loc::is_stored(c2.vars.at(k))) {
+        assert(!stored_mismatch);
+        stored_mismatch = true;
+        THROW_UNIMPLEMENTED
+      }
+    }
+    //strategy: make c1 equal to c2
+    //1. stack
+    if (c1.stack != c2.stack) {
+      THROW_UNIMPLEMENTED
+    }
+
+    assert(c1.stack == c2.stack);
+
+    //2. regs
+    if (c1.regs != c2.regs) {
+      for (auto r : reg::all) {
+        while (!content_opts::is_free(c2.regs[r]) && !(c1.regs[r] == c2.regs[r])) {
+
+          if (content_opts::is_free(c1.regs[r])) {
+            // use move
+            std::visit(overloaded{
+                [](const content_opts::free &) { THROW_INTERNAL_ERROR },
+                [&](const content_opts::store_var &v) {
+                  assert(c1.vars.contains(v.v));
+                  std::visit(overloaded{
+                      [](const var_loc::dead &) { THROW_INTERNAL_ERROR },
+                      [](const var_loc::unborn &) { THROW_INTERNAL_ERROR },
+                      [](const var_loc::global &) { THROW_UNIMPLEMENTED },
+                      [](const var_loc::constant &) { THROW_UNIMPLEMENTED },
+                      [](const var_loc::on_stack &) { THROW_INTERNAL_ERROR },
+                      [&](const var_loc::on_reg &r2) {
+                        os1 << "mov " << reg::to_string(r) << ", " << reg::to_string(r2.r) << "\n";
+                        std::swap(c1.regs[r], c1.regs[r2.r]);
+                        c1.vars[v.v] = var_loc::on_reg{.r = r};
+                      },
+                  }, c1.vars.at(v.v));
+                },
+
+                [](const content_opts::saved_reg &) { THROW_UNIMPLEMENTED },
+            }, c2.regs[r]);
+          } else {
+            THROW_UNIMPLEMENTED //use xchg
+          }
+        }
+      }
+    }
+
+    assert(c1.regs == c2.regs);
+
+
+
+
+
+    //TODO: intersection must match on unborn, deads, union of {constant,global,on_stack,on_reg}
+    //TODO: at most one variable can change from true store {on_stack,on_reg} to {constant,global}
+
+    assert(c1.stack == c2.stack);
+    assert(c1.regs == c2.regs);
+    assert(c1.vars == c2.vars);
+    return c1;
+  }
+  bool assert_consistency() const {
+    std::string debug_str = debug();
+    //regs
+    for (auto r : reg::all) {
+      std::visit(overloaded{
+          [&](const content_opts::saved_reg &s) {
+            assert(s.r < saved.size());
+            assert(saved.at(s.r) == act_location_t{var_loc::on_reg{.r=r}});
+          },
+          [](const content_opts::free &) {},
+          [&](const content_opts::store_var &v) {
+            assert(vars.at(v.v) == location_t{var_loc::on_reg{.r=r}});
+          },
+      }, regs[r]);
+    }
+    //stack
+    for (size_t i = 0; i < stack.size(); ++i) {
+      std::visit(overloaded{
+          [&](const content_opts::saved_reg &s) {
+            assert(saved.at(s.r) == act_location_t{var_loc::on_stack{.p=i}});
+          },
+          [](const content_opts::free &) {},
+          [&](const content_opts::store_var &v) {
+            assert(vars.at(v.v) == location_t{var_loc::on_stack{.p=i}});
+          },
+      }, stack[i]);
+    }
+    //vars
+    for (const auto &v_s : vars) {
+      const var v = v_s.first;
+      std::visit(overloaded{
+          [](const var_loc::unborn &) {},
+          [](const var_loc::dead &) {},
+          [](const var_loc::constant &) {},
+          [](const var_loc::global &) {},
+          [&](const var_loc::on_stack &st) {
+            assert(stack[st.p] == content_t{content_opts::store_var{.v=v}});
+          },
+          [&](const var_loc::on_reg &r) {
+            assert(regs[r.r] == content_t{content_opts::store_var{.v=v}});
+          },
+      }, v_s.second);
+    }
+
+    //saved
+    for (auto r : reg::non_volatiles) {
+      std::visit(overloaded{
+          [&](const var_loc::on_reg &reg) {
+            if (!(regs[reg.r] == content_t{content_opts::saved_reg{.r=r}})) {
+              assert(false);
+            }
+            assert(regs[reg.r] == content_t{content_opts::saved_reg{.r=r}});
+          },
+          [&](const var_loc::on_stack &st) {
+            assert(stack[st.p] == content_t{content_opts::saved_reg{.r=r}});
+          }
+      }, saved[r]);
+    }
+
+  }
+  void cerr_debug() const {
+   std::cerr << debug() << std::endl;
+  }
+  std::string debug() const {
+    std::stringstream s;
+    s << "Registers:\n";
+    for (auto r : reg::all) {
+      s << reg::to_string(r) << ": ";
+      content_opts::print(regs[r], s);
+      s << "\n";
+    }
+    s << "\nStack:\n";
+    for (size_t i = 0; i < stack.size(); ++i) {
+      s << "[" << i << "]: ";
+      content_opts::print(stack[i], s);
+      s << "\n";
+    }
+    s << "\n ------------- \n";
+    s << "Vars:\n";
+    for (const auto&[v, l] : vars) {
+      v.print(s);
+      s << ": ";
+      var_loc::print(l, s);
+      s << "\n";
+    }
+    s << "\nSaves:\n";
+    for (auto r : reg::non_volatiles) {
+      s << reg::to_string(r) << ": ";
+      var_loc::print(saved[r], s);
+      s << "\n";
+    }
+
+    return s.str();
+  }
   context_t() {
     for (auto r : reg::all)regs[r] = reg::is_volatile(r) ? content_t(content_opts::free{}) : content_opts::saved_reg{r};
+    for (auto r : reg::non_volatiles)saved[r] = var_loc::on_reg{.r=r};
     regs[rdi] = content_t(content_opts::store_var{.v=argv_var});
     vars[argv_var] = var_loc::on_reg{.r=rdi};
 
     for (auto r : reg::all)if (r != rdi && reg::is_volatile(r))lru.push_back(r);
     for (auto r : reg::all)if (r != rdi && !reg::is_volatile(r))lru.push_back(r);
     lru.push_back(rdi);
+    assert_consistency();
   };
   void clean(std::ostream &os) {
+    assert_consistency();
     while (!stack.empty()) {
       using namespace content_opts;
       std::visit(overloaded{
@@ -206,14 +428,15 @@ struct context_t {
       if (!reg::is_volatile(r)) {
         assert(regs[r] == content_t(content_opts::saved_reg{r}));
       };
-
+    assert_consistency();
   }
   void destroy(var v, std::ostream &os) {
+    assert_consistency();
     assert(vars.contains(v));
     std::visit<void>(overloaded{
         [](const var_loc::unborn &) { THROW_INTERNAL_ERROR },
         [](const var_loc::dead &) { THROW_INTERNAL_ERROR },
-        [](const var_loc::constant &) { THROW_UNIMPLEMENTED },
+        [](const var_loc::constant &) {  },
         [](const var_loc::global &) { THROW_UNIMPLEMENTED },
         [](const var_loc::on_stack &) { THROW_UNIMPLEMENTED },
         [&](const var_loc::on_reg &r) {
@@ -223,15 +446,19 @@ struct context_t {
         },
     }, vars.at(v));
     vars.at(v) = var_loc::dead{};
+    assert_consistency();
   }
   void destroy(const std::vector<var> &vars, std::ostream &os) {
     for (var v : vars)destroy(v, os);
   }
   void declare_const(var v, uint64_t value) {
+    assert_consistency();
     assert(!vars.contains(v));
     vars[v] = var_loc::constant{.v = value};
+    assert_consistency();
   }
   void declare_move(var v, var m) {
+    assert_consistency();
     assert(!vars.contains(v));
     assert(vars.contains(m));
     vars[v] = vars[m];
@@ -246,11 +473,14 @@ struct context_t {
         },
         [&](const var_loc::on_reg &r) {
           regs[r.r] = content_opts::store_var{.v=v};
+          lru.bring_back(r.r);
         },
     }, vars[v]);
+    assert_consistency();
   }
 
   void declare(var v, std::ostream &os, bool in_reg = false) {
+    assert_consistency();
     register_t r = lru.front();
     if (!std::holds_alternative<content_opts::free>(regs[r])) {
       THROW_UNIMPLEMENTED
@@ -259,13 +489,15 @@ struct context_t {
     lru.bring_back(r);
     regs[r] = content_opts::store_var{.v=v};
     vars[v] = var_loc::on_reg{.r=r};
+    assert_consistency();
   }
   void load_in_specific_reg(var v, register_t r, std::ostream &os) {
-    if (!vars.contains(v)) {
-      assert(vars.contains(v));
-    }
+    assert_consistency();
+    assert(vars.contains(v));
+
     if (std::holds_alternative<content_opts::store_var>(regs.at(r)) && std::get<content_opts::store_var>(regs.at(r)).v == v) {
       //variable is already there
+      assert_consistency();
       return;
     }
     std::visit(overloaded{
@@ -284,6 +516,8 @@ struct context_t {
         [](const var_loc::dead &) { THROW_INTERNAL_ERROR },
         [&](const var_loc::constant &c) {
           os << "mov " << reg::to_string(r) << ", " << c.v << "\n";
+          regs[r] = content_opts::store_var{.v=v};
+          vars[v] = var_loc::on_reg{.r=r};
         },
         [](const var_loc::global &) {
           // We should do nothing
@@ -298,15 +532,19 @@ struct context_t {
           //If it was already in reg, then we exited
           regs[r] = content_opts::store_var{.v=v};
           regs[rnow.r] = content_opts::free{};
+          vars[v] = var_loc::on_reg{.r=r};
           os << "mov " << reg::to_string(r) << ", " << reg::to_string(rnow.r) << "\n";
         },
     }, vars.at(v));
+    assert_consistency();
   }
   void load_in_reg(var v, std::ostream &os) {
+    assert_consistency();
     if (std::holds_alternative<var_loc::on_reg>(vars[v])) {
       //already in reg - but let's enhance its life
       lru.bring_back(std::get<var_loc::on_reg>(vars[v]).r);
       return;
+      assert_consistency();
     }
 
     register_t r = lru.front();
@@ -337,9 +575,11 @@ struct context_t {
         },
     }, vars.at(v));
     vars[v] = var_loc::on_reg{.r=r};
-
+    assert_consistency();
   }
   void retrieve(var v, std::ostream &os) const {
+    assert_consistency();
+    assert(vars.contains(v));
     std::visit<void>(overloaded{
         [](const var_loc::unborn &) { THROW_INTERNAL_ERROR },
         [](const var_loc::dead &) { THROW_INTERNAL_ERROR },
@@ -360,27 +600,9 @@ struct context_t {
           os << reg::to_string(r.r);
         },
     }, vars.at(v));
+    assert_consistency();
   }
 };
-
-//remove (and returns) the used vars
-std::unordered_set<var> used_vars(instruction::t &i, std::unordered_set<var> &set) {
-  return std::visit(overloaded{
-      [](instruction::assign &a) -> std::unordered_set<var> {
-        return std::visit(overloaded{
-            [](rhs_expr::constant &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-            [](rhs_expr::global &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-            [&](rhs_expr::copy &ce) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-            [&](rhs_expr::memory_access &ma) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-            [](rhs_expr::malloc &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-            [](rhs_expr::apply_fn &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-            [](rhs_expr::branch &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED }
-        }, a.src);
-      },
-      [](instruction::write_uninitialized_mem &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-      [](instruction::cmp_vars &) -> std::unordered_set<var> { THROW_UNIMPLEMENTED },
-  }, i);
-}
 
 std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> to_destroy) {
   s.destroys.clear();
@@ -429,6 +651,11 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
                 });
                 assert(s1 == s2);
                 to_destroy = s1;
+              },
+              [&](rhs_expr::unary_op &b) { destroy_here(b.x, i); },
+              [&](rhs_expr::binary_op &b) {
+                destroy_here(b.x1, i);
+                destroy_here(b.x2, i);
               }
           }, a.src);
           destroy_here(a.dst, i); // only if var never used
@@ -467,6 +694,7 @@ bool unroll_last_copy(scope &s) {
 }
 
 context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_call) {
+  static size_t branch_id_factory = 0;
   while (unroll_last_copy(s)); //TODO: unroll all better
 
   bool need_to_return = last_call;
@@ -495,18 +723,20 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 [](rhs_expr::malloc &) { THROW_UNIMPLEMENTED },
                 [](rhs_expr::apply_fn &) { THROW_UNIMPLEMENTED },
                 [&](rhs_expr::branch &b) {
-                  static size_t branch = 0;
-                  size_t this_branch = ++branch;
-                  os << b->ops_to_string() << " .LC" << this_branch << "\n";
+                  size_t this_branch = ++branch_id_factory;
+                  os << b->ops_to_string() << " .L" << this_branch << "\n";
                   scope_compile_rec(b->nojmp_branch, os, c, true);
-                  os << ".LC" << this_branch << "\n";
+                  os << ".L" << this_branch << "\n";
                   scope_compile_rec(b->jmp_branch, os, c, true);
-                }
+                },
+                [](rhs_expr::unary_op &) { THROW_UNIMPLEMENTED },
+                [](rhs_expr::binary_op &) { THROW_UNIMPLEMENTED }
             }, a.src);
           } else {
             std::visit(overloaded{
                 [&](rhs_expr::constant &ce) {
                   c.declare_const(a.dst, ce.v);
+                  os << "; ";a.dst.print(os);os<<" = "<<ce.v<<" \n";
                 },
                 [](rhs_expr::global &) {
                   THROW_UNIMPLEMENTED
@@ -536,7 +766,44 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 },
                 [](rhs_expr::malloc &) { THROW_UNIMPLEMENTED },
                 [](rhs_expr::apply_fn &) { THROW_UNIMPLEMENTED },
-                [](rhs_expr::branch &) { THROW_UNIMPLEMENTED }
+                [&](rhs_expr::branch &b) {
+
+                  size_t this_branch = ++branch_id_factory;
+                  size_t this_branch_end = ++branch_id_factory;
+                  os << b->ops_to_string() << " .L" << this_branch << "\n";
+                  context_t c1 = scope_compile_rec(b->nojmp_branch, os, c, false);
+                  c1.declare_move(a.dst, b->nojmp_branch.ret);
+                  std::stringstream jb;
+                  context_t c2 = scope_compile_rec(b->jmp_branch, jb, c, false);
+                  c2.declare_move(a.dst, b->jmp_branch.ret);
+                  c = context_t::merge(c1, os, c2, jb);
+                  os << "jmp .L" << this_branch_end << "\n";
+                  os << ".L" << this_branch << "\n";
+                  os << jb.str();
+                  os << ".L" << this_branch_end << "\n";
+                },
+                [&](rhs_expr::unary_op &) {
+                  THROW_UNIMPLEMENTED
+                },
+                [&](rhs_expr::binary_op &b) {
+                  const bool operator_commutative = rhs_expr::binary_op::is_commutative(b.op);
+                  if (s.destroys.contains(i + 1) && operator_commutative && s.destroys.at(i + 1).front() != b.x1)std::swap(b.x1, b.x2);
+                  if (s.destroys.contains(i + 1) && contains(s.destroys.at(i + 1), b.x1)) {
+                    //variable move
+                    os << rhs_expr::binary_op::ops_to_string(b.op) << " ";
+                    assert(c.vars.contains((b.x1)));
+                    assert(c.vars.contains((b.x2)));
+                    c.retrieve(b.x1, os);
+                    os << ", ";
+                    c.retrieve(b.x2, os);
+                    os << "\n";
+                    c.declare_move(a.dst, b.x1);
+                    s.destroys.at(i + 1).erase(std::find(s.destroys.at(i + 1).begin(), s.destroys.at(i + 1).end(), b.x1));
+
+                  } else {
+                    THROW_UNIMPLEMENTED
+                  }
+                }
 
             }, a.src);
           };
@@ -598,6 +865,13 @@ void scope::print(std::ostream &os, size_t offset) {
                 b->jmp_branch.print(os, offset + 1);
                 for (int i = offset; i--;)os << "  ";
                 os << "}";
+              },
+              [&](rhs_expr::unary_op &) { THROW_UNIMPLEMENTED },
+              [&](rhs_expr::binary_op &b) {
+                os << rhs_expr::binary_op::ops_to_string(b.op) << " ";
+                b.x1.print(os);
+                os << " ";
+                b.x2.print(os);
               }
           }, a.src);
         },
