@@ -61,12 +61,18 @@ void identifier::compile(sections_t s, size_t stack_pos) {
 }
 identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
 void identifier::bind(const constr_map &) {}
+void identifier::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
+}
 
 literal::literal(ast::literal::ptr &&v) : value(std::move(v)) {}
 free_vars_t literal::free_vars() { return {}; }
 capture_set literal::capture_group() { return {}; }
 void literal::compile(sections_t s, size_t stack_pos) {
   s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
+}
+void literal::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
 }
 free_vars_t constructor::free_vars() {
   if (arg)return arg->free_vars();
@@ -102,6 +108,9 @@ void constructor::bind(const constr_map &cm) {
   }
   if (arg)arg->bind(cm);
 }
+void constructor::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
+}
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
     : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
 free_vars_t if_then_else::free_vars() { return join_free_vars(join_free_vars(condition->free_vars(), true_branch->free_vars()), false_branch->free_vars()); }
@@ -123,6 +132,9 @@ void if_then_else::bind(const constr_map &cm) {
   condition->bind(cm);
   true_branch->bind(cm);
   false_branch->bind(cm);
+}
+void if_then_else::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
 }
 build_tuple::build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
 free_vars_t build_tuple::free_vars() {
@@ -151,6 +163,9 @@ void build_tuple::compile(sections_t s, size_t stack_pos) {
 void build_tuple::bind(const constr_map &cm) {
   for (auto &p : args)p->bind(cm);
 }
+void build_tuple::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
+}
 fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
   loc = unite_sv(f, x);
 }
@@ -170,6 +185,9 @@ void fun_app::bind(const constr_map &cm) {
   f->bind(cm);
   x->bind(cm);
 }
+void fun_app::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
+}
 seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
 free_vars_t seq::free_vars() { return join_free_vars(a->free_vars(), b->free_vars()); }
 capture_set seq::capture_group() { return join_capture_set(a->capture_group(), b->capture_group()); }
@@ -180,6 +198,9 @@ void seq::compile(sections_t s, size_t stack_pos) {
 void seq::bind(const constr_map &cm) {
   a->bind(cm);
   b->bind(cm);
+}
+void seq::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
 }
 
 match_with::match_with(expression::ptr &&w) : what(std::move(w)) {}
@@ -234,6 +255,9 @@ void match_with::bind(const constr_map &cm) {
   }
   what->bind(cm);
 }
+void match_with::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
+}
 free_vars_t let_in::free_vars() {
   return d->free_vars(e->free_vars());
 }
@@ -248,6 +272,9 @@ void let_in::compile(sections_t s, size_t stack_pos) {
   size_t new_stack_pos = d->compile_locally(s, stack_pos);
   e->compile(s, new_stack_pos);
   if (new_stack_pos > stack_pos)s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
+}
+void let_in::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
 }
 fun::fun(std::vector<matcher::ptr> &&args, ptr &&body) : args(std::move(args)), body(std::move(body)) {}
 free_vars_t fun::free_vars() {
@@ -354,6 +381,9 @@ std::string fun::compile_global(sections_t s, std::string_view name_hint) {
   s.text << this_fun.str() << std::endl;
   return text_ptr;
 }
+void fun::ir_compile(ir::lang::scope &) {
+  THROW_UNIMPLEMENTED
+}
 
 }
 
@@ -409,7 +439,7 @@ void t::compile_global(sections_t s) {
       assert(name->use_as_immediate);
       size_t i = 0;
       for (auto &e : e->args) {
-        e->compile_as_function(s, 0);
+        e->compile(s, 0);
         s.main << "mov qword[" << name->asm_name();
         if (i)s.main << "+" << (8 * i);
         s.main << "], rax\n";

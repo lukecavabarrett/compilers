@@ -60,19 +60,19 @@ constexpr var argv_var(0);
 namespace instruction {
 namespace rhs_expr {
 //src
-struct constant {
+struct constant {//Trivially destructible
   const uint64_t v;
   constant(uint64_t v) : v(v) {}
 };
-struct global { std::string name; };
-struct copy { var v; };
-struct memory_access {
+struct global { std::string name; };// trivially destructible
+struct copy { var v; }; //TODO: remove
+struct memory_access { //TODO: mark destruction_class
   var base;
   size_t block_offset;
 };
-struct malloc { size_t size; };
-struct apply_fn { var f, x; };
-struct binary_op {
+struct malloc { size_t size; }; //TODO: mark destruction class
+struct apply_fn { var f, x; }; //TODO: mark destruction class (might be maybe_non_trivial)
+struct binary_op { //Assert inputs are trivial; result should be trivial
   enum ops { add, sub };
   static std::string_view ops_to_string(ops op) {
     switch (op) {
@@ -92,7 +92,7 @@ struct binary_op {
   var x1, x2;
 };
 
-struct unary_op {
+struct unary_op { //assert input is trivial; result should be trivial
   enum ops { sal, sar };
   static std::string_view ops_to_string(ops op) {
     switch (op) {
@@ -155,60 +155,6 @@ struct ternary {
     }
   }
 };
-
-
-/*
-struct operand {
-  std::variant<var , memory_access> data;
-  operand(const operand &) = default;
-  operand(operand &&) = default;
-  operand(const var &v) : data(v) {}
-  operand(const memory_access &m) : data(m) {}
-};
-
-struct operands {
-  operand op1;
-  std::optional<operand> op2;
-};
-
-enum class opcodes {
-  mov, add, cmp, ret, sar
-};
-
-struct instruction {
-  opcodes opcode;
-  operands ops;
-};
-
-#define INSTR_OPS_2(mnem) instruction mnem (operand o1, operand o2){ return instruction{.opcode=opcodes:: mnem , .ops={.op1 = o1, .op2 = o2}}; }
-#define INSTR_OPS_H_2(mnem) instruction mnem (operand o1, operand o2);
-#define INSTR_OPS_1(mnem) instruction mnem (operand o1){ return instruction{.opcode=opcodes:: mnem , .ops={.op1 = o1, .op2 = {}}}; }
-#define INSTR_OPS_H_1(mnem) instruction mnem (operand o1);
-
-INSTR_OPS_H_2 (mov)
-INSTR_OPS_H_2 (add)
-INSTR_OPS_H_2 (cmp)
-INSTR_OPS_H_1 (sar)
-INSTR_OPS_H_1 (ret)
-
-struct ternary;
-struct scope {
-  std::vector<std::variant<ternary, instruction>> ops;
-  void push_back(instruction&& i);
-  void push_back(ternary&& t);
-  scope& operator<<(instruction&& i);
-  scope& operator<<(ternary&& i);
-};
-struct ternary {
-  std::string jmp_if_false;
-  scope true_branch, false_branch;
-};
-
-struct function : public scope {
-
-};
-
-*/
 
 };
 

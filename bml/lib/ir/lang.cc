@@ -35,28 +35,6 @@ instruction::assign var::assign(rhs_expr::t &&src) const {
   return instruction::assign{.dst = *this, .src = std::move(src)};
 }
 
-/*
-INSTR_OPS_2(mov)
-INSTR_OPS_2(add)
-INSTR_OPS_2(cmp)
-INSTR_OPS_1(sar)
-INSTR_OPS_1(ret)
-
-void scope::push_back(instruction &&i) {
-  ops.emplace_back(std::move(i));
-}
-void scope::push_back(ternary &&t) {
-  ops.emplace_back(std::move(t));
-}
-scope &scope::operator<<(instruction &&i) {
-  push_back(std::move(i));
-  return *this;
-}
-scope &scope::operator<<(ternary &&i) {
-  push_back(std::move(i));
-  return *this;
-}
- */
 scope &scope::operator<<(instruction::t &&i) {
   push_back(std::move(i));
   return *this;
@@ -219,6 +197,7 @@ struct lru_list {
 };
 
 struct context_t {
+  //TODO: should store destruction state of variables (should this be here or not?)
   std::unordered_map<var, location_t> vars;
   std::array<act_location_t, reg::non_volatiles.size()> saved;
   std::array<content_t, reg::all.size()> regs;
@@ -274,7 +253,7 @@ struct context_t {
                       [](const var_loc::constant &) { THROW_UNIMPLEMENTED },
                       [](const var_loc::on_stack &) { THROW_INTERNAL_ERROR },
                       [&](const var_loc::on_reg &r2) {
-                        os1 << "mov " << reg::to_string(r) << ", " << reg::to_string(r2.r) << "\n";
+                        os1 << "mov " << reg::to_string(r) << ", " << reg::to_string(r2.r) << "; merge context\n";
                         std::swap(c1.regs[r], c1.regs[r2.r]);
                         c1.vars[v.v] = var_loc::on_reg{.r = r};
                       },
@@ -530,10 +509,11 @@ struct context_t {
         [&](const var_loc::on_reg &rnow) {
           assert(rnow.r != r);
           //If it was already in reg, then we exited
+          os << "mov " << reg::to_string(r) << ", " << reg::to_string(rnow.r) << "\n";
+
           regs[r] = content_opts::store_var{.v=v};
           regs[rnow.r] = content_opts::free{};
           vars[v] = var_loc::on_reg{.r=r};
-          os << "mov " << reg::to_string(r) << ", " << reg::to_string(rnow.r) << "\n";
         },
     }, vars.at(v));
     assert_consistency();
@@ -736,7 +716,6 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
             std::visit(overloaded{
                 [&](rhs_expr::constant &ce) {
                   c.declare_const(a.dst, ce.v);
-                  os << "; ";a.dst.print(os);os<<" = "<<ce.v<<" \n";
                 },
                 [](rhs_expr::global &) {
                   THROW_UNIMPLEMENTED
