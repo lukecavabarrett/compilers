@@ -30,6 +30,10 @@ struct value {
     return value((x << 1) | 1);
   }
 
+  [[nodiscard]] static value from_raw(uintptr_t x) {
+    return value(x);
+  }
+
   [[nodiscard]] constexpr uint64_t to_uint() const {
     return uint64_t(v) >> 1;
   }
@@ -46,6 +50,7 @@ struct value {
   [[nodiscard]] static value from_block(const block *ptr) {
     return value(uintptr_t(ptr));
   }
+  bool operator==(const value& o) const {return v == o.v;};
  private:
   constexpr explicit value(uintptr_t v) : v(v) {}
 };
@@ -115,8 +120,8 @@ value int_sum_fn(value v) {
 }
 fn_base_pure int_sum(2,int_sum_fn);
 value int_print_fn(value v) {
-  const fn_arg* x = reinterpret_cast<const fn_arg *>(v.to_block());
-  printf("%lld",x->arg.to_int());
+  const auto* x = reinterpret_cast<const fn_arg *>(v.to_block());
+  printf("%ld",x->arg.to_int());
   return value();
 }
 fn_base_pure int_print(1,int_print_fn);

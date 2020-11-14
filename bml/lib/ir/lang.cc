@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <map>
 #include <list>
+#include <charconv>
 
 namespace std {
 template<>
@@ -19,6 +20,99 @@ struct overloaded : Ts ... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace ir::lang {
+
+namespace parse {
+
+namespace {
+using namespace util;
+bool allowed_in_identifier(char c) {
+  return ::isalnum(c) || c == '_' || c == '\'';
+}
+template<typename T>
+std::unique_ptr<T> with_loc(std::unique_ptr<T> &&p, std::string_view s) {
+  p->loc = s;
+  return std::move(p);
+}
+
+bool startswith_legal(std::string_view a, std::string_view b) {
+  if (b.size() > a.size())return false;
+  if (!std::equal(b.begin(), b.end(), a.begin()))return false;
+  if (allowed_in_identifier(b.back()) && a.size() > b.size() && allowed_in_identifier(a[b.size()]))return false;
+  return true;
+}
+
+namespace {
+using namespace parse;
+std::string_view token_type_to_string(token_type t) {
+  for (const auto&[p, t_i] : tokens_map)if (t_i == t)return p;
+  THROW_UNIMPLEMENTED
+}
+
+}
+
+}
+
+tokenizer::tokenizer(std::string_view source) : to_parse(source), source(source) { write_head(); }
+token tokenizer::pop() {
+  token t = head;
+  write_head();
+  return t;
+}
+token_type tokenizer::peek() const { return head.type; }
+token tokenizer::peek_full() const { return head; }
+std::string_view tokenizer::peek_sv() const { return head.sv; }
+bool tokenizer::empty() const { return head.type == END_OF_INPUT; }
+void tokenizer::write_head() {
+  while (!to_parse.empty() && to_parse.front() <= 32)to_parse.remove_prefix(1);
+  if (to_parse.empty()) {
+    head = token{.sv=std::string_view(), .type=END_OF_INPUT};
+    return;
+  }
+  for (const auto&[p, t] : tokens_map)
+    if (startswith_legal(to_parse, p)) {
+      head = token{.sv=std::string_view(to_parse.begin(), p.size()), .type=t};
+      to_parse.remove_prefix(p.size());
+      return;
+    }
+
+  if (isdigit(to_parse.front())) {
+    //int literal
+    auto end = std::find_if_not(to_parse.begin(), to_parse.end(), ::isdigit);
+    head = {.sv=itr_sv(to_parse.begin(), end), .type=token_type::CONSTANT};
+    to_parse.remove_prefix(end - to_parse.begin());
+    return;
+  }
+
+  auto end = std::find_if_not(to_parse.begin(), to_parse.end(), allowed_in_identifier);
+  if (to_parse.begin() == end) {
+    throw std::runtime_error(formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
+  }
+  head = {.sv=itr_sv(to_parse.begin(), end), .type= token_type::IDENTIFIER};
+  to_parse.remove_prefix(end - to_parse.begin());
+
+}
+void tokenizer::expect_pop(token_type t) {
+  //TODO: make better error
+  expect_peek(t);
+  write_head();
+}
+void tokenizer::expect_peek(token_type t) {
+  //TODO: make better error
+  if (head.type != t) {
+    throw error::expected_token_found_another(token_type_to_string(t), head.sv);
+  }
+}
+void tokenizer::expect_peek_any_of(std::initializer_list<token_type> il) {
+  if (std::find(il.begin(), il.end(), head.type) == il.end()) {
+    throw error::unexpected_token(head.sv);
+  }
+}
+void tokenizer::unexpected_token() {
+  throw error::unexpected_token(head.sv);
+  //throw std::runtime_error("expected \"TK\", found another");
+}
+
+}
 
 std::unordered_map<uint64_t, std::string> var::maybe_names = {{0, "__argv"}};
 
@@ -81,7 +175,7 @@ std::string_view to_string(register_t r) {
     case r8:return "r8";
     case r9:return "r9";
     case r10:return "r10";
-    case r11:return "r1";
+    case r11:return "r11";
     case rdi:return "rdi";
     case rbx:return "rbx";
     case rbp:return "rbp";
@@ -161,6 +255,17 @@ struct lru_list {
   std::list<T> list;
   std::unordered_map<T, typename std::list<T>::iterator> its;
  public:
+  lru_list() = default;
+  lru_list(lru_list &&) = default;
+  lru_list(const lru_list &o) : list(o.list) {
+    for (auto it = list.begin(); it != list.end(); ++it)its[*it] = it;
+  };
+  lru_list &operator=(const lru_list &o) {
+    list = o.list;
+    its.clear();
+    for (auto it = list.begin(); it != list.end(); ++it)its[*it] = it;
+  };
+  lru_list &operator=(lru_list &&o) = default;
   void push_back(const T &v) {
     list.push_back(v);
     its[v] = --list.end();
@@ -341,10 +446,10 @@ struct context_t {
           }
       }, saved[r]);
     }
-
+    return true;
   }
   void cerr_debug() const {
-   std::cerr << debug() << std::endl;
+    std::cerr << debug() << std::endl;
   }
   std::string debug() const {
     std::stringstream s;
@@ -388,20 +493,44 @@ struct context_t {
     lru.push_back(rdi);
     assert_consistency();
   };
+  context_t(const context_t &) = default;
+  context_t(context_t &&) = default;
+  context_t &operator=(const context_t &) = default;
+  context_t &operator=(context_t &&o) = default;
   void clean(std::ostream &os) {
     assert_consistency();
     while (!stack.empty()) {
       using namespace content_opts;
-      std::visit(overloaded{
+      if (std::visit(overloaded{
           [&](free &) {
             os << "add rsp, 8\n";
+            return true;
           },
           [&](saved_reg &sr) {
-            os << "pop " << reg::to_string(sr.r) << "\n; restore callee register";
+
+            if (is_free(regs[sr.r])) {
+              os << "pop " << reg::to_string(sr.r) << " ; restore callee register\n";
+              regs[sr.r] = sr;
+              saved[sr.r] = var_loc::on_reg{.r=sr.r};
+              return true;
+            } else {
+              os << "xcgh qword [rsp], " << reg::to_string(sr.r) << " ; restore callee register\n";
+              std::swap(stack.back(), regs[sr.r]);
+              return false;
+            }
           },
-          [](store_var &) { THROW_INTERNAL_ERROR },
-      }, stack.back());
-      stack.pop_back();
+          [&](store_var &s) {
+            while (!reg::is_volatile(lru.front()))lru.bring_back(lru.front());
+            assert(is_free(regs[lru.front()]));
+            os << "pop " << reg::to_string(lru.front()) << "\n";
+            std::swap(stack.back(), regs[lru.front()]);
+            vars[s.v] = var_loc::on_reg{.r=lru.front()};
+            lru.bring_back(lru.front());
+            return true;
+            //TODO: fix consistency
+          },
+      }, stack.back()))
+        stack.pop_back();
     }
     for (auto r : reg::all)
       if (!reg::is_volatile(r)) {
@@ -415,9 +544,18 @@ struct context_t {
     std::visit<void>(overloaded{
         [](const var_loc::unborn &) { THROW_INTERNAL_ERROR },
         [](const var_loc::dead &) { THROW_INTERNAL_ERROR },
-        [](const var_loc::constant &) {  },
+        [](const var_loc::constant &) {},
         [](const var_loc::global &) { THROW_UNIMPLEMENTED },
-        [](const var_loc::on_stack &) { THROW_UNIMPLEMENTED },
+        [&](const var_loc::on_stack &s) {
+          //TODO: might have to go through
+          stack[s.p] = content_opts::free{};
+          size_t sfree = 0;
+          while (!stack.empty() && content_opts::is_free(stack.back())) {
+            ++sfree;
+            stack.pop_back();
+          }
+          if (sfree)os << "add rsp, " << sfree * 8 << " ; reclaiming stack space\n";
+        },
         [&](const var_loc::on_reg &r) {
           //TODO: might have to go throuh
           regs[r.r] = content_opts::free{};
@@ -461,10 +599,40 @@ struct context_t {
   void declare(var v, std::ostream &os, bool in_reg = false) {
     assert_consistency();
     register_t r = lru.front();
-    if (!std::holds_alternative<content_opts::free>(regs[r])) {
-      THROW_UNIMPLEMENTED
-      //need to save the content somewhere
-    }
+
+    std::visit(overloaded{
+        [](content_opts::free) {},
+        [&](content_opts::saved_reg s) {
+          if (auto it = std::find_if(stack.begin(), stack.end(), content_opts::is_free);it == stack.end()) {
+            os << "push " << reg::to_string(r) << " ; saving caller register\n";
+            saved[s.r] = var_loc::on_stack{.p = stack.size()};
+            stack.emplace_back(s);
+          } else {
+            size_t idx = std::distance(it, stack.end()) - 1;
+            os << "qword [rsp+" << idx * 8 << "], " << reg::to_string(r) << " ; saving caller register\n";
+            saved[s.r] = var_loc::on_stack{.p = idx};
+            stack[idx] = s;
+          }
+        },
+        [&](content_opts::store_var s) {
+          if (auto it = std::find_if(stack.begin(), stack.end(), content_opts::is_free);it == stack.end()) {
+            os << "push " << reg::to_string(r) << " ; saving variable ";
+            s.v.print(os);
+            os << "\n";
+            vars[s.v] = var_loc::on_stack{.p = stack.size()};
+            stack.emplace_back(s);
+          } else {
+            size_t idx = std::distance(it, stack.end()) - 1;
+            os << "qword [rsp+" << idx * 8 << "], " << reg::to_string(r) << " ; saving variable ";
+            s.v.print(os);
+            os << "\n";
+            vars[s.v] = var_loc::on_stack{.p = stack.size()};
+            stack.emplace_back(s);//TODO: invert with one above (and take a ref) for a funny buy
+          }
+
+        },
+    }, regs[r]);
+
     lru.bring_back(r);
     regs[r] = content_opts::store_var{.v=v};
     vars[v] = var_loc::on_reg{.r=r};
@@ -518,22 +686,25 @@ struct context_t {
     }, vars.at(v));
     assert_consistency();
   }
-  void load_in_reg(var v, std::ostream &os) {
+  register_t load_in_reg(var v, std::ostream &os) {
     assert_consistency();
     if (std::holds_alternative<var_loc::on_reg>(vars[v])) {
       //already in reg - but let's enhance its life
-      lru.bring_back(std::get<var_loc::on_reg>(vars[v]).r);
-      return;
+      register_t r = std::get<var_loc::on_reg>(vars[v]).r;
+      lru.bring_back(r);
       assert_consistency();
+      return r;
     }
 
     register_t r = lru.front();
     if (!std::holds_alternative<content_opts::free>(regs[r])) {
-      THROW_UNIMPLEMENTED
-      //need to save the content somewhere
+      var dummy;
+      declare(dummy, os, true);
+      r = load_in_reg(dummy, os);
+      vars.erase(dummy);
+      regs[r] = content_opts::free{};
     }
     lru.bring_back(r);
-    regs[r] = content_opts::store_var{.v=v};
     std::visit<void>(overloaded{
         [](const var_loc::unborn &) { THROW_INTERNAL_ERROR },
         [](const var_loc::dead &) { THROW_INTERNAL_ERROR },
@@ -545,17 +716,23 @@ struct context_t {
           // We should do nothing
           THROW_UNIMPLEMENTED
         },
-        [](const var_loc::on_stack &s) {
+        [&](const var_loc::on_stack &s) {
           //Move it
-          THROW_UNIMPLEMENTED
+          os << "mov " << reg::to_string(r) << ", ";
+          retrieve(v, os);
+          os << "\n";
+          stack[s.p] = content_opts::free{};
+          regs[r] = content_opts::store_var{.v=v};
+          vars[v] = var_loc::on_reg{.r=r};
         },
         [&](const var_loc::on_reg &r) {
           //If it was already in reg, then we exited
           THROW_INTERNAL_ERROR
         },
     }, vars.at(v));
-    vars[v] = var_loc::on_reg{.r=r};
+
     assert_consistency();
+    return r;
   }
   void retrieve(var v, std::ostream &os) const {
     assert_consistency();
@@ -588,7 +765,8 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
   s.destroys.clear();
   for (auto &i : s.body)
     if (std::holds_alternative<instruction::assign>(i)) {
-      to_destroy.insert(std::get<instruction::assign>(i).dst);
+      const auto &ia = std::get<instruction::assign>(i);
+      if (!std::holds_alternative<rhs_expr::constant>(ia.src) && !std::holds_alternative<rhs_expr::global>(ia.src))to_destroy.insert(ia.dst);
     }
 
   auto destroy_here = [&](var v, size_t i) {
@@ -761,8 +939,32 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   os << jb.str();
                   os << ".L" << this_branch_end << "\n";
                 },
-                [&](rhs_expr::unary_op &) {
-                  THROW_UNIMPLEMENTED
+                [&](rhs_expr::unary_op &u) {
+                  if (std::holds_alternative<var_loc::on_stack>(c.vars.at(u.x)))c.load_in_reg(u.x, os);
+                  std::visit(overloaded{
+                      [](var_loc::dead) { THROW_INTERNAL_ERROR },
+                      [](var_loc::unborn) { THROW_INTERNAL_ERROR },
+                      [&](var_loc::constant &cn) {
+                        c.declare_const(a.dst, u.of_constant(cn.v));
+                      },
+                      [](var_loc::global &) { THROW_UNIMPLEMENTED },
+                      [&](var_loc::on_reg &r_src) {
+                        if (s.destroys.contains(i + 1) && contains(s.destroys.at(i + 1), u.x)) {
+                          rhs_expr::unary_op::compile(os, u.op, reg::to_string(r_src.r), reg::to_string(r_src.r));
+                          s.destroys.at(i + 1).erase(std::find(s.destroys.at(i + 1).begin(), s.destroys.at(i + 1).end(), u.x));
+                          c.declare_move(a.dst, u.x);
+                        } else {
+                          c.lru.bring_back(r_src.r);
+                          c.declare(a.dst, os, true);
+                          auto r_dst = std::get<var_loc::on_reg>(c.vars[a.dst]).r;
+                          rhs_expr::unary_op::compile(os, u.op, reg::to_string(r_src.r), reg::to_string(r_dst));
+                        }
+                      },
+                      [&](var_loc::on_stack s_src) {
+                        THROW_INTERNAL_ERROR
+                      },
+                  }, c.vars[u.x]);
+
                 },
                 [&](rhs_expr::binary_op &b) {
                   const bool operator_commutative = rhs_expr::binary_op::is_commutative(b.op);
@@ -847,14 +1049,21 @@ void scope::print(std::ostream &os, size_t offset) {
               },
               [&](rhs_expr::unary_op &) { THROW_UNIMPLEMENTED },
               [&](rhs_expr::binary_op &b) {
-                os << rhs_expr::binary_op::ops_to_string(b.op) << " ";
+                os << rhs_expr::binary_op::ops_to_string(b.op) << "(";
                 b.x1.print(os);
-                os << " ";
+                os << ",";
                 b.x2.print(os);
+                os << ")";
               }
           }, a.src);
         },
-        [](instruction::write_uninitialized_mem &a) { THROW_UNIMPLEMENTED },
+        [&](instruction::write_uninitialized_mem &a) {
+          if (a.block_offset)os << "*";
+          a.base.print(os);
+          if (a.block_offset)os << "[" << a.block_offset << "]";
+          os << " := ";
+          a.src.print(os);
+        },
         [&](instruction::cmp_vars &a) {
           os << instruction::cmp_vars::ops_to_string(a.op) << "(";
           a.v1.print(os);
@@ -869,6 +1078,169 @@ void scope::print(std::ostream &os, size_t offset) {
   os << "return ";
   ret.print(os);
   os << ";\n";
+}
+scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var> &names) {
+  scope s;
+  using namespace parse;
+  while (!tk.empty() && tk.peek() != RETURN) {
+    bool had_star = false;
+    if (tk.peek() == STAR) {
+      tk.pop();
+      had_star = true;
+    }
+    tk.expect_peek(IDENTIFIER);
+    auto i = tk.pop().sv;
+    if (tk.peek() == EQUAL) {
+      assert(!had_star);
+      //TODO: vardef
+      assert(!names.contains(i));
+      var v(i);
+      names.try_emplace(i, v);
+      tk.expect_pop(EQUAL);
+      switch (tk.peek()) {
+
+        case IDENTIFIER: {
+          //copy or global or memory access or operation
+          auto a = tk.pop().sv;
+          if (tk.peek() == BRACKET_OPEN) {
+            //memory access
+            assert(names.contains(a));
+            tk.expect_pop(BRACKET_OPEN);
+            tk.expect_peek(CONSTANT);
+            size_t addr = 0;
+            assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), addr).ec == std::errc());
+            tk.pop();
+            tk.expect_pop(BRACKET_CLOSE);
+            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base = names.at(a), .block_offset = addr}});
+
+          } else if (tk.peek() == PARENS_OPEN) {
+            //operation
+            tk.expect_pop(PARENS_OPEN);
+            tk.expect_peek(IDENTIFIER);
+            assert(names.contains(tk.peek_sv()));
+            var op1 = names.at(tk.pop().sv);
+            tk.expect_peek_any_of({PARENS_CLOSE, COMMA});
+            if (tk.peek() == COMMA) {
+              //binary operand
+              tk.expect_pop(COMMA);
+              tk.expect_peek(IDENTIFIER);
+              assert(names.contains(tk.peek_sv()));
+              var op2 = names.at(tk.pop().sv);
+              auto op = rhs_expr::binary_op::string_to_op(a);
+              s.push_back(instruction::assign{.dst = v, .src=rhs_expr::binary_op{.op=op, .x1 = op1, .x2 = op2}});
+            } else {
+              //unary operand
+              auto op = rhs_expr::unary_op::string_to_op(a);
+              s.push_back(instruction::assign{.dst = v, .src=rhs_expr::unary_op{.op=op, .x = op1}});
+            }
+            tk.expect_pop(PARENS_CLOSE);
+          } else if (names.contains(a)) {
+            //copy
+            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::copy{.v = names.at(a)}});
+          } else {
+            //global
+            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::global{.name = std::string(a)}});
+
+          }
+          break;
+        }
+        case CONSTANT: {
+          uint64_t val;
+          assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
+          tk.pop();
+          s.push_back(instruction::assign{.dst = v, .src=rhs_expr::constant(val)});
+          break;
+        };
+
+        case IF: {
+          //TODO: ternary
+          tk.expect_pop(IF);
+          tk.expect_pop(PARENS_OPEN);
+          tk.expect_peek(IDENTIFIER);
+          auto jinstr = tk.pop().sv;
+          rhs_expr::branch b = std::make_unique<ternary>();
+          b->cond = ternary::parse_jinstr(jinstr);
+          tk.expect_pop(PARENS_CLOSE);
+          tk.expect_pop(THEN);
+          tk.expect_pop(CURLY_OPEN);
+          b->nojmp_branch = scope::parse(tk, names);
+          tk.expect_pop(CURLY_CLOSE);
+          tk.expect_pop(ELSE);
+          tk.expect_pop(CURLY_OPEN);
+          b->jmp_branch = scope::parse(tk, names);
+          tk.expect_pop(CURLY_CLOSE);
+          s.push_back(instruction::assign{.dst=v, .src=rhs_expr::branch(std::move(b))});
+          break;
+        };
+        case STAR: {
+          //memory access
+          tk.pop();
+          tk.expect_peek(IDENTIFIER);
+          auto src = tk.pop().sv;
+          assert(names.contains(src));
+          s.push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base=names.at(src), .block_offset = 0}});
+          break;
+        }
+        default:THROW_INTERNAL_ERROR;
+      }
+
+    } else if (auto op = instruction::cmp_vars::parse_op(i); op.has_value()) {
+      assert(!had_star);
+      // cmp_vars
+      tk.expect_pop(PARENS_OPEN);
+      tk.expect_peek(IDENTIFIER);
+      assert(names.contains(tk.peek_sv()));
+      var op1 = names.at(tk.pop().sv);
+      tk.expect_pop(COMMA);
+      tk.expect_peek(IDENTIFIER);
+      assert(names.contains(tk.peek_sv()));
+      var op2 = names.at(tk.pop().sv);
+      tk.expect_pop(PARENS_CLOSE);
+      s.push_back(instruction::cmp_vars{.v1 = op1, .v2 = op2, .op = op.value()});
+
+    } else {
+      //memory assignment
+      assert(names.contains(i));
+      size_t addr = 0;
+      if (!had_star) {
+        tk.expect_pop(BRACKET_OPEN);
+        tk.expect_peek(CONSTANT);
+        assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), addr).ec == std::errc());
+        tk.pop();
+        tk.expect_pop(BRACKET_CLOSE);
+      }
+      tk.expect_pop(ASSIGN);
+      tk.expect_peek(IDENTIFIER);
+      auto src = tk.pop().sv;
+      assert(names.contains(src));
+      s.push_back(instruction::write_uninitialized_mem{.base = names.at(i), .block_offset = addr, .src = names.at(src)});
+    }
+    tk.expect_pop(SEMICOLON);
+  }
+  tk.expect_pop(RETURN);
+  tk.expect_peek(IDENTIFIER);
+  auto retv = tk.pop().sv;
+  tk.expect_pop(SEMICOLON);
+  assert(names.contains(retv));
+  s.ret = names.at(retv);
+  return s;
+
+}
+scope scope::parse(std::string_view source) {
+  parse::tokenizer tk(source);
+  std::unordered_map<std::string_view, var> names = {{"argv", argv_var}};
+  try {
+
+    return parse(tk, names);
+  } catch (const util::error::message &e) {
+    e.print(std::cout, source, "source.ir");
+    throw std::runtime_error("ir parsing error");
+  }
+}
+std::string scope::to_string() {
+  std::stringstream s;
+  print(s);
+  return std::move(s.str());
 }
 
 }

@@ -2,7 +2,6 @@
 #include <parse/parse.h>
 #include <util/message.h>
 #include <build/build.h>
-#define target  "/home/luke/CLionProjects/compilers/bml/output"
 
 std::string load_file(const char *path) {
   std::ifstream f(path);
@@ -10,6 +9,7 @@ std::string load_file(const char *path) {
 }
 
 void test_build(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr = "") {
+#define target  "/home/luke/CLionProjects/compilers/bml/output"
   std::ofstream oasm;
   oasm.open(target ".asm");
   ASSERT_NO_THROW(build(source, oasm));
@@ -21,6 +21,7 @@ void test_build(std::string_view source, std::string_view expected_stdout, int e
   EXPECT_EQ(load_file(target ".stdout"), expected_stdout);
   EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
   EXPECT_EQ(exit_code, expected_exit_code);
+#undef target
 }
 
 TEST(Build, Expression0) {
@@ -158,7 +159,7 @@ TEST(Build, NonGlobalFunction) {
 }
 
 TEST(Build, Malloc) {
-  test_build("type option = | Some of int;;\n"
+  test_build("type option = | Some of 'a;;\n"
              "let heap_big_tuple = Some (1,2,3,4,5,6,7);;\n"
              "let stck_big_tuple = 1,2,3,4,5,6,7;;", "");
 }
@@ -297,7 +298,6 @@ TEST(Build, TortoiseAndHare_Numbers) {
 
   test_build(
       floyd_algo
-      "type 'a list = | Null | Cons of 'a * 'a list;;\n"
 
       "let (lam,mu) = floyd (fun x -> match x with | 10 -> 5 | x -> x+1) 0;;\n"
       "let () = int_print lam; int_print mu;;\n", "6 5 ");
@@ -363,7 +363,12 @@ TEST(Build, Stream) {
 
   let () = print_int_stream 10 (filter (fun x -> int_le 50 x) (iota 42));;
 
-  let rec partial_sum f init (Item(x,xf)) = let init = f init x in Item(init, (fun () -> partial_sum f init (xf())));;
+  let rec partial_sum f init
+ (Item(x,xf)) =
+    let
+      init = f init x
+    in
+    Item(init, (fun () -> partial_sum f init (xf())));;
 
   let () = print_int_stream 10 (partial_sum int_sum 0 (iota 1)) ;;
 

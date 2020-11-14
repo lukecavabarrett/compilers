@@ -9,9 +9,12 @@
 #include <optional>
 #include <memory>
 #include <util/texp.h>
+#include <util/message.h>
 
 namespace ir::lang {
-
+namespace parse {
+class tokenizer;
+}
 struct var;
 struct ternary;
 namespace instruction {
@@ -39,7 +42,7 @@ struct var {
   constexpr explicit var(uint64_t id) : id(id) {}
   static inline uint64_t id_factory = 1;
   explicit var() : id(++id_factory) {}
-  explicit var(std::string_view name) : id(++id_factory) {maybe_names.try_emplace(id,name);}
+  explicit var(std::string_view name) : id(++id_factory) { maybe_names.try_emplace(id, name); }
   var(const var &) = default;
   var(var &&) = default;
   var &operator=(const var &) = default;
@@ -51,10 +54,10 @@ struct var {
   bool operator==(const var &v) const { return id == v.id; }
   bool operator!=(const var &v) const { return id != v.id; }
   void print(std::ostream &os) const {
-    if(maybe_names.contains(id))os<<maybe_names.at(id)<<"_"<<id;
+    if (maybe_names.contains(id))os << maybe_names.at(id) << "_" << id;
     else os << "var__" << id;
   }
-  static std::unordered_map<uint64_t,std::string> maybe_names;
+  static std::unordered_map<uint64_t, std::string> maybe_names;
 };
 constexpr var argv_var(0);
 namespace instruction {
@@ -73,17 +76,28 @@ struct memory_access { //TODO: mark destruction_class
 struct malloc { size_t size; }; //TODO: mark destruction class
 struct apply_fn { var f, x; }; //TODO: mark destruction class (might be maybe_non_trivial)
 struct binary_op { //Assert inputs are trivial; result should be trivial
-  enum ops { add, sub };
+  enum ops { add, sub, sal, sar };
   static std::string_view ops_to_string(ops op) {
     switch (op) {
       case add:return "add";
       case sub:return "sub";
+      case sal:return "sal";
+      case sar:return "sar";
       default:THROW_UNIMPLEMENTED;
     }
   }
-  static bool is_commutative(ops op){
+  static ops string_to_op(std::string_view s) {
+    if (s == "add")return add;
+    if (s == "sub")return sub;
+    if (s == "sal")return sal;
+    if (s == "sar")return sar;
+    THROW_UNIMPLEMENTED
+  }
+  static bool is_commutative(ops op) {
     switch (op) {
       case add:return true;
+      case sal:
+      case sar:
       case sub:return false;
       default:THROW_UNIMPLEMENTED;
     }
@@ -93,14 +107,60 @@ struct binary_op { //Assert inputs are trivial; result should be trivial
 };
 
 struct unary_op { //assert input is trivial; result should be trivial
-  enum ops { sal, sar };
-  static std::string_view ops_to_string(ops op) {
+  enum ops { int_to_v, v_to_int, uint_to_v, v_to_uint };
+  static ops string_to_op(std::string_view s) {
+    if (s == "int_to_v")return int_to_v;
+    if (s == "v_to_int")return v_to_int;
+    if (s == "uint_to_v")return uint_to_v;
+    if (s == "v_to_uint")return v_to_uint;
+    THROW_UNIMPLEMENTED
+  }
+
+  uint64_t of_constant(uint64_t v) {
     switch (op) {
-      case sal:return "sal";
-      case sar:return "sar";
+      case int_to_v:return uint64_t((int64_t(v) << 1) | 1);
+      case v_to_int:return uint64_t(int64_t(v) >> 1);;
+      case uint_to_v:return uint64_t((uint64_t(v) << 1) | 1);
+      case v_to_uint:return uint64_t(uint64_t(v) >> 1);
       default:THROW_UNIMPLEMENTED;
     }
   }
+  static std::string_view ops_to_string(ops op) {
+    switch (op) {
+      case int_to_v:return "int_to_v";
+      case v_to_int:return "v_to_int";
+      case uint_to_v:return "uint_to_v";
+      case v_to_uint:return "v_to_uint";
+      default:THROW_UNIMPLEMENTED;
+    }
+  }
+
+  static void compile(std::ostream &os, ops op, std::string_view src, std::string_view dst) {
+    switch (op) {
+
+      case int_to_v: {
+        os << "lea " << dst << ", [" << src << "+1+" << src << "]\n";
+        return;
+      };
+      case v_to_int: {
+        if (src != dst) {
+          os << "mov " << dst << ", " << src << "\n";
+        }
+        os << "sar " << dst << ", 1 \n";
+        return;
+      };
+      case uint_to_v: {
+        THROW_UNIMPLEMENTED
+        return;
+      };
+      case v_to_uint: {
+        THROW_UNIMPLEMENTED
+        return;
+      };
+      default: THROW_UNIMPLEMENTED
+    }
+  }
+
   ops op;
   var x;
 };
@@ -117,6 +177,11 @@ struct write_uninitialized_mem {
 struct cmp_vars {
   var v1, v2;
   enum ops { test, cmp }; //TODO: add others
+  static std::optional<ops> parse_op(std::string_view s) {
+    if (s == "test")return test;
+    if (s == "cmp")return cmp;
+    return {};
+  }
   static std::string_view ops_to_string(ops op) {
     switch (op) {
 
@@ -137,12 +202,22 @@ struct scope {
   var ret;
   void compile_as_function(std::ostream &os);
   void print(std::ostream &os, size_t offset = 0);
+  std::string to_string();
+  static scope parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
+  static scope parse(std::string_view source);
 };
 
 struct ternary {
   enum jmp_instr { jmp, jne, jle, jz }; //TODO: add others
   jmp_instr cond;
   scope nojmp_branch, jmp_branch;
+  static jmp_instr parse_jinstr(std::string_view s) {
+    if (s == "jmp")return jmp;
+    if (s == "jne")return jne;
+    if (s == "jle")return jle;
+    if (s == "jz")return jz;
+    THROW_INTERNAL_ERROR
+  }
   std::string_view ops_to_string() {
     switch (cond) {
 
@@ -155,6 +230,81 @@ struct ternary {
     }
   }
 };
+
+namespace parse {
+enum token_type {
+  IDENTIFIER, EQUAL, STAR, BRACKET_OPEN, BRACKET_CLOSE, CONSTANT, SEMICOLON, IF, THEN, ELSE, PARENS_OPEN, PARENS_CLOSE, CURLY_OPEN, CURLY_CLOSE, RETURN, ASSIGN, COMMA, END_OF_INPUT
+};
+
+namespace error {
+class t : public std::runtime_error {
+ public:
+  t() : std::runtime_error("parsing error") {}
+};
+
+class report_token : public t, public util::error::report_token_error {
+ public:
+  report_token(std::string_view found, std::string_view before, std::string_view after) : util::error::report_token_error(before, found, after) {}
+
+};
+
+class unexpected_token : public t, public util::error::report_token_error {
+ public:
+  unexpected_token(std::string_view found) : util::error::report_token_error("Token", found, "was not expected here") {}
+
+};
+
+class expected_token_found_another : public t, public util::error::report_token_error {
+ public:
+  expected_token_found_another(std::string_view expected, std::string_view found) : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
+};
+}
+
+namespace {
+typedef std::pair<std::string_view, token_type> st;
+}
+constexpr auto tokens_map = util::make_array(
+    st{"(", token_type::PARENS_OPEN},
+    st{")", token_type::PARENS_CLOSE},
+    st{"[", token_type::BRACKET_OPEN},
+    st{"]", token_type::BRACKET_CLOSE},
+    st{"{", token_type::CURLY_OPEN},
+    st{"}", token_type::CURLY_CLOSE},
+    st{"=", EQUAL}, st{":=", ASSIGN}, st{";", SEMICOLON},
+    st{"if", IF}, st{"then", THEN},
+    st{"else", ELSE}, st{"return", RETURN},
+    st{"*", STAR}, st{",", COMMA});
+
+struct token {
+
+  std::string_view sv;
+  token_type type;
+};
+
+class tokenizer {
+ public:
+  tokenizer(const tokenizer &) = default;
+  tokenizer(tokenizer &&) = default;
+  tokenizer &operator=(const tokenizer &) = default;
+  tokenizer &operator=(tokenizer &&) = default;
+  explicit tokenizer(std::string_view source);
+  token_type peek() const;
+  token peek_full() const;
+  std::string_view peek_sv() const;
+  token pop();
+  bool empty() const;
+  void expect_pop(token_type);
+  void expect_peek(token_type);
+  void expect_peek_any_of(std::initializer_list<token_type>);
+  void unexpected_token();
+  void print_errors();
+ private:
+  void write_head();
+  std::string_view to_parse, source;
+  token head;
+};
+
+}
 
 };
 
