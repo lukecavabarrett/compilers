@@ -1,7 +1,7 @@
 #ifndef COMPILERS_BML_LIB_IR_IR_H_
 #define COMPILERS_BML_LIB_IR_IR_H_
 
-#include <lang.h>
+#include <ir/lang.h>
 #include <list>
 
 namespace ir {
@@ -141,21 +141,39 @@ struct reg_lru {
     for (auto it = volatile_list.begin(); it != volatile_list.end(); ++it)its[*it].second = it;
     for (auto it = non_volatile_list.begin(); it != non_volatile_list.end(); ++it)its[*it].second = it;
   }
+  void assert_consistency() const {
+    assert(list.size() == reg::all.size());
+    std::array<bool,reg::all.size()> seen;
+    std::fill(seen.begin(),seen.end(), false);
+    for(const auto&[it_gl,it_lc] : its){
+      assert(*it_gl == *it_lc);
+      register_t r = *it_gl;
+      assert(!seen[r]);
+      seen[r]=true;
+    }
+    assert(std::all_of(seen.begin(),seen.end(),[](bool b){return b;}));
+  }
  public:
   reg_lru() : list(), volatile_list(reg::volatiles.begin(), reg::volatiles.end()), non_volatile_list(reg::non_volatiles.begin(), reg::non_volatiles.end()) {
-    list.insert(list.end(), reg::volatiles.begin(), reg::volatiles.end());
-    list.insert(list.end(), reg::non_volatiles.begin(), reg::non_volatiles.end());
+    for(register_t r : reg::volatiles)list.push_back(r);
+    for(register_t r : reg::non_volatiles)list.push_back(r);
     restore_its();
+    assert_consistency();
   };
   reg_lru(reg_lru &&) = default;
   reg_lru(const reg_lru &o) : list(o.list), volatile_list(o.volatile_list), non_volatile_list(o.non_volatile_list) {
+    assert(list.size() == o.list.size());
+    o.assert_consistency();
     restore_its();
+    assert_consistency();
+
   };
   reg_lru &operator=(const reg_lru &o) {
     list = o.list;
     volatile_list = o.volatile_list;
     non_volatile_list = o.volatile_list;
     restore_its();
+    assert_consistency();
     return *this;
   };
   reg_lru &operator=(reg_lru &&o) = default;
@@ -170,32 +188,46 @@ struct reg_lru {
     return *it;
   }
   void bring_front(register_t r) {
+    assert_consistency();
     auto&[gl_it, lc_it] = its[r];
     list.erase(gl_it);
     list.push_front(r);
     gl_it = list.begin();
     auto &lc_list = reg::is_volatile(r) ? volatile_list : non_volatile_list;
-    lc_list.erase(gl_it);
+    lc_list.erase(lc_it);
     lc_list.push_front(r);
-    gl_it = lc_list.begin();
+    lc_it = lc_list.begin();
+    assert_consistency();
 
   }
   void bring_back(register_t r) {
+    assert_consistency();
+
     auto&[gl_it, lc_it] = its[r];
     list.erase(gl_it);
     list.push_back(r);
     gl_it = --list.end();
     auto &lc_list = reg::is_volatile(r) ? volatile_list : non_volatile_list;
-    lc_list.erase(gl_it);
+    lc_list.erase(lc_it);
     lc_list.push_back(r);
-    gl_it = --lc_list.end();
+    lc_it = --lc_list.end();
+    assert_consistency();
+
   }
 };
 
 using namespace lang;
 struct context_t {
  private:
+
   void assert_consistency() const;
+  register_t free_reg(std::ostream &os);
+  void free_reg(register_t, std::ostream &os);
+  void move_to_stack(register_t, std::ostream &os);
+  void move_to_register(register_t src,register_t dst, std::ostream &os);
+  bool is_mem(var v) const;
+  bool is_reg_free(register_t r) const;
+  bool is_virtual(var v) const;
  public:
 
   context_t();
@@ -212,9 +244,10 @@ struct context_t {
   void make_non_both_mem(var v1, var v2, std::ostream &os);
   void make_both_non_mem(var v1, var v2, std::ostream &os);
   static context_t merge(context_t c1, std::ostream &os1, context_t c2, std::ostream &os2);
-  void return_clean(std::initializer_list<std::pair<var, register_t>> args, std::ostream &os); //vars will go into registers - stack empty - saved registers into place
+  void return_clean(const std::vector<std::pair<var, register_t>> &args, std::ostream &os); //vars will go into registers - stack empty - saved registers into place
   //clean for call - volatiles free.
-  void call_clean(std::initializer_list<std::pair<var, register_t>> args, std::ostream &); // those variable will go in the specified volatile registers.
+  void call_clean(const std::vector<std::pair<var, register_t>> &args, std::ostream &os); // those variable will go in the specified volatile registers.
+  void call_copy(const std::vector<std::pair<var, register_t>> &args, std::ostream &os);
   void compress_stack(std::ostream &);
 
   struct streamable {
@@ -231,12 +264,13 @@ struct context_t {
   std::string retrieve_to_string(var v) const;
   void retrieve(var v, std::ostream &os) const;
   bool are_volatiles_free(std::initializer_list<std::pair<var, register_t>> except = {}) const;
+  bool are_volatiles_free(const std::vector<std::pair<var, register_t>>& except = {}) const;
   bool are_nonvolatiles_restored() const;
   bool is_stack_empty() const;
  private:
   reg_lru lru;
 
-  struct constant { uint64_t value; bool operator==(constant o) const { return value == o.value; }};
+  struct constant { uint64_t value; bool operator==(constant o) const { return value == o.value; }bool operator!=(constant o) const { return value != o.value; }};
   typedef std::string global;
   typedef size_t on_stack;
   typedef register_t on_reg;
@@ -251,6 +285,9 @@ struct context_t {
   typedef std::variant<free, var, save> content_t;
   std::array<std::variant<free, var, save>, reg::all.size()> regs;
   std::vector<std::variant<free, var, save>> stack;
+
+  void reassign(strict_location_t);
+  static bool is_free(content_t);
 };
 
 std::ostream &operator<<(std::ostream &os, const context_t::streamable &);
@@ -261,14 +298,6 @@ struct offset {
 std::ostream &operator<<(std::ostream &os, const offset &o);
 
 std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> to_destroy);
-
-// Data structures:
-//1. Context
-//  a. mapping variable to their locations of type | Not_yet_created | Dead | Constant of value | Global of string | Stack of int | Register of reg
-
-//  b. mapping register to the variable in them, and mapping stack to variable in them
-//2. Last use
-//3. LCO
 
 bool unroll_last_copy(scope &s);
 

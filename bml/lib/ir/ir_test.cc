@@ -1,4 +1,5 @@
 #include <ir/lang.h>
+#include <ir/ir.h>
 #include <gtest/gtest.h>
 #include <rt/rt2.h>
 #include <numeric>
@@ -13,6 +14,8 @@ void test_ir_build(std::string_view source, const std::vector<int64_t> &args, co
   std::ofstream oasm;
   oasm.open(target ".asm");
   EXPECT_TRUE(oasm.is_open());
+  const auto &info = *::testing::UnitTest::GetInstance()->current_test_info();
+  oasm << "; TEST " << info.test_suite_name() << " > " << info.test_case_name() << " > " << info.name() << "\n";
   oasm << R"(
 section .data
 uint64_format db  "%llu", 0
@@ -32,6 +35,7 @@ test_function:
   for (int i = 0; i < args.size(); ++i) {
     oasm << "mov qword [rdi+" << i * 8 << "], " << rt::value::from_int(args[i]).v << "\n";
   }
+
   oasm << R"(
 call test_function
 mov     rsi, rax
@@ -47,7 +51,7 @@ ret
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o -o " target), 0);
   int exit_code = (WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout")));
-  EXPECT_EQ(exit_code,0);
+  EXPECT_EQ(exit_code, 0);
   int64_t actual_return = rt::value::from_raw(std::stoll(util::load_file(target ".stdout"))).to_int();
   //EXPECT_EQ(util::load_file(target ".stdout"), expected_stdout);
   //EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
@@ -55,6 +59,15 @@ ret
 #undef target
 }
 
+}
+
+TEST(RegLru, CopyConstr) {
+  ir::reg_lru rl1;
+
+  register_t r = rl1.front();
+  rl1.bring_back(r);
+
+  ir::reg_lru rl2(rl1);
 }
 
 TEST(Lang, IntMin) {
@@ -147,7 +160,7 @@ d = c;
 e = d;
 return e;
 )";
-  test_ir_build(source, {},42);
+  test_ir_build(source, {}, 42);
 }
 
 TEST(Build, PassingVar) {
@@ -159,7 +172,7 @@ d = c;
 e = d;
 return e;
 )";
-  test_ir_build(source, {42},42);
+  test_ir_build(source, {42}, 42);
 }
 
 TEST(Build, MakeTuple) {
@@ -170,7 +183,7 @@ block[7] := val;
 x = block[7];
 return x;
 )";
-  test_ir_build(source, {42},42);
+  test_ir_build(source, {42}, 42);
 }
 
 }
