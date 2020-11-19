@@ -37,7 +37,18 @@ typedef std::variant<assign, write_uninitialized_mem, cmp_vars> t;
 }
 namespace rhs_expr = instruction::rhs_expr;
 
+/*
+ TODO: destroy tag
+ then inference algorithm
+enum class destroy_tag {unknown = 0, trivial = 1, block_ptr = 2 };
+namespace destr{
+
+constexpr auto depth = util::make_array(1,2,3);
+
+}*/
+
 struct var {
+
   uint64_t id;
   constexpr explicit var(uint64_t id) : id(id) {}
   static inline uint64_t id_factory = 1;
@@ -59,6 +70,7 @@ struct var {
   }
   static std::unordered_map<uint64_t, std::string> maybe_names;
 };
+std::ostream &operator<<(std::ostream &os, const var &v);
 constexpr var argv_var(0);
 namespace instruction {
 namespace rhs_expr {
@@ -196,12 +208,12 @@ struct cmp_vars {
 
 struct scope {
   std::vector<instruction::t> body;
-  std::unordered_map<std::size_t, std::vector<var> > destroys; // destroys[i] must be destroyed before instruction i
+  std::vector<std::vector<var> > destroys; // destroys[i] must be destroyed before instruction i
   void push_back(instruction::t &&i);
   scope &operator<<(instruction::t &&i);
   var ret;
   void compile_as_function(std::ostream &os);
-  void print(std::ostream &os, size_t offset = 0);
+  void print(std::ostream &os, size_t offset = 0) const;
   std::string to_string();
   static scope parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
   static scope parse(std::string_view source);
@@ -307,5 +319,15 @@ class tokenizer {
 }
 
 };
+
+namespace std {
+template<>
+struct hash<ir::lang::var> {
+  std::size_t operator()(const ir::lang::var &k) const {
+    return k.id;
+  }
+};
+
+}
 
 #endif //COMPILERS_BML_LIB_IR_LANG_H_

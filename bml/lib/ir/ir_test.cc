@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <rt/rt2.h>
 #include <numeric>
+#include <charconv>
 
 namespace ir::lang {
 namespace {
@@ -13,6 +14,8 @@ void test_ir_build(std::string_view source, const std::vector<int64_t> &args, co
   oasm.open(target ".asm");
   EXPECT_TRUE(oasm.is_open());
   oasm << R"(
+section .data
+uint64_format db  "%llu", 0
 section .text
 global main
 extern printf, malloc, exit
@@ -29,15 +32,26 @@ test_function:
   for (int i = 0; i < args.size(); ++i) {
     oasm << "mov qword [rdi+" << i * 8 << "], " << rt::value::from_int(args[i]).v << "\n";
   }
+  oasm << R"(
+call test_function
+mov     rsi, rax
+xor     eax, eax
+mov     edi, uint64_format
+call    printf
+xor     eax, eax
+ret
+)";
   oasm << "call test_function\n";
   oasm << "ret\n";
   oasm.close();
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o -o " target), 0);
-  int64_t exit_code = rt::value::from_raw(WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout"))).to_int();
-  //EXPECT_EQ(load_file(target ".stdout"), expected_stdout);
+  int exit_code = (WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout")));
+  EXPECT_EQ(exit_code,0);
+  int64_t actual_return = rt::value::from_raw(std::stoll(util::load_file(target ".stdout"))).to_int();
+  //EXPECT_EQ(util::load_file(target ".stdout"), expected_stdout);
   //EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
-  EXPECT_EQ(exit_code, expected_return);
+  EXPECT_EQ(actual_return, expected_return);
 #undef target
 }
 
@@ -124,92 +138,39 @@ TEST(Build, SumTwentyVars) { sum_of_n_vars(20); }
 TEST(Build, SumThirtyVars) { sum_of_n_vars(20); }
 
 TEST(Build, PassingConstant) {
-
-  scope s;
-  var x;
-  s << (x.assign(34));
-  for (int i = 0; i < 10; ++i) {
-    var y;
-    s << (y.assign(x));
-    x = y;
-  }
-  s.ret = x;
-  /* std::cout << "-----------" << std::endl;
-
-   s.print(std::cout);
-   std::cout << "-----------" << std::endl;
-
-   s.compile_as_function(std::cout);*/
+  std::string_view source = R"(
+fortytwo = 42;
+a = int_to_v(fortytwo);
+b = a;
+c = b;
+d = c;
+e = d;
+return e;
+)";
+  test_ir_build(source, {},42);
 }
 
-TEST(Build, VarPass) {
-  scope s;
-  var x;
-  s << (x.assign(argv_var[3]));
-  for (int i = 0; i < 10; ++i) {
-    var y;
-    s << (y.assign(x));
-    x = y;
-  }
-  s.ret = x;
-  /* std::cout << "-----------" << std::endl;
-
-   s.print(std::cout);
-   std::cout << "-----------" << std::endl;
-
-   s.compile_as_function(std::cout);*/
-}
-/*
-TEST(Build, IntMin) {
-  scope s;
-  var x_sh("x_sh"), x("x"), next_arg("next_arg"), y_sh("y_sh"), y("y"), z("z");
-  std::cout << "x:" << x.id << " y:" << y.id << std::endl;
-  s << (x_sh.assign(argv_var[2]));
-  s << (x.assign(x_sh)); //TODO: sal
-  s << (next_arg.assign(argv_var[3]));
-  s << (y_sh.assign(next_arg[2]));
-  s << (y.assign(y_sh)); // TODO: sal
-  s << (instruction::cmp_vars{.v1 = y, .v2 = x, .op = instruction::cmp_vars::cmp});
-  auto t = std::make_unique<ternary>();
-  t->cond = ternary::jle;
-  t->nojmp_branch.ret = y;
-  t->jmp_branch.ret = x;
-  s << (z.assign(std::move(t)));
-  s.ret = z;
-  std::cout << "-----------" << std::endl;
-
-  s.print(std::cout);
-  std::cout << "-----------" << std::endl;
-
-  s.compile_as_function(std::cout);
+TEST(Build, PassingVar) {
+  std::string_view source = R"(
+a = *argv;
+b = a;
+c = b;
+d = c;
+e = d;
+return e;
+)";
+  test_ir_build(source, {42},42);
 }
 
-TEST(Build, IntMinPlus1) {
-  scope s;
-  var x_sh("x_sh"), x("x"), next_arg("next_arg"), y_sh("y_sh"), y("y"), z("z");
-  std::cout << "x:" << x.id << " y:" << y.id << std::endl;
-  s << (x_sh.assign(argv_var[2]));
-  s << (x.assign(x_sh)); //TODO: sal
-  s << (next_arg.assign(argv_var[3]));
-  s << (y_sh.assign(next_arg[2]));
-  s << (y.assign(y_sh)); // TODO: sal
-  s << (instruction::cmp_vars{.v1 = x, .v2 = y, .op = instruction::cmp_vars::cmp});
-  auto t = std::make_unique<ternary>();
-  t->cond = ternary::jle;
-  t->nojmp_branch.ret = x;
-  t->jmp_branch.ret = y;
-  s << (z.assign(std::move(t)));
-  var p1("plus");
-  var one("one");
-  s << (one.assign(1));
-  s << (p1.assign(rhs_expr::binary_op{.op = rhs_expr::binary_op::add, .x1 = z, .x2 = one}));
-  s.ret = p1;
-  std::cout << "-----------" << std::endl;
-
-  s.print(std::cout);
-  std::cout << "-----------" << std::endl;
-
-  s.compile_as_function(std::cout);
+TEST(Build, MakeTuple) {
+  std::string_view source = R"(
+block = malloc(10);
+val = *argv;
+block[7] := val;
+x = block[7];
+return x;
+)";
+  test_ir_build(source, {42},42);
 }
-*/
+
 }
