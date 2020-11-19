@@ -212,12 +212,19 @@ struct context_t {
   void make_non_both_mem(var v1, var v2, std::ostream &os);
   void make_both_non_mem(var v1, var v2, std::ostream &os);
   static context_t merge(context_t c1, std::ostream &os1, context_t c2, std::ostream &os2);
-  void return_clean(std::initializer_list<std::pair<var, register_t>> args, std::ostream &os); //that var will go in rax
+  void return_clean(std::initializer_list<std::pair<var, register_t>> args, std::ostream &os); //vars will go into registers - stack empty - saved registers into place
   //clean for call - volatiles free.
   void call_clean(std::initializer_list<std::pair<var, register_t>> args, std::ostream &); // those variable will go in the specified volatile registers.
   void compress_stack(std::ostream &);
 
-  struct streamable {};
+  struct streamable {
+    friend std::ostream &operator<<(std::ostream &os, const context_t::streamable &);
+    friend struct context_t;
+   private:
+    streamable(const context_t &context, var v);
+    const context_t &context;
+    const var v;
+  };
   bool contains(var v) const;
   size_t stack_size() const;
   streamable at(var v) const;
@@ -251,12 +258,7 @@ struct offset {
   offset(const size_t s) : s(s) {}
   const size_t s;
 };
-std::ostream &operator<<(std::ostream &os, const offset &o) {
-  if (o.s) {
-    os << "+" << o.s;
-  }
-  return os;
-}
+std::ostream &operator<<(std::ostream &os, const offset &o);
 
 std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> to_destroy);
 

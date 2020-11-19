@@ -57,6 +57,17 @@ bool contains(const V &v, const T &k) {
   return false;
 }
 }
+std::ostream &operator<<(std::ostream &os, const context_t::streamable & s) {
+  s.context.retrieve(s.v,os);
+  return os;
+}
+std::ostream &operator<<(std::ostream &os, const offset &o) {
+  if (o.s) {
+    os << "+" << o.s;
+  }
+  return os;
+}
+context_t::streamable::streamable(const context_t &context,  var v) : context(context) , v(v){}
 std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> to_destroy) {
   s.destroys.clear();
   s.destroys.resize(s.body.size() + 1, {});
@@ -307,12 +318,14 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   return c;
 }
 
+
 void scope::compile_as_function(std::ostream &os) {
   //TODO: destroyability analysis
   for (const var &v : scope_setup_destroys(*this, {argv_var}))destroys[0].push_back(v);
   scope_compile_rec(*this, os, context_t{}, true);
 
 }
+/*
 namespace old {
 struct context_t {
   //TODO: should store destruction state of variables (should this be here or not?)
@@ -773,6 +786,7 @@ struct context_t {
 
 };
 }
+*/
 namespace {
 
 template<typename T>
@@ -887,5 +901,19 @@ void context_t::retrieve(var v, std::ostream &os) const {
       },
   }, vars.at(v));
   assert_consistency();
+}
+std::string context_t::retrieve_to_string(var v) const {
+  std::stringstream s;
+  retrieve(v,s);
+  return s.str();
+}
+context_t::streamable context_t::at(var v) const {
+  return context_t::streamable(ir::context_t(), lang::var());
+}
+size_t context_t::stack_size() const {
+  return stack.size();
+}
+bool context_t::contains(var v) const {
+  return vars.contains(v);
 }
 }
