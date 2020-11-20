@@ -228,6 +228,8 @@ struct context_t {
   bool is_mem(var v) const;
   bool is_reg_free(register_t r) const;
   bool is_virtual(var v) const;
+  void devirtualize(var v, std::ostream&os);
+
  public:
 
   context_t();
@@ -288,6 +290,8 @@ struct context_t {
 
   void reassign(strict_location_t);
   static bool is_free(content_t);
+  void move(strict_location_t,strict_location_t ,std::ostream&);
+  strict_location_t location(content_t)const;
 };
 
 std::ostream &operator<<(std::ostream &os, const context_t::streamable &);
