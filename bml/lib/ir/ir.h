@@ -224,7 +224,7 @@ struct context_t {
   register_t free_reg(std::ostream &os);
   void free_reg(register_t, std::ostream &os);
   void move_to_stack(register_t, std::ostream &os);
-  void move_to_register(register_t src,register_t dst, std::ostream &os);
+  void move_to_register(register_t dst, register_t src, std::ostream &os);
   bool is_mem(var v) const;
   bool is_reg_free(register_t r) const;
   bool is_virtual(var v) const;

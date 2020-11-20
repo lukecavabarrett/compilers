@@ -563,21 +563,10 @@ register_t context_t::free_reg(std::ostream &os) {
   assert(std::holds_alternative<free>(regs[r]));
   return r;
 }
-void context_t::move_to_register(register_t src, register_t dst, std::ostream &os) {
+void context_t::move_to_register(register_t dst, register_t src, std::ostream &os) {
   assert_consistency();
   assert(is_reg_free(dst));
-  if (is_reg_free(src))return;
-  std::visit(overloaded{
-      ignore<free>(),
-      [&](var v) {
-        vars[v] = dst;
-      },
-      [&](save sr) {
-        saved[sr] = dst;
-      }
-  }, regs[src]);
-  std::swap(regs[dst], regs[src]);
-  os << "mov " << reg::to_string(dst) << ", " << reg::to_string(src) << " \n";
+  move(dst,src,os);
   assert_consistency();
 }
 void context_t::move_to_stack(register_t r, std::ostream &os) {
@@ -914,7 +903,7 @@ void context_t::call_clean(const std::vector<std::pair<var, register_t>> &args, 
       auto nr = lru.front_non_volatile();
       if (is_reg_free(nr)) {
         //use reg
-        move_to_register(r, nr, os);
+        move_to_register(nr, r, os);
         lru.bring_back(nr);
       } else {
         //use stack
