@@ -40,20 +40,25 @@ namespace rhs_expr = instruction::rhs_expr;
 /*
  TODO: destroy tag
  then inference algorithm
-enum class destroy_tag {unknown = 0, trivial = 1, block_ptr = 2 };
-namespace destr{
-
-constexpr auto depth = util::make_array(1,2,3);
-
 }*/
+enum destroy_class : uint8_t { unboxed = 1, global = 2, non_trivial = 4, value = unboxed | global | non_trivial, trivial = unboxed | global , boxed = global | non_trivial, non_global = value & (~global) };
+static_assert(trivial==3);
+static_assert(boxed==6);
+static_assert(non_global==5);
+static_assert(value==7);
+
+
 
 struct var {
 
   uint64_t id;
-  constexpr explicit var(uint64_t id) : id(id) {}
-  static inline uint64_t id_factory = 1;
-  explicit var() : id(++id_factory) {}
-  explicit var(std::string_view name) : id(++id_factory) { maybe_names.try_emplace(id, name); }
+  //constexpr explicit var(uint64_t id) : id(id) {}
+  static inline uint64_t id_factory = 0;
+  explicit var() : id(id_factory++) {
+    destroy_classes.push_back(value);
+    assert(destroy_classes.size() == id + 1);
+  }
+  explicit var(std::string_view name) : var() { maybe_names.try_emplace(id, name); }
   var(const var &) = default;
   var(var &&) = default;
   var &operator=(const var &) = default;
@@ -69,9 +74,9 @@ struct var {
     else os << "var__" << id;
   }
   static std::unordered_map<uint64_t, std::string> maybe_names;
+  static std::vector<destroy_class> destroy_classes;
 };
 std::ostream &operator<<(std::ostream &os, const var &v);
-constexpr var argv_var(0);
 namespace instruction {
 namespace rhs_expr {
 //src
@@ -212,11 +217,18 @@ struct scope {
   void push_back(instruction::t &&i);
   scope &operator<<(instruction::t &&i);
   var ret;
-  void compile_as_function(std::ostream &os);
+
   void print(std::ostream &os, size_t offset = 0) const;
   std::string to_string();
-  static scope parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
-  static scope parse(std::string_view source);
+  void parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
+};
+
+struct function : public scope {
+  std::vector<std::pair<std::string_view,var>> args;
+  std::string_view name;
+  void parse(parse::tokenizer &);
+  void print(std::ostream &os, size_t offset = 0) const;
+  void compile(std::ostream &os);
 };
 
 struct ternary {
@@ -245,7 +257,7 @@ struct ternary {
 
 namespace parse {
 enum token_type {
-  IDENTIFIER, EQUAL, STAR, BRACKET_OPEN, BRACKET_CLOSE, CONSTANT, SEMICOLON, IF, THEN, ELSE, PARENS_OPEN, PARENS_CLOSE, CURLY_OPEN, CURLY_CLOSE, RETURN, ASSIGN, COMMA, END_OF_INPUT
+  IDENTIFIER, EQUAL, STAR, BRACKET_OPEN, BRACKET_CLOSE, CONSTANT, SEMICOLON, IF, THEN, ELSE, PARENS_OPEN, PARENS_CLOSE, CURLY_OPEN, CURLY_CLOSE, RETURN, ASSIGN, COMMA, COLON, END_OF_INPUT
 };
 
 namespace error {
@@ -276,13 +288,14 @@ namespace {
 typedef std::pair<std::string_view, token_type> st;
 }
 constexpr auto tokens_map = util::make_array(
-    st{"(", token_type::PARENS_OPEN},
-    st{")", token_type::PARENS_CLOSE},
-    st{"[", token_type::BRACKET_OPEN},
-    st{"]", token_type::BRACKET_CLOSE},
-    st{"{", token_type::CURLY_OPEN},
-    st{"}", token_type::CURLY_CLOSE},
+    st{"(", PARENS_OPEN},
+    st{")", PARENS_CLOSE},
+    st{"[", BRACKET_OPEN},
+    st{"]", BRACKET_CLOSE},
+    st{"{", CURLY_OPEN},
+    st{"}", CURLY_CLOSE},
     st{"=", EQUAL}, st{":=", ASSIGN}, st{";", SEMICOLON},
+    st{":",COLON},
     st{"if", IF}, st{"then", THEN},
     st{"else", ELSE}, st{"return", RETURN},
     st{"*", STAR}, st{",", COMMA});
@@ -310,6 +323,7 @@ class tokenizer {
   void expect_peek_any_of(std::initializer_list<token_type>);
   void unexpected_token();
   void print_errors();
+  std::string_view get_source() const;
  private:
   void write_head();
   std::string_view to_parse, source;

@@ -1,5 +1,6 @@
 #include <ir.h>
 #include <lang.h>
+#include <boost/iterator/transform_iterator.hpp>
 
 namespace ir {
 using namespace util;
@@ -53,8 +54,7 @@ namespace {
 
 template<typename T, typename V>
 bool contains(const V &v, const T &k) {
-  for (const auto &x : v)if (x == k)return true;
-  return false;
+  return std::find(v.cbegin(), v.cend(), k) != v.cend();
 }
 }
 std::ostream &operator<<(std::ostream &os, const context_t::streamable &s) {
@@ -248,6 +248,10 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   //TODO: optimize jump structure for when either of the body is empty
                 },
                 [&](rhs_expr::unary_op &u) {
+                  if (auto opt = c.is_constant(u.x); opt) {
+                    c.declare_const(a.dst, u.of_constant(opt.value()));
+                    return;
+                  }
                   os << " ;";
                   a.dst.print(os);
                   os << " = " << rhs_expr::unary_op::ops_to_string(u.op) << "(";
@@ -320,11 +324,14 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   return c;
 }
 
-void scope::compile_as_function(std::ostream &os) {
+void function::compile(std::ostream &os) {
   //TODO: destroyability analysis
-  for (const var &v : scope_setup_destroys(*this, {argv_var}))destroys[0].push_back(v);
-  scope_compile_rec(*this, os, context_t{}, true);
-
+  auto view_second = [](auto it) { return boost::make_transform_iterator(it, std::mem_fn(&std::pair<std::string_view, var>::second)); };
+  for (const var &v : scope_setup_destroys(*this, std::unordered_set<var>(view_second(args.begin()), view_second(args.end())))) {
+    destroys[0].push_back(v);
+  }
+  os << name << ":\n";
+  scope_compile_rec(*this, os, context_t(view_second(args.begin()), view_second(args.end())), true);
 }
 namespace {
 
@@ -407,9 +414,6 @@ void context_t::assert_consistency() const {
 context_t::context_t() {
   for (auto r : reg::all)regs[r] = reg::is_volatile(r) ? content_t(free()) : content_t(save{r});
   for (auto r : reg::non_volatiles)saved[r] = on_reg{r};
-  regs[rdi] = argv_var;
-  vars[argv_var] = rdi;
-  lru.bring_back(rdi);
   assert_consistency();
 }
 bool context_t::is_stack_empty() const {
@@ -516,6 +520,16 @@ void context_t::declare_const(var v, uint64_t value) {
   vars[v] = constant{.value = value};
   assert_consistency();
 }
+std::optional<uint64_t> context_t::is_constant(var v) const {
+  assert(vars.contains(v));
+  return std::visit(overloaded{
+      [](constant c) -> std::optional<uint64_t> { return c.value; },
+      [](const global &) -> std::optional<uint64_t> { return {}; },
+      [](const on_reg &) -> std::optional<uint64_t> { return {}; },
+      [](const on_stack &) -> std::optional<uint64_t> { return {}; }
+  }, vars.at(v));
+}
+
 void context_t::declare_global(var v, std::string_view name) {
   assert_consistency();
   assert(!vars.contains(v));
@@ -566,7 +580,7 @@ register_t context_t::free_reg(std::ostream &os) {
 void context_t::move_to_register(register_t dst, register_t src, std::ostream &os) {
   assert_consistency();
   assert(is_reg_free(dst));
-  move(dst,src,os);
+  move(dst, src, os);
   assert_consistency();
 }
 void context_t::move_to_stack(register_t r, std::ostream &os) {
@@ -666,24 +680,8 @@ void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args
 
 
   //Step 1. restore nonvolatiles
-  for (auto r : reg::non_volatiles)
-    if (regs[r] != content_t{r}) {
-      std::visit(overloaded{
-                     [&](on_reg sr) {
-                       os << (is_reg_free(r) ? "mov " : "xchg ") << reg::to_string(r) << ", " << reg::to_string(sr) << "\n";
-                       std::swap(regs[r], regs[sr]);
-                       reassign(sr);
-                       saved[r] = r;
-                     },
-                     [&](on_stack p) {
-                       os << (is_reg_free(r) ? "mov " : "xchg ") << reg::to_string(r) << ", qword [rsp" << offset(stack.size() - 1 - p) << "]" << "\n";
-                       std::swap(regs[r], stack[p]);
-                       reassign(p);
-                       saved[r] = r;
-                     }
-                 },
-                 saved[r]);
-    }
+  for (auto r : reg::non_volatiles)move(r, location(r), os);
+
   assert_consistency();
   assert(are_nonvolatiles_restored());
 
@@ -823,7 +821,7 @@ context_t context_t::merge(context_t c1, std::ostream &os1, context_t c2, std::o
   if (c1.regs != c2.regs) {
     for (auto r : reg::all) {
       while (!c2.is_reg_free(r) && !(c1.regs[r] == c2.regs[r])) {
-        c1.move(r,c1.location(c2.regs[r]),os1);
+        c1.move(r, c1.location(c2.regs[r]), os1);
       }
     }
   }
@@ -977,15 +975,15 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
       [&](on_reg r_dst) {
         std::visit(overloaded{
             [&](on_reg r_src) {
-              if(r_src==r_dst)return;
-              os << (is_reg_free(r_dst) ? "mov " : "xchg ")<<reg::to_string(r_dst)<<", "<<reg::to_string(r_src)<<"\n";
-              std::swap(regs[r_src],regs[r_dst]);
+              if (r_src == r_dst)return;
+              os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", " << reg::to_string(r_src) << "\n";
+              std::swap(regs[r_src], regs[r_dst]);
               reassign(src);
               reassign(dst);
-              },
+            },
             [&](on_stack p_src) {
-              os << (is_reg_free(r_dst) ? "mov " : "xchg ")<<reg::to_string(r_dst)<<", qword [rsp"<<offset(stack.size()-1-p_src)<<"]\n";
-              std::swap(stack[p_src],regs[r_dst]);
+              os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", qword [rsp" << offset(stack.size() - 1 - p_src) << "]\n";
+              std::swap(stack[p_src], regs[r_dst]);
               reassign(src);
               reassign(dst);
             }
@@ -994,17 +992,17 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
       [&](on_stack p_dst) {
         std::visit(overloaded{
             [&](on_reg r_src) {
-              os << (is_free(stack[p_dst]) ? "mov " : "xchg ")<<" qword [rsp"<<offset(stack.size()-1-p_dst)<<"], "<<reg::to_string(r_src)<<"\n";
-              std::swap(regs[r_src],stack[p_dst]);
+              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp" << offset(stack.size() - 1 - p_dst) << "], " << reg::to_string(r_src) << "\n";
+              std::swap(regs[r_src], stack[p_dst]);
               reassign(src);
               reassign(dst);
             },
             [&](on_stack p_src) {
-              if(p_src==p_dst)return;
-              os << "xchg rax, qword [rsp"<<offset(stack.size()-1-p_dst)<<"]\n";
-              os << "xchg rax, qword [rsp"<<offset(stack.size()-1-p_src)<<"]\n";
-              os << "xchg rax, qword [rsp"<<offset(stack.size()-1-p_dst)<<"]\n";
-              std::swap(stack[p_src],stack[p_dst]);
+              if (p_src == p_dst)return;
+              os << "xchg rax, qword [rsp" << offset(stack.size() - 1 - p_dst) << "]\n";
+              os << "xchg rax, qword [rsp" << offset(stack.size() - 1 - p_src) << "]\n";
+              os << "xchg rax, qword [rsp" << offset(stack.size() - 1 - p_dst) << "]\n";
+              std::swap(stack[p_src], stack[p_dst]);
               reassign(src);
               reassign(dst);
             }
@@ -1015,17 +1013,17 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
 }
 context_t::strict_location_t context_t::location(content_t c) const {
   return std::visit(overloaded{
-      [](const free&) -> strict_location_t {THROW_INTERNAL_ERROR},
+      [](const free &) -> strict_location_t { THROW_INTERNAL_ERROR },
       [&](var v) -> strict_location_t {
         return std::visit(overloaded{
-            [](const constant&)-> strict_location_t {THROW_INTERNAL_ERROR},
-            [](const global &)-> strict_location_t {THROW_INTERNAL_ERROR},
-            [](on_reg r)-> strict_location_t {return r;},
-            [](on_stack p)-> strict_location_t {return p;},
-          },vars.at(v));
-        },
-      [&](save r) -> strict_location_t {return saved[r];},
-    },c);
+            [](const constant &) -> strict_location_t { THROW_INTERNAL_ERROR },
+            [](const global &) -> strict_location_t { THROW_INTERNAL_ERROR },
+            [](on_reg r) -> strict_location_t { return r; },
+            [](on_stack p) -> strict_location_t { return p; },
+        }, vars.at(v));
+      },
+      [&](save r) -> strict_location_t { return saved[r]; },
+  }, c);
 }
 
 }

@@ -13,3 +13,5 @@ target_compile_features(rt PRIVATE cxx_std_17)
 
 add_executable(rt_test rt_test.cc)
 target_link_libraries(rt_test gtest gtest_main rt)
+
+add_executable(rt_c rt.c)

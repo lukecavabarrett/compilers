@@ -372,6 +372,8 @@ TEST(Build, Stream) {
 
   let () = print_int_stream 10 (partial_sum int_sum 0 (iota 1)) ;;
 
+  (* let not_divisibly_by d n = not ((n mod d) = 0) ;; *)
+
 
                       )",
              "42 43 44 45 46 47 48 49 50 51 52\n"

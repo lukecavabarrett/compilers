@@ -5,10 +5,6 @@
 #include <list>
 #include <charconv>
 
-
-
-
-
 namespace ir::lang {
 std::ostream &operator<<(std::ostream &os, const var &v) {
   v.print(os);
@@ -39,6 +35,7 @@ namespace {
 using namespace parse;
 std::string_view token_type_to_string(token_type t) {
   for (const auto&[p, t_i] : tokens_map)if (t_i == t)return p;
+  if(t==IDENTIFIER)return "identifier";
   THROW_UNIMPLEMENTED
 }
 
@@ -105,10 +102,14 @@ void tokenizer::unexpected_token() {
   throw error::unexpected_token(head.sv);
   //throw std::runtime_error("expected \"TK\", found another");
 }
+std::string_view tokenizer::get_source() const {
+  return source;
+}
 
 }
 
-std::unordered_map<uint64_t, std::string> var::maybe_names = {{0, "__argv"}};
+std::unordered_map<uint64_t, std::string> var::maybe_names;
+std::vector<destroy_class> var::destroy_classes;
 
 rhs_expr::memory_access var::operator*() const {
   return rhs_expr::memory_access{.base = *this, .block_offset = 0};
@@ -179,9 +180,11 @@ void scope::print(std::ostream &os, size_t offset) const {
   ret.print(os);
   os << ";\n";
 }
-scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var> &names) {
-  scope s;
+void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var> &names) {
   using namespace parse;
+  this->destroys.clear();
+  this->body.clear();
+  std::vector<std::string_view> inserted_names;
   while (!tk.empty() && tk.peek() != RETURN) {
     bool had_star = false;
     if (tk.peek() == STAR) {
@@ -190,12 +193,19 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
     }
     tk.expect_peek(IDENTIFIER);
     auto i = tk.pop().sv;
+
+    if(tk.peek()==COLON){
+      tk.expect_pop(COLON);
+      tk.expect_pop(IDENTIFIER);
+    }
+
     if (tk.peek() == EQUAL) {
       assert(!had_star);
       //TODO: vardef
       assert(!names.contains(i));
       var v(i);
       names.try_emplace(i, v);
+      inserted_names.push_back(i);
       tk.expect_pop(EQUAL);
       switch (tk.peek()) {
 
@@ -211,7 +221,7 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
             assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), addr).ec == std::errc());
             tk.pop();
             tk.expect_pop(BRACKET_CLOSE);
-            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base = names.at(a), .block_offset = addr}});
+            push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base = names.at(a), .block_offset = addr}});
 
           } else if (a == "malloc") {
             //malloc
@@ -221,7 +231,7 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
             assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
             tk.pop();
             tk.expect_pop(PARENS_CLOSE);
-            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::malloc{.size = val}});
+            push_back(instruction::assign{.dst = v, .src=rhs_expr::malloc{.size = val}});
           } else if (a == "apply_fn") {
             //malloc
             THROW_UNIMPLEMENTED
@@ -239,19 +249,19 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
               assert(names.contains(tk.peek_sv()));
               var op2 = names.at(tk.pop().sv);
               auto op = rhs_expr::binary_op::string_to_op(a);
-              s.push_back(instruction::assign{.dst = v, .src=rhs_expr::binary_op{.op=op, .x1 = op1, .x2 = op2}});
+              push_back(instruction::assign{.dst = v, .src=rhs_expr::binary_op{.op=op, .x1 = op1, .x2 = op2}});
             } else {
               //unary operand
               auto op = rhs_expr::unary_op::string_to_op(a);
-              s.push_back(instruction::assign{.dst = v, .src=rhs_expr::unary_op{.op=op, .x = op1}});
+              push_back(instruction::assign{.dst = v, .src=rhs_expr::unary_op{.op=op, .x = op1}});
             }
             tk.expect_pop(PARENS_CLOSE);
           } else if (names.contains(a)) {
             //copy
-            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::copy{.v = names.at(a)}});
+            push_back(instruction::assign{.dst = v, .src=rhs_expr::copy{.v = names.at(a)}});
           } else {
             //global
-            s.push_back(instruction::assign{.dst = v, .src=rhs_expr::global{.name = std::string(a)}});
+            push_back(instruction::assign{.dst = v, .src=rhs_expr::global{.name = std::string(a)}});
 
           }
           break;
@@ -260,12 +270,12 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
           uint64_t val;
           assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
           tk.pop();
-          s.push_back(instruction::assign{.dst = v, .src=rhs_expr::constant(val)});
+          push_back(instruction::assign{.dst = v, .src=rhs_expr::constant(val)});
           break;
         };
 
         case IF: {
-          //TODO: ternary
+          // ternary
           tk.expect_pop(IF);
           tk.expect_pop(PARENS_OPEN);
           tk.expect_peek(IDENTIFIER);
@@ -275,13 +285,13 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
           tk.expect_pop(PARENS_CLOSE);
           tk.expect_pop(THEN);
           tk.expect_pop(CURLY_OPEN);
-          b->nojmp_branch = scope::parse(tk, names);
+          b->nojmp_branch.parse(tk, names);
           tk.expect_pop(CURLY_CLOSE);
           tk.expect_pop(ELSE);
           tk.expect_pop(CURLY_OPEN);
-          b->jmp_branch = scope::parse(tk, names);
+          b->jmp_branch.scope::parse(tk, names);
           tk.expect_pop(CURLY_CLOSE);
-          s.push_back(instruction::assign{.dst=v, .src=rhs_expr::branch(std::move(b))});
+          push_back(instruction::assign{.dst=v, .src=rhs_expr::branch(std::move(b))});
           break;
         };
         case STAR: {
@@ -290,7 +300,7 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
           tk.expect_peek(IDENTIFIER);
           auto src = tk.pop().sv;
           assert(names.contains(src));
-          s.push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base=names.at(src), .block_offset = 0}});
+          push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base=names.at(src), .block_offset = 0}});
           break;
         }
         default:THROW_INTERNAL_ERROR;
@@ -308,7 +318,7 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
       assert(names.contains(tk.peek_sv()));
       var op2 = names.at(tk.pop().sv);
       tk.expect_pop(PARENS_CLOSE);
-      s.push_back(instruction::cmp_vars{.v1 = op1, .v2 = op2, .op = op.value()});
+      push_back(instruction::cmp_vars{.v1 = op1, .v2 = op2, .op = op.value()});
 
     } else {
       //memory assignment
@@ -325,7 +335,7 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
       tk.expect_peek(IDENTIFIER);
       auto src = tk.pop().sv;
       assert(names.contains(src));
-      s.push_back(instruction::write_uninitialized_mem{.base = names.at(i), .block_offset = addr, .src = names.at(src)});
+      push_back(instruction::write_uninitialized_mem{.base = names.at(i), .block_offset = addr, .src = names.at(src)});
     }
     tk.expect_pop(SEMICOLON);
   }
@@ -334,21 +344,49 @@ scope scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, va
   auto retv = tk.pop().sv;
   tk.expect_pop(SEMICOLON);
   assert(names.contains(retv));
-  s.ret = names.at(retv);
-  return s;
-
+  ret = names.at(retv);
+  for (std::string_view s : inserted_names)names.erase(s);
 }
-scope scope::parse(std::string_view source) {
-  parse::tokenizer tk(source);
-  std::unordered_map<std::string_view, var> names = {{"argv", argv_var}};
-  try {
 
-    return parse(tk, names);
+void function::parse(parse::tokenizer &tk) {
+  try {
+    using namespace parse;
+    tk.expect_peek(IDENTIFIER);
+    name = tk.pop().sv;
+    std::unordered_map<std::string_view, var> names;
+    tk.expect_pop(PARENS_OPEN);
+    while (tk.peek() != PARENS_CLOSE) {
+      tk.expect_peek(IDENTIFIER);
+      std::string_view param_name = tk.pop().sv;
+      if (tk.peek() == COMMA)tk.pop();
+      assert(!names.contains(param_name));
+      var v(param_name);
+      names.try_emplace(param_name, v);
+      args.emplace_back(param_name, v);
+    }
+    tk.expect_pop(PARENS_CLOSE);
+    tk.expect_pop(CURLY_OPEN);
+    scope::parse(tk, names);
+    tk.expect_pop(CURLY_CLOSE);
   } catch (const util::error::message &e) {
-    e.print(std::cout, source, "source.ir");
+    e.print(std::cout, tk.get_source(), "source.ir");
     throw std::runtime_error("ir parsing error");
   }
+
 }
+void function::print(std::ostream &os, size_t offset) const {
+  os << name << "(";
+  bool comma = false;
+  for (const auto&[s, _] : args) {
+    if (comma)os << ", ";
+    comma = true;
+    os << s;
+  }
+  os << ") {\n";
+  scope::print(os, offset + 1);
+  os << "}\n";
+}
+
 std::string scope::to_string() {
   std::stringstream s;
   print(s);

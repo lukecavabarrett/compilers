@@ -233,10 +233,22 @@ struct context_t {
  public:
 
   context_t();
+  template<typename InputIt>
+  context_t(InputIt first, InputIt last) : context_t() {
+    static constexpr auto args_reg =  util::make_array(rdi, rsi); //TODO: add more
+    auto it = args_reg.begin();
+    for(;first!=last;++first,++it){
+      assert(it!=args_reg.end());// Need to specify more initial locations!
+      regs[*it] = *first;
+      vars[*first] = *it;
+      lru.bring_back(*it);
+    }
+  }
 
   void destroy(var v, std::ostream &);
   void destroy(const std::vector<var> &, std::ostream &);
   void declare_const(var v, uint64_t value);
+  std::optional<uint64_t> is_constant(var v) const;
   void declare_global(var v, std::string_view name);
   void declare_copy(var dst, var src, std::ostream &os);
   void declare_move(var dst, var src);

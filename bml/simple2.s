@@ -1,24 +1,22 @@
 ;yasm -g dwarf2 -f elf64 simple2.s -l simple2.lst; gcc -no-pie simple2.o -o simple2;
 section .data
-answer dq 0
-another_answer dq 0
-int_format db "%lld",10,0
 
 section .text
 global main
-extern printf
+extern _Z14print_no_cyclem, malloc
+
+
+
 main:
-    mov rax, 85
-    mov qword [answer], rax
-    mov rax, qword [another_answer]
-
-.LC19
-    jmp .LC19
-    mov qword [another_answer], rax
-
-mov     edi, int_format
-mov     rsi, 43
-call    printf
-
-xor eax, eax
-ret
+    mov rdi, 5*8
+    call malloc
+    mov qword [rax], 3
+    mov rdi, 0x0000000100000003
+    mov qword [rax+8], rdi
+    mov qword [rax+16], 1*2+1
+    mov qword [rax+24], 2*2+1
+    mov qword [rax+32], 3*2+1
+    mov rdi, rax
+    call _Z14print_no_cyclem
+    xor eax, eax
+    ret

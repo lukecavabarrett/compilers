@@ -43,15 +43,15 @@ apply_fn:
         pop     rbp
         jmp     rdx
 
-int_sum_fn:
-        mov     rax, qword [rdi+16]
-        mov     rdx, qword [rdi+24]
-        mov     rax, qword [rax+24]
-        sar     rdx, 1
-        sar     rax, 1
-        add     rax, rdx
-        lea     rax, [rax+1+rax]
-        ret
+;int_sum_fn:
+;        mov     rax, qword [rdi+16]
+;        mov     rdx, qword [rdi+24]
+;        mov     rax, qword [rax+24]
+;        sar     rdx, 1
+;        sar     rax, 1
+;        add     rax, rdx
+;        lea     rax, [rax+1+rax]
+;        ret
 
 int_sub_fn:
         mov     rax, qword [rdi+16]

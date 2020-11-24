@@ -113,6 +113,22 @@ void tokenizer::write_head() {
     head = token{.sv=std::string_view(), .type=END_OF_INPUT};
     return;
   }
+  if(to_parse.size() >=2 && to_parse[0]=='(' && to_parse[1]=='*'){
+    std::string_view start_comment(to_parse.begin(),2);
+    to_parse.remove_prefix(2);
+    size_t nested_comment = 1;
+    while(!to_parse.empty() && nested_comment){
+      if(to_parse.size() >=2 && to_parse[0]=='(' && to_parse[1]=='*'){
+        ++nested_comment;
+        to_parse.remove_prefix(2);
+      } else if(to_parse.size() >=2 && to_parse[0]=='*' && to_parse[1]==')'){
+        --nested_comment;
+        to_parse.remove_prefix(2);
+      } else to_parse.remove_prefix(1);
+    }
+    if(nested_comment)throw error::report_token("Begin of comment ",start_comment," is unmatched.");
+    return write_head();
+  }
   for (const auto&[p, t] : tokens_map)
     if (startswith_legal(to_parse, p)) {
       head = token{.sv=std::string_view(to_parse.begin(), p.size()), .type=t};
