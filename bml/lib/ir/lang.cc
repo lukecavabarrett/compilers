@@ -13,6 +13,17 @@ std::ostream &operator<<(std::ostream &os, const var &v) {
 
 namespace parse {
 
+std::optional<destroy_class_t> destroy_class_of_string(std::string_view str) {
+  static std::unordered_map<std::string_view, destroy_class_t> const table =
+      {{"unboxed", unboxed}, {"global", global}, {"non_trivial", non_trivial}, {"Value", value},
+       {"trivial", trivial}, {"boxed", boxed}, {"non_global", non_global}};
+  if (auto it = table.find(str);it != table.end()) {
+    return it->second;
+  } else {
+    return {};
+  }
+}
+
 namespace {
 using namespace util;
 bool allowed_in_identifier(char c) {
@@ -35,7 +46,7 @@ namespace {
 using namespace parse;
 std::string_view token_type_to_string(token_type t) {
   for (const auto&[p, t_i] : tokens_map)if (t_i == t)return p;
-  if(t==IDENTIFIER)return "identifier";
+  if (t == IDENTIFIER)return "identifier";
   THROW_UNIMPLEMENTED
 }
 
@@ -76,7 +87,8 @@ void tokenizer::write_head() {
 
   auto end = std::find_if_not(to_parse.begin(), to_parse.end(), allowed_in_identifier);
   if (to_parse.begin() == end) {
-    throw std::runtime_error(formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
+    throw std::runtime_error(
+        formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
   }
   head = {.sv=itr_sv(to_parse.begin(), end), .type= token_type::IDENTIFIER};
   to_parse.remove_prefix(end - to_parse.begin());
@@ -109,7 +121,7 @@ std::string_view tokenizer::get_source() const {
 }
 
 std::unordered_map<uint64_t, std::string> var::maybe_names;
-std::vector<destroy_class> var::destroy_classes;
+std::vector<destroy_class_t> var::destroy_classes;
 
 rhs_expr::memory_access var::operator*() const {
   return rhs_expr::memory_access{.base = *this, .block_offset = 0};
@@ -134,6 +146,20 @@ void scope::push_back(instruction::t &&i) {
 }
 void scope::print(std::ostream &os, size_t offset) const {
   using namespace util;
+  auto print_destroy = [&](int i,size_t offset,bool newline=false){
+    if(destroys.at(i).empty())return;
+    while(offset--)os << "  ";
+    os << "//destroying ";
+    bool comma = false;
+    for(var v : destroys.at(i)){
+      if(comma)os<<", ";
+      comma=true;
+      os<<v;
+    }
+    if(newline)os<<"\n";
+  };
+  print_destroy(0,offset,true);
+  size_t idx = 0;
   for (auto &it : body) {
     for (int i = offset; i--;)os << "  ";
     std::visit(overloaded{
@@ -173,7 +199,10 @@ void scope::print(std::ostream &os, size_t offset) const {
           os << instruction::cmp_vars::ops_to_string(a.op) << "(" << a.v1 << ", " << a.v2 << ")";
         },
     }, it);
-    os << ";\n";
+    os << "; ";
+    ++idx;
+    print_destroy(idx,1);
+    os << "\n";
   }
   for (int i = offset; i--;)os << "  ";
   os << "return ";
@@ -193,17 +222,22 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
     }
     tk.expect_peek(IDENTIFIER);
     auto i = tk.pop().sv;
-
-    if(tk.peek()==COLON){
+    std::optional<destroy_class_t> dc;
+    if (tk.peek() == COLON) {
       tk.expect_pop(COLON);
-      tk.expect_pop(IDENTIFIER);
+      tk.expect_peek(IDENTIFIER);
+      dc = destroy_class_of_string(tk.peek_sv());
+      if (!dc) throw error::report_token(tk.peek_sv(), "Specifier", "is not a recognized destroyability class");
+
+      tk.pop();
     }
 
     if (tk.peek() == EQUAL) {
       assert(!had_star);
-      //TODO: vardef
+      // vardef
       assert(!names.contains(i));
       var v(i);
+      if(dc.has_value())v.destroy_class() = dc.value();
       names.try_emplace(i, v);
       inserted_names.push_back(i);
       tk.expect_pop(EQUAL);
@@ -218,7 +252,8 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
             tk.expect_pop(BRACKET_OPEN);
             tk.expect_peek(CONSTANT);
             size_t addr = 0;
-            assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), addr).ec == std::errc());
+            assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), addr).ec
+                       == std::errc());
             tk.pop();
             tk.expect_pop(BRACKET_CLOSE);
             push_back(instruction::assign{.dst = v, .src=rhs_expr::memory_access{.base = names.at(a), .block_offset = addr}});
@@ -228,13 +263,25 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
             tk.expect_pop(PARENS_OPEN);
             tk.expect_peek(CONSTANT);
             uint64_t val;
-            assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
+            assert(
+                std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
             tk.pop();
             tk.expect_pop(PARENS_CLOSE);
             push_back(instruction::assign{.dst = v, .src=rhs_expr::malloc{.size = val}});
           } else if (a == "apply_fn") {
-            //malloc
-            THROW_UNIMPLEMENTED
+            //apply_fn
+            tk.expect_pop(PARENS_OPEN);
+            tk.expect_peek(IDENTIFIER);
+            assert(names.contains(tk.peek_sv()));
+            var vf = names.at(tk.peek_sv());
+            tk.expect_pop(IDENTIFIER);
+            tk.expect_pop(COMMA);
+            tk.expect_peek(IDENTIFIER);
+            assert(names.contains(tk.peek_sv()));
+            var vx = names.at(tk.peek_sv());
+            tk.expect_pop(IDENTIFIER);
+            tk.expect_pop(PARENS_CLOSE);
+            push_back(instruction::assign{.dst = v, .src=rhs_expr::apply_fn{.f = vf ,.x = vx}});
           } else if (tk.peek() == PARENS_OPEN) {
             //operation
             tk.expect_pop(PARENS_OPEN);
@@ -268,7 +315,8 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
         }
         case CONSTANT: {
           uint64_t val;
-          assert(std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
+          assert(
+              std::from_chars(tk.peek_sv().data(), tk.peek_sv().data() + tk.peek_sv().size(), val).ec == std::errc());
           tk.pop();
           push_back(instruction::assign{.dst = v, .src=rhs_expr::constant(val)});
           break;
@@ -358,9 +406,18 @@ void function::parse(parse::tokenizer &tk) {
     while (tk.peek() != PARENS_CLOSE) {
       tk.expect_peek(IDENTIFIER);
       std::string_view param_name = tk.pop().sv;
+      std::optional<destroy_class_t> dc;
+      if (tk.peek() == COLON) {
+        tk.expect_pop(COLON);
+        tk.expect_peek(IDENTIFIER);
+        auto dc = destroy_class_of_string(tk.peek_sv());
+        if (!dc) throw error::report_token(tk.peek_sv(), "Specifier", "is not a recognized destroyability class");
+        tk.expect_pop(IDENTIFIER);
+      }
       if (tk.peek() == COMMA)tk.pop();
       assert(!names.contains(param_name));
       var v(param_name);
+      if(dc.has_value())v.destroy_class() = dc.value();
       names.try_emplace(param_name, v);
       args.emplace_back(param_name, v);
     }

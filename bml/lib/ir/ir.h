@@ -143,20 +143,23 @@ struct reg_lru {
   }
   void assert_consistency() const {
     assert(list.size() == reg::all.size());
-    std::array<bool,reg::all.size()> seen;
-    std::fill(seen.begin(),seen.end(), false);
-    for(const auto&[it_gl,it_lc] : its){
+    std::array<bool, reg::all.size()> seen;
+    std::fill(seen.begin(), seen.end(), false);
+    for (const auto&[it_gl, it_lc] : its) {
       assert(*it_gl == *it_lc);
       register_t r = *it_gl;
       assert(!seen[r]);
-      seen[r]=true;
+      seen[r] = true;
     }
-    assert(std::all_of(seen.begin(),seen.end(),[](bool b){return b;}));
+    assert(std::all_of(seen.begin(), seen.end(), [](bool b) { return b; }));
   }
  public:
-  reg_lru() : list(), volatile_list(reg::volatiles.begin(), reg::volatiles.end()), non_volatile_list(reg::non_volatiles.begin(), reg::non_volatiles.end()) {
-    for(register_t r : reg::volatiles)list.push_back(r);
-    for(register_t r : reg::non_volatiles)list.push_back(r);
+  reg_lru()
+      : list(),
+        volatile_list(reg::volatiles.begin(), reg::volatiles.end()),
+        non_volatile_list(reg::non_volatiles.begin(), reg::non_volatiles.end()) {
+    for (register_t r : reg::volatiles)list.push_back(r);
+    for (register_t r : reg::non_volatiles)list.push_back(r);
     restore_its();
     assert_consistency();
   };
@@ -214,6 +217,12 @@ struct reg_lru {
     assert_consistency();
 
   }
+  template<typename Pred>
+  bool is_partitioned(Pred p) const {
+    return std::is_partitioned(list.begin(), list.end(), p)
+        && std::is_partitioned(volatile_list.begin(), volatile_list.end(), p)
+        && std::is_partitioned(non_volatile_list.begin(), non_volatile_list.end(), p);
+  }
 };
 
 using namespace lang;
@@ -228,17 +237,17 @@ struct context_t {
   bool is_mem(var v) const;
   bool is_reg_free(register_t r) const;
   bool is_virtual(var v) const;
-  void devirtualize(var v, std::ostream&os);
+  void devirtualize(var v, std::ostream &os);
 
  public:
 
   context_t();
   template<typename InputIt>
   context_t(InputIt first, InputIt last) : context_t() {
-    static constexpr auto args_reg =  util::make_array(rdi, rsi); //TODO: add more
+    static constexpr auto args_reg = util::make_array(rdi, rsi); //TODO: add more
     auto it = args_reg.begin();
-    for(;first!=last;++first,++it){
-      assert(it!=args_reg.end());// Need to specify more initial locations!
+    for (; first != last; ++first, ++it) {
+      assert(it != args_reg.end());// Need to specify more initial locations!
       regs[*it] = *first;
       vars[*first] = *it;
       lru.bring_back(*it);
@@ -258,10 +267,13 @@ struct context_t {
   void make_non_both_mem(var v1, var v2, std::ostream &os);
   void make_both_non_mem(var v1, var v2, std::ostream &os);
   static context_t merge(context_t c1, std::ostream &os1, context_t c2, std::ostream &os2);
-  void return_clean(const std::vector<std::pair<var, register_t>> &args, std::ostream &os); //vars will go into registers - stack empty - saved registers into place
+  void return_clean(const std::vector<std::pair<var, register_t>> &args,
+                    std::ostream &os); //vars will go into registers - stack empty - saved registers into place
   //clean for call - volatiles free.
-  void call_clean(const std::vector<std::pair<var, register_t>> &args, std::ostream &os); // those variable will go in the specified volatile registers.
+  void call_clean(const std::vector<std::pair<var, register_t>> &args,
+                  std::ostream &os); // those variable will go in the specified volatile registers.
   void call_copy(const std::vector<std::pair<var, register_t>> &args, std::ostream &os);
+  void call_happened(const std::vector<std::pair<var, register_t>> &args);
   void compress_stack(std::ostream &);
 
   struct streamable {
@@ -278,13 +290,17 @@ struct context_t {
   std::string retrieve_to_string(var v) const;
   void retrieve(var v, std::ostream &os) const;
   bool are_volatiles_free(std::initializer_list<std::pair<var, register_t>> except = {}) const;
-  bool are_volatiles_free(const std::vector<std::pair<var, register_t>>& except = {}) const;
+  bool are_volatiles_free(const std::vector<std::pair<var, register_t>> &except = {}) const;
   bool are_nonvolatiles_restored() const;
   bool is_stack_empty() const;
  private:
   reg_lru lru;
 
-  struct constant { uint64_t value; bool operator==(constant o) const { return value == o.value; }bool operator!=(constant o) const { return value != o.value; }};
+  struct constant {
+    uint64_t value;
+    bool operator==(constant o) const { return value == o.value; }
+    bool operator!=(constant o) const { return value != o.value; }
+  };
   typedef std::string global;
   typedef size_t on_stack;
   typedef register_t on_reg;
@@ -302,8 +318,8 @@ struct context_t {
 
   void reassign(strict_location_t);
   static bool is_free(content_t);
-  void move(strict_location_t,strict_location_t ,std::ostream&);
-  strict_location_t location(content_t)const;
+  void move(strict_location_t, strict_location_t, std::ostream &);
+  strict_location_t location(content_t) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const context_t::streamable &);

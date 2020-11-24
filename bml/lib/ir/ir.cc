@@ -74,7 +74,9 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
   for (auto &i : s.body)
     if (std::holds_alternative<instruction::assign>(i)) {
       const auto &ia = std::get<instruction::assign>(i);
-      if (!std::holds_alternative<rhs_expr::constant>(ia.src) && !std::holds_alternative<rhs_expr::global>(ia.src))to_destroy.insert(ia.dst);
+      if (!std::holds_alternative<rhs_expr::constant>(ia.src)
+          && !std::holds_alternative<rhs_expr::global>(ia.src))
+        to_destroy.insert(ia.dst);
     }
 
   auto destroy_here = [&](var v, size_t i) {
@@ -160,11 +162,18 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
     std::vector<var> &destroys = s.destroys.at(i + 1);
     std::visit(overloaded{
         [&](instruction::assign &a) {
-          if (last_call && (i == s.body.size() - 1) && (std::holds_alternative<rhs_expr::apply_fn>(a.src) || std::holds_alternative<rhs_expr::branch>(a.src))) {
+          if (last_call && (i == s.body.size() - 1) && (std::holds_alternative<rhs_expr::apply_fn>(a.src)
+              || std::holds_alternative<rhs_expr::branch>(a.src))) {
             need_to_return = false;
             assert(a.dst == s.ret);
             std::visit(overloaded{
-                [](const std::variant<rhs_expr::constant, rhs_expr::global, rhs_expr::copy, rhs_expr::memory_access, rhs_expr::unary_op, rhs_expr::binary_op, rhs_expr::malloc> &) {
+                [](const std::variant<rhs_expr::constant,
+                                      rhs_expr::global,
+                                      rhs_expr::copy,
+                                      rhs_expr::memory_access,
+                                      rhs_expr::unary_op,
+                                      rhs_expr::binary_op,
+                                      rhs_expr::malloc> &) {
                   THROW_INTERNAL_ERROR
                 },
                 [&](rhs_expr::apply_fn &fun) {
@@ -172,7 +181,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   assert(contains(destroys, fun.f));
                   assert(contains(destroys, fun.x));
                   destroys.clear();
-                  c.return_clean({{fun.f, rsi}, {fun.x, rdi}}, os);
+                  c.return_clean({{fun.f, rdi}, {fun.x, rsi}}, os);
                   os << "jmp apply_fn\n"; //TODO avoid jump
                 },
                 [&](rhs_expr::branch &b) {
@@ -212,6 +221,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 [&](rhs_expr::malloc &m) {
                   c.call_clean({}, os);
                   os << "mov rsi, " << m.size * 8 << " \n";
+                  os << "call malloc\n";
                   c.declare_in(a.dst, rax);
                 },
                 [&](rhs_expr::apply_fn &fun) {
@@ -219,16 +229,17 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   std::vector<std::pair<var, register_t>> moved;
                   std::vector<std::pair<var, register_t>> copied;
                   if (contains(destroys, f)) {
-                    moved.emplace_back(f, rsi);
+                    moved.emplace_back(f, rdi);
                     destroys.erase(std::find(destroys.begin(), destroys.end(), f));
-                  } else copied.emplace_back(f, rsi);
+                  } else copied.emplace_back(f, rdi);
                   if (contains(destroys, x)) {
-                    moved.emplace_back(x, rdi);
+                    moved.emplace_back(x, rsi);
                     destroys.erase(std::find(destroys.begin(), destroys.end(), x));
-                  } else copied.emplace_back(x, rdi);
+                  } else copied.emplace_back(x, rsi);
                   c.call_clean(moved, os);
                   c.call_copy(copied, os);
                   os << "call apply_fn\n"; //TODO: avoid additional call, traverse it here
+                  c.call_happened(moved);
                   c.declare_in(a.dst, rax);
                 },
                 [&](rhs_expr::branch &b) {
@@ -268,7 +279,10 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                     c.make_non_both_mem(a.dst, u.x, os);
                   }
 
-                  rhs_expr::unary_op::compile(os, u.op, c.retrieve_to_string(u.x), c.retrieve_to_string(destroy_arg ? u.x : a.dst));
+                  rhs_expr::unary_op::compile(os,
+                                              u.op,
+                                              c.retrieve_to_string(u.x),
+                                              c.retrieve_to_string(destroy_arg ? u.x : a.dst));
                   if (destroy_arg)c.declare_move(a.dst, u.x);
                 },
                 [&](rhs_expr::binary_op &b) {
@@ -324,14 +338,31 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   return c;
 }
 
+auto view_second(auto it) { return boost::make_transform_iterator(it,
+                                                                  std::mem_fn(&std::pair<std::string_view,
+                                                                                         var>::second));
+};
+
 void function::compile(std::ostream &os) {
   //TODO: destroyability analysis
-  auto view_second = [](auto it) { return boost::make_transform_iterator(it, std::mem_fn(&std::pair<std::string_view, var>::second)); };
-  for (const var &v : scope_setup_destroys(*this, std::unordered_set<var>(view_second(args.begin()), view_second(args.end())))) {
+  for (const var &v : scope_setup_destroys(*this,
+                                           std::unordered_set<var>(view_second(args.begin()),
+                                                                   view_second(args.end())))) {
     destroys[0].push_back(v);
   }
   os << name << ":\n";
   scope_compile_rec(*this, os, context_t(view_second(args.begin()), view_second(args.end())), true);
+}
+function function::parse(std::string_view source) {
+  parse::tokenizer tk(source);
+  function f;
+  f.parse(tk);
+  for (const var &v : scope_setup_destroys(f,
+                                           std::unordered_set<var>(view_second(f.args.begin()),
+                                                                   view_second(f.args.end())))) {
+    f.destroys[0].push_back(v);
+  }
+  return f;
 }
 namespace {
 
@@ -410,6 +441,9 @@ void context_t::assert_consistency() const {
         }
     }, saved[sr]);
   }
+
+  //lru
+
 }
 context_t::context_t() {
   for (auto r : reg::all)regs[r] = reg::is_volatile(r) ? content_t(free()) : content_t(save{r});
@@ -428,7 +462,8 @@ bool context_t::are_nonvolatiles_restored() const {
 bool context_t::are_volatiles_free(const std::vector<std::pair<var, register_t>> &except) const {
   assert_consistency();
   return std::all_of(reg::volatiles.begin(), reg::volatiles.end(), [&](register_t r) {
-    if (auto it = std::find_if(except.begin(), except.end(), [r](const auto &vr) { return vr.second == r; }); it == except.end()) {
+    if (auto it = std::find_if(except.begin(), except.end(), [r](const auto &vr) { return vr.second == r; }); it
+        == except.end()) {
       return std::holds_alternative<free>(regs[r]);
     } else {
       return (std::holds_alternative<var>(regs[r]) && std::get<var>(regs[r]) == it->first);
@@ -438,7 +473,8 @@ bool context_t::are_volatiles_free(const std::vector<std::pair<var, register_t>>
 bool context_t::are_volatiles_free(std::initializer_list<std::pair<var, register_t>> except) const {
   assert_consistency();
   return std::all_of(reg::volatiles.begin(), reg::volatiles.end(), [&](register_t r) {
-    if (auto it = std::find_if(except.begin(), except.end(), [r](const auto &vr) { return vr.second == r; }); it == except.end()) {
+    if (auto it = std::find_if(except.begin(), except.end(), [r](const auto &vr) { return vr.second == r; }); it
+        == except.end()) {
       return std::holds_alternative<free>(regs[r]);
     } else {
       return (std::holds_alternative<var>(regs[r]) && std::get<var>(regs[r]) == it->first);
@@ -587,7 +623,8 @@ void context_t::move_to_stack(register_t r, std::ostream &os) {
   if (std::holds_alternative<free>(regs[r]))return;
   assert_consistency();
   size_t stack_id;
-  if (auto it = std::find_if(stack.begin(), stack.end(), [](content_t c) { return std::holds_alternative<free>(c); });it == stack.end()) {
+  if (auto it = std::find_if(stack.begin(), stack.end(), [](content_t c) { return std::holds_alternative<free>(c); });it
+      == stack.end()) {
     stack_id = stack.size();
     os << "push " << reg::to_string(r) << "\n";
     stack.emplace_back(regs[r]);
@@ -666,6 +703,7 @@ void context_t::make_both_non_mem(var v1, var v2, std::ostream &os) {
 //the args are MOVED. If you want to preserve them, don't pass them here but fill them later with declare_copy
 void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args, std::ostream &os) {
   assert_consistency();
+
   std::unordered_map<var, register_t> var_target;
   std::unordered_map<register_t, var> reg_target;
   for (const auto&[v, r] : args) {
@@ -688,7 +726,7 @@ void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args
   //Step 2. empty stack
   //Trick: if no holes, use all pops
   const bool use_pops = std::none_of(stack.begin(), stack.end(), is_free);
-  for (size_t i = stack.size() - 1; ~i; --i) {
+  for (int i = stack.size() - 1; i >= 0; --i) {
     std::visit(overloaded{
         [](free) {},
         [](save) { THROW_INTERNAL_ERROR },
@@ -696,9 +734,11 @@ void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args
           assert(var_target.contains(v));
           register_t r = var_target.at(v);
           if (!is_reg_free(r)) {
-            r = lru.front_volatile();
+            r = lru.front_volatile(); //TODO: this should return a free register
           }
-          assert(is_reg_free(r));
+          if (!is_reg_free(r)) {
+            assert(is_reg_free(r));
+          }
           lru.bring_back(r);
           if (use_pops)os << "pop " << reg::to_string(r) << "\n";
           else os << "mov " << reg::to_string(r) << ", qword [rsp" << offset(stack_size() - 1 - i) << "]\n";
@@ -942,6 +982,17 @@ void context_t::call_copy(const std::vector<std::pair<var, register_t>> &args, s
     //TODO: increase refcount if necessary
   }
 }
+void context_t::call_happened(const std::vector<std::pair<var, register_t>> &args) {
+  assert_consistency();
+  for (const auto&[v, r] : args) {
+    assert(vars.contains(v));
+    assert(vars.at(v) == location_t{r});
+    assert(regs[r] == content_t{v});
+    regs[r] = free{};
+    vars.erase(v);
+  }
+  assert_consistency();
+}
 void context_t::reassign(context_t::strict_location_t l) {
   std::visit(overloaded{
       [&](on_reg r) {
@@ -976,13 +1027,15 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
         std::visit(overloaded{
             [&](on_reg r_src) {
               if (r_src == r_dst)return;
-              os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", " << reg::to_string(r_src) << "\n";
+              os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", " << reg::to_string(r_src)
+                 << "\n";
               std::swap(regs[r_src], regs[r_dst]);
               reassign(src);
               reassign(dst);
             },
             [&](on_stack p_src) {
-              os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", qword [rsp" << offset(stack.size() - 1 - p_src) << "]\n";
+              os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", qword [rsp"
+                 << offset(stack.size() - 1 - p_src) << "]\n";
               std::swap(stack[p_src], regs[r_dst]);
               reassign(src);
               reassign(dst);
@@ -992,7 +1045,8 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
       [&](on_stack p_dst) {
         std::visit(overloaded{
             [&](on_reg r_src) {
-              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp" << offset(stack.size() - 1 - p_dst) << "], " << reg::to_string(r_src) << "\n";
+              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp" << offset(stack.size() - 1 - p_dst)
+                 << "], " << reg::to_string(r_src) << "\n";
               std::swap(regs[r_src], stack[p_dst]);
               reassign(src);
               reassign(dst);

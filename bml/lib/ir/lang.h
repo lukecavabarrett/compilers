@@ -41,14 +41,22 @@ namespace rhs_expr = instruction::rhs_expr;
  TODO: destroy tag
  then inference algorithm
 }*/
-enum destroy_class : uint8_t { unboxed = 1, global = 2, non_trivial = 4, value = unboxed | global | non_trivial, trivial = unboxed | global , boxed = global | non_trivial, non_global = value & (~global) };
-static_assert(trivial==3);
-static_assert(boxed==6);
-static_assert(non_global==5);
-static_assert(value==7);
-
-
-
+enum destroy_class_t : uint8_t {
+  unboxed = 1,
+  global = 2,
+  non_trivial = 4,
+  value = unboxed | global | non_trivial,
+  trivial = unboxed | global,
+  boxed = global | non_trivial,
+  non_global = value & (~global)
+};
+static_assert(trivial == 3);
+static_assert(boxed == 6);
+static_assert(non_global == 5);
+static_assert(value == 7);
+namespace parse {
+std::optional<destroy_class_t> destroy_class_of_string(std::string_view str);
+}
 struct var {
 
   uint64_t id;
@@ -74,7 +82,9 @@ struct var {
     else os << "var__" << id;
   }
   static std::unordered_map<uint64_t, std::string> maybe_names;
-  static std::vector<destroy_class> destroy_classes;
+  static std::vector<destroy_class_t> destroy_classes;
+  destroy_class_t &destroy_class() { return destroy_classes.at(id); };
+  const destroy_class_t &destroy_class() const { return destroy_classes.at(id); };
 };
 std::ostream &operator<<(std::ostream &os, const var &v);
 namespace instruction {
@@ -224,8 +234,9 @@ struct scope {
 };
 
 struct function : public scope {
-  std::vector<std::pair<std::string_view,var>> args;
+  std::vector<std::pair<std::string_view, var>> args;
   std::string_view name;
+  static function parse(std::string_view source);
   void parse(parse::tokenizer &);
   void print(std::ostream &os, size_t offset = 0) const;
   void compile(std::ostream &os);
@@ -257,7 +268,25 @@ struct ternary {
 
 namespace parse {
 enum token_type {
-  IDENTIFIER, EQUAL, STAR, BRACKET_OPEN, BRACKET_CLOSE, CONSTANT, SEMICOLON, IF, THEN, ELSE, PARENS_OPEN, PARENS_CLOSE, CURLY_OPEN, CURLY_CLOSE, RETURN, ASSIGN, COMMA, COLON, END_OF_INPUT
+  IDENTIFIER,
+  EQUAL,
+  STAR,
+  BRACKET_OPEN,
+  BRACKET_CLOSE,
+  CONSTANT,
+  SEMICOLON,
+  IF,
+  THEN,
+  ELSE,
+  PARENS_OPEN,
+  PARENS_CLOSE,
+  CURLY_OPEN,
+  CURLY_CLOSE,
+  RETURN,
+  ASSIGN,
+  COMMA,
+  COLON,
+  END_OF_INPUT
 };
 
 namespace error {
@@ -268,7 +297,8 @@ class t : public std::runtime_error {
 
 class report_token : public t, public util::error::report_token_error {
  public:
-  report_token(std::string_view found, std::string_view before, std::string_view after) : util::error::report_token_error(before, found, after) {}
+  report_token(std::string_view found, std::string_view before, std::string_view after)
+      : util::error::report_token_error(before, found, after) {}
 
 };
 
@@ -280,7 +310,8 @@ class unexpected_token : public t, public util::error::report_token_error {
 
 class expected_token_found_another : public t, public util::error::report_token_error {
  public:
-  expected_token_found_another(std::string_view expected, std::string_view found) : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
+  expected_token_found_another(std::string_view expected, std::string_view found)
+      : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
 };
 }
 
@@ -295,7 +326,7 @@ constexpr auto tokens_map = util::make_array(
     st{"{", CURLY_OPEN},
     st{"}", CURLY_CLOSE},
     st{"=", EQUAL}, st{":=", ASSIGN}, st{";", SEMICOLON},
-    st{":",COLON},
+    st{":", COLON},
     st{"if", IF}, st{"then", THEN},
     st{"else", ELSE}, st{"return", RETURN},
     st{"*", STAR}, st{",", COMMA});

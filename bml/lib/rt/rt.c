@@ -73,7 +73,7 @@ void print_debug(uintptr_t x) {
 }
 void println_debug(uintptr_t x) {
   print_debug(x);
-  putchar(10);
+  putc(10,stderr);
 }
 
 typedef uintptr_t (*text_ptr)(uintptr_t);
@@ -109,7 +109,7 @@ void decrement_value(uintptr_t x) { //partially inlined
   if (*xb == 0)return; // rule out global
   (*xb) -= 2;
   if (*xb != 1)return;
-  destroy_nontrivial(xb);
+  destroy_nontrivial(x);
 }
 
 void decrement_boxed(uintptr_t x) { //partially inlined
@@ -117,7 +117,7 @@ void decrement_boxed(uintptr_t x) { //partially inlined
   if (*xb == 0)return; // rule out global
   (*xb) -= 2;
   if (*xb != 1)return;
-  destroy_nontrivial(xb);
+  destroy_nontrivial(x);
 }
 
 void decrement_nonglobal(uintptr_t x) { //partially inlined
@@ -125,7 +125,7 @@ void decrement_nonglobal(uintptr_t x) { //partially inlined
   uintptr_t *xb = (uintptr_t *) x;
   (*xb) -= 2;
   if (*xb != 1)return;
-  destroy_nontrivial(xb);
+  destroy_nontrivial(x);
 }
 
 
@@ -133,7 +133,7 @@ void decrement_nontrivial(uintptr_t x){
   uintptr_t *xb = (uintptr_t *) x;
   (*xb) -= 2;
   if (*xb != 1)return;
-  destroy_nontrivial(xb);
+  destroy_nontrivial(x);
 }
 
 
@@ -179,12 +179,17 @@ uintptr_t sum_fun(uintptr_t argv) {
   uint64_t b = v_to_uint(argv_b[4]);
   uintptr_t * argv_a = (uintptr_t *) argv_b[2];
   increment((uintptr_t)argv_a);
-  fputs("decrementing argv_b\n",stderr);
+  //fputs("decrementing argv_b\n",stderr);
   decrement_value((uintptr_t)argv_b);
   uint64_t a = v_to_uint(argv_a[4]);
-  decrement((uintptr_t)argv_a);
+  decrement_value((uintptr_t)argv_a);
   return uint_to_v(a + b);
 }
+
+#define Make_Tag_Size_d(tag,size,d)  ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
+#define Uint_to_v(x) ((uintptr_t)((x<<1)|1))
+#define V_to_uint(x) ((uint64_t)(x>>1))
+const uintptr_t sum_block[4] = {0,Make_Tag_Size_d(Tag_Fun,2,0),(uintptr_t) &sum_fun,Uint_to_v(2)};
 
 /*TEST*/
 /*
