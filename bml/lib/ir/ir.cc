@@ -158,7 +158,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   bool need_to_return = last_call;
   c.destroy(s.destroys.at(0), os);
   for (size_t i = 0; i < s.body.size(); ++i) {
-
+    //os<<"; ";c.debug_vars(os);os<<"\n"; // print state infos
     std::vector<var> &destroys = s.destroys.at(i + 1);
     std::visit(overloaded{
         [&](instruction::assign &a) {
@@ -177,12 +177,13 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   THROW_INTERNAL_ERROR
                 },
                 [&](rhs_expr::apply_fn &fun) {
-                  assert(destroys.size() == 2);
-                  assert(contains(destroys, fun.f));
-                  assert(contains(destroys, fun.x));
+                  assert(destroys.size() <= 2);
+                  for(const var v : destroys)assert(v==fun.f || v==fun.x);
+                  assert(contains(destroys, fun.f) || c.is_virtual(fun.f));
+                  assert(contains(destroys, fun.x) || c.is_virtual(fun.x));
                   destroys.clear();
                   c.return_clean({{fun.f, rdi}, {fun.x, rsi}}, os);
-                  os << "jmp apply_fn\n"; //TODO avoid jump
+                  os << "jmp apply_fn\n"; //TODO avoid 2 jumps, go directly to function
                 },
                 [&](rhs_expr::branch &b) {
                   size_t this_branch = ++branch_id_factory;
@@ -294,7 +295,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   b.x2.print(os);
                   os << ")\n";
                   const bool operator_commutative = rhs_expr::binary_op::is_commutative(b.op);
-                  if (!destroys.empty() && operator_commutative && destroys.front() != b.x1)std::swap(b.x1, b.x2);
+                  if (!destroys.empty() && operator_commutative && contains(destroys,b.x2) && !c.is_virtual(b.x2))std::swap(b.x1, b.x2);
                   if (contains(destroys, b.x1)) {
                     //variable move
                     assert(c.contains((b.x1)));
@@ -345,11 +346,7 @@ auto view_second(auto it) { return boost::make_transform_iterator(it,
 
 void function::compile(std::ostream &os) {
   //TODO: destroyability analysis
-  for (const var &v : scope_setup_destroys(*this,
-                                           std::unordered_set<var>(view_second(args.begin()),
-                                                                   view_second(args.end())))) {
-    destroys[0].push_back(v);
-  }
+  setup_destruction();
   os << name << ":\n";
   scope_compile_rec(*this, os, context_t(view_second(args.begin()), view_second(args.end())), true);
 }
@@ -357,12 +354,16 @@ function function::parse(std::string_view source) {
   parse::tokenizer tk(source);
   function f;
   f.parse(tk);
-  for (const var &v : scope_setup_destroys(f,
-                                           std::unordered_set<var>(view_second(f.args.begin()),
-                                                                   view_second(f.args.end())))) {
-    f.destroys[0].push_back(v);
-  }
+  f.setup_destruction();
   return f;
+}
+void function::setup_destruction() {
+  destroys.clear();
+  for (const var &v : scope_setup_destroys(*this,
+                                           std::unordered_set<var>(view_second(args.begin()),
+                                                                   view_second(args.end())))) {
+    destroys[0].push_back(v);
+  }
 }
 namespace {
 
@@ -526,6 +527,11 @@ void context_t::compress_stack(std::ostream &os) {
   if (freed)os << "add rsp, " << (freed * 8) << " ; reclaiming stack space\n";
   assert_consistency();
 }
+void context_t::debug_vars(std::ostream& os) const {
+  for (const auto& [v,l] : vars) {
+    os << v << " @ " << at(v) << " | ";
+  }
+}
 void context_t::destroy(const std::vector<var> &vs, std::ostream &os) {
   for (var v : vs) {
     destroy(v, os);
@@ -565,6 +571,8 @@ std::optional<uint64_t> context_t::is_constant(var v) const {
       [](const on_stack &) -> std::optional<uint64_t> { return {}; }
   }, vars.at(v));
 }
+
+
 
 void context_t::declare_global(var v, std::string_view name) {
   assert_consistency();

@@ -4,12 +4,16 @@
 #include <rt/rt2.h>
 #include <numeric>
 #include <charconv>
+#include <random>
 //TODO: improve test structure
 // - pass parameters as a aggregate-initialized struct
 // - use optionals if you don't want to execute the comparison (e.g. with stdout)
 // - fix format of ALL tests
 // - fix testing pipeline (creation of object files included)
 // - add destruction in compilation
+
+// TODO: optional: is there a way to override the ostream for doing (for instance) putting ";" before evry line?
+//TODO-someday: understand why pushing and retrieving {rdi} is okay, but not {} or (rdi,rsi}
 namespace ir::lang {
 namespace {
 
@@ -20,7 +24,6 @@ int64_t remove_last_line(std::string &ss) {
   ss.resize(ss.size() - last_nl - 1);
   return x;
 }
-
 std::pair<std::string_view, std::string_view> front_tail(std::string_view s) {
   auto it = std::find(s.rbegin(), s.rend(), 10);
   size_t last_line_size = std::distance(s.rbegin(), it);
@@ -28,7 +31,6 @@ std::pair<std::string_view, std::string_view> front_tail(std::string_view s) {
   s.remove_suffix(last_line_size);
   return {s, tail};
 }
-
 namespace build_object {
 struct value;
 typedef std::vector<value> tuple;
@@ -46,6 +48,8 @@ struct value_uptr : public std::shared_ptr<value> {
 struct tvar {
   uint64_t tag;
   value_uptr v;
+  tvar(uint64_t tag) : tag(tag) {}
+  tvar(uint64_t tag, value &&v) : tag(tag), v(std::move(v)) {}
 };
 
 struct fun {
@@ -62,9 +66,6 @@ struct value {
 
   template<typename T>
   value(const T &t) : x(t) {}
-
-  template<typename T>
-  value(T &&t) : x(std::move(t)) {}
 
   value(int64_t i) : x(uint64_t(i)) {}
 
@@ -216,9 +217,9 @@ TEST(BuildObject, Syntax) {
   EXPECT_TRUE(t4.at(2).is_tuple());
   EXPECT_TRUE(t4.at(3).is_tuple());
 
-  value none = tvar{.tag = 3};
+  value none = tvar(3);
   EXPECT_EQ(std::get<tvar>(none.x).v, nullptr);
-  value some_3 = tvar{.tag = 5, .v = 3};
+  value some_3 = tvar(5, 3);
 
 }
 
@@ -240,36 +241,36 @@ struct value {
   bool operator==(const build_object::value &bo) const {
     //bo std::variant<uint64_t, fun, tuple, tvar>
     return std::visit(util::overloaded{
-      [](text_ptr)->bool{
-        return false;
+        [](text_ptr) -> bool {
+          return false;
         },
-      [&](const tuple& t)->bool{
-        if(t.tag == Tag_Tuple) {
-          if (!std::holds_alternative<build_object::tuple>(bo.x))return false;
-          const build_object::tuple &t2 = std::get<build_object::tuple>(bo.x);
-          return std::equal(t.vs.begin(),t.vs.end(),t2.begin(),t2.end());
-        } else if(t.tag == Tag_Fun){
-          if (!std::holds_alternative<build_object::fun>(bo.x))return false;
-          const build_object::fun &f = std::get<build_object::fun>(bo.x);
-          if(t.vs.size()!=2)return false;
-          if(!std::holds_alternative<text_ptr>(t.vs.at(0).x))return false;
-          if(!std::holds_alternative<uint64_t>(t.vs.at(1).x))return false;
-          uint64_t p = std::get<uint64_t>(t.vs.at(1).x);
-          return p == f.n_params;
-        }else{
-          EXPECT_LT(t.vs.size(),2);
-          if (!std::holds_alternative<build_object::tvar>(bo.x))return false;
-          const build_object::tvar &t2 = std::get<build_object::tvar>(bo.x);
-          if(t.tag != t2.tag)return false;
-          if(bool(!t.vs.empty()) != bool(t2.v))return false;
-          if(!t.vs.empty())return t.vs.at(0) == *t2.v;
-          return true;
+        [&](const tuple &t) -> bool {
+          if (t.tag == Tag_Tuple) {
+            if (!std::holds_alternative<build_object::tuple>(bo.x))return false;
+            const build_object::tuple &t2 = std::get<build_object::tuple>(bo.x);
+            return std::equal(t.vs.begin(), t.vs.end(), t2.begin(), t2.end());
+          } else if (t.tag == Tag_Fun) {
+            if (!std::holds_alternative<build_object::fun>(bo.x))return false;
+            const build_object::fun &f = std::get<build_object::fun>(bo.x);
+            if (t.vs.size() != 2)return false;
+            if (!std::holds_alternative<text_ptr>(t.vs.at(0).x))return false;
+            if (!std::holds_alternative<uint64_t>(t.vs.at(1).x))return false;
+            uint64_t p = std::get<uint64_t>(t.vs.at(1).x);
+            return p == f.n_params;
+          } else {
+            EXPECT_LT(t.vs.size(), 2);
+            if (!std::holds_alternative<build_object::tvar>(bo.x))return false;
+            const build_object::tvar &t2 = std::get<build_object::tvar>(bo.x);
+            if (t.tag != t2.tag)return false;
+            if (bool(!t.vs.empty()) != bool(t2.v))return false;
+            if (!t.vs.empty())return t.vs.at(0) == *t2.v;
+            return true;
+          }
+        },
+        [&](uint64_t v) -> bool {
+          return std::holds_alternative<uint64_t>(bo.x) && std::get<uint64_t>(bo.x) == v;
         }
-      },
-      [&](uint64_t v)->bool{
-        return std::holds_alternative<uint64_t>(bo.x) && std::get<uint64_t>(bo.x)==v;
-      }
-      },x);
+    }, x);
   }
 
 };
@@ -277,8 +278,8 @@ std::ostream &operator<<(std::ostream &os, const value &v) {
   std::visit(util::overloaded{
       [&](uint64_t n) { os << "[" << n << "]"; },
       [&](const value::tuple &v) {
-        os << "{rc:?, tag:"<<v.tag<<", size:"<<v.vs.size()<<" |" ;
-        for(const value& x : v.vs)os<<x;
+        os << "{rc:?, tag:" << v.tag << ", size:" << v.vs.size() << " |";
+        for (const value &x : v.vs)os << x;
         os << "}";
       },
       [&](value::text_ptr) { os << "[text_ptr]"; }
@@ -289,7 +290,7 @@ value parse(std::string_view &s) {
   assert(!s.empty());
   if (s.front() == '[') {
     static constexpr std::string_view text_ptr_str = "[text_ptr]";
-    if(s.starts_with(text_ptr_str)){
+    if (s.starts_with(text_ptr_str)) {
       s.remove_prefix(text_ptr_str.size());
       return value::text_ptr{};
     }
@@ -300,14 +301,14 @@ value parse(std::string_view &s) {
     return value(v);
   } else if (s.front() == '{') {
     int read;
-    uint32_t tag,size;
-    EXPECT_EQ(sscanf(s.data(), "{rc:%*[^,], tag:%u, size:%u | %n", &tag,&size, &read), 2);
+    uint32_t tag, size;
+    EXPECT_EQ(sscanf(s.data(), "{rc:%*[^,], tag:%u, size:%u | %n", &tag, &size, &read), 2);
     s.remove_prefix(read);
     value::tuple t{.tag=tag};
     while (!s.empty() && s.front() != '}')
       t.vs.push_back(parse(s));
     s.remove_prefix(1);
-    EXPECT_EQ(t.vs.size(),size);
+    EXPECT_EQ(t.vs.size(), size);
     return t;
   } else {
     char c = s.front();
@@ -316,12 +317,31 @@ value parse(std::string_view &s) {
 }
 }
 
-void test_ir_build(std::string_view source,
-                   build_object::value &&arg,
-                   build_object::value expected_return,
-                   std::string_view expected_stdout = "",
-                   std::string_view expected_stderr = "") {
+enum call_style_t { as_args, as_tuple, progressive_application };
+struct testcase_params {
+  std::string_view test_function = "test_function";
+  bool code_verbose = false;
+  bool allocate_input_dynamically = false;
+  call_style_t call_style = as_tuple;
+  std::unordered_map<std::string_view,size_t> curriables = {};
+  int expected_exit_code = 0;
+  build_object::value expected_return = 42;
+  std::optional<std::string_view> expected_stdout = {}, expected_stderr = {};
+};
 
+void test_ir_build(std::string_view source,
+                   build_object::value arg,
+                   testcase_params params) {
+
+  parse::tokenizer tk(source);
+  std::vector<function> fs;
+  while (!tk.empty()) {
+    function f;
+    ASSERT_NO_THROW(f.parse(tk));
+    f.setup_destruction();
+    if(params.code_verbose)f.print(std::cout);
+    fs.push_back(std::move(f));
+  }
 #define target  "/home/luke/CLionProjects/compilers/bml/output"
   std::ofstream oasm;
   oasm.open(target ".asm");
@@ -332,8 +352,14 @@ void test_ir_build(std::string_view source,
 section .data
 retcode_format db  10,"%llu", 0
 )";
+
   arg.clear_declaration();
   arg.declare(oasm);
+
+  for (const auto &[f,n] : params.curriables) {
+    oasm << "__fun_block_" << f << "__ dq 0, 4294967300, " << f << ", "<<(2*n+1)<<"\n";
+  }
+
 
   oasm << R"(
 section .text
@@ -342,19 +368,55 @@ extern printf, malloc, exit, print_debug, sum_fun, apply_fn
 
 )";
 
-  parse::tokenizer tk(source);
-  while (!tk.empty()) {
-    function f;
-    ASSERT_NO_THROW(f.parse(tk));
-    f.compile(oasm);
-  }
+  for (auto &f : fs)f.compile(oasm);
 
   oasm << "main:\n";
   oasm << "push rdi\n";
-  oasm << "mov rdi, ";
-  arg.retrieve(oasm);
+  //load args
+  switch (params.call_style) {
+
+    case as_args: {
+      if (!std::holds_alternative<build_object::tuple>(arg.x))
+        FAIL() << "mode \"as_args\" was selected, but the params were not a tuple/list.\n";
+      auto it = reg::args_order.begin();
+      for (const auto &p : std::get<build_object::tuple>(arg.x)) {
+        if (it == reg::args_order.end())
+          FAIL() << "specified arguments exceeded the number of parameter-specific registers\n";
+        oasm << "mov " << reg::to_string(*it) << ", ";
+        p.retrieve(oasm);
+        oasm << "\n";
+        ++it;
+      }
+      oasm << "call " << params.test_function << "\n";
+      break;
+    };
+    case as_tuple: {
+      oasm << "mov rdi, ";
+      arg.retrieve(oasm);
+      oasm << "\n";
+      oasm << "call " << params.test_function << "\n";
+      break;
+    };
+    case progressive_application: {
+      if (!std::holds_alternative<build_object::tuple>(arg.x))
+        FAIL() << "mode \"progressive_application\" was selected, but the params were not a tuple/list.\n";
+
+      if (!params.curriables.contains(params.test_function))
+        FAIL() << "mode \"progressive_application\" was selected, but the selected entry point ("<<params.test_function<<") was not specified as a curriable.\n";
+      oasm << "mov rax, __fun_block_" << params.test_function << "__\n";
+      for (const auto &p : std::get<build_object::tuple>(arg.x)) {
+        oasm << "mov rdi, rax\n";
+        oasm << "mov rsi, ";
+        p.retrieve(oasm);
+        oasm << "\n";
+        oasm << "call apply_fn\n";
+      }
+      break;
+    };
+  }
+  //result in rax
+
   oasm << R"(
-call test_function
 mov     rdi, rax
 call    print_debug
 pop     rdi
@@ -365,16 +427,15 @@ ret
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
   int exit_code = (WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout")));
-  ASSERT_EQ(exit_code, 0);
+  ASSERT_EQ(exit_code, params.expected_exit_code);
   std::string actual_stdout = util::load_file(target ".stdout");
   std::string whole_stderr = util::load_file(target ".stderr");
   auto[actual_stderr, returned_stderr] = front_tail(whole_stderr);
-  //int64_t actual_return = remove_last_line(actual_stdout);
   out_object::value actual_return = out_object::parse(returned_stderr);
   EXPECT_TRUE(returned_stderr.empty());
-  EXPECT_EQ(actual_return, expected_return);
-  EXPECT_EQ(actual_stdout, expected_stdout);
-  EXPECT_EQ(actual_stderr, expected_stderr);
+  EXPECT_EQ(actual_return, params.expected_return);
+  if (params.expected_stdout.has_value())EXPECT_EQ(actual_stdout, params.expected_stdout.value());
+  if (params.expected_stderr.has_value())EXPECT_EQ(actual_stderr, params.expected_stderr.value());
 #undef target
 
 }
@@ -403,8 +464,8 @@ TEST(Build, IntMin) {
       return z_v;
   }
 )";
-  // test_ir_build(source, {42, 1729}, 42);
-  //test_ir_build(source, {45, 33}, 33);
+  test_ir_build(source, {42, 1729}, {.expected_return = 42});
+  test_ir_build(source, {45, 33}, {.expected_return = 33});
 }
 
 TEST(Build, IntMin_LastCall_PrevVar) {
@@ -423,8 +484,8 @@ TEST(Build, IntMin_LastCall_PrevVar) {
       return z_v;
   }
 )";
-  //test_ir_build(source, {42, 1729}, 42);
-  // test_ir_build(source, {45, 33}, 33);
+  test_ir_build(source, {42, 1729}, {.expected_return = 42});
+  test_ir_build(source, {45, 33}, {.expected_return = 33});
 }
 
 TEST(Build, IntMin_LastCall_NewVar_inside) {
@@ -445,8 +506,8 @@ TEST(Build, IntMin_LastCall_NewVar_inside) {
       return z_v;
   }
 )";
-  //test_ir_build(source, {42, 1729}, 42);
-  //test_ir_build(source, {45, 33}, 33);
+  test_ir_build(source, {42, 1729}, {.expected_return = 42});
+  test_ir_build(source, {45, 33}, {.expected_return = 33});
 }
 
 TEST(Build, ArgMin) {
@@ -469,8 +530,9 @@ TEST(Build, ArgMin) {
       return z_v;
   }
 )";
-  // test_ir_build(source, {42, 1729}, 0);
-  // test_ir_build(source, {45, 33}, 1);
+
+  test_ir_build(source, {42, 1729}, {.expected_return=0});
+  test_ir_build(source, {45, 33}, {.expected_return=1});
 }
 
 TEST(Build, ArgMin_ConvertOutside) {
@@ -492,11 +554,14 @@ TEST(Build, ArgMin_ConvertOutside) {
       return z_v;
   }
 )";
-  // test_ir_build(source, {42, 1729}, 0);
-  // test_ir_build(source, {45, 33}, 1);
+  test_ir_build(source, {42, 1729}, {.expected_return=0});
+  test_ir_build(source, {45, 33}, {.expected_return=1});
 }
 
 void sum_of_n_vars(const size_t n) {
+  static std::mt19937 e2(1728);
+  static std::uniform_int_distribution<int> uniform_dist(1, 1000000);
+
   std::stringstream source;
   source << "test_function (argv) { \n";
   for (int i = 0; i < n; ++i) source << "x_v" << i << " = argv[" << (i + 2) << "];\n";
@@ -506,13 +571,15 @@ void sum_of_n_vars(const size_t n) {
   source << "ans_v = int_to_v(sum" << n << ");\n";
   source << "return ans_v;\n";
   source << "} \n";
+  build_object::tuple args;
+  uint64_t ans = 0;
+  for (size_t i = 1; i <= n; ++i) {
+    uint64_t x = uniform_dist(e2);
+    ans += x;
+    args.emplace_back(x);
+  }
 
-//  build_object::tuple args(n);
-  // std::iota(args.begin(), args.end(), 1);
-
-//  int64_t ans = n*(n+1)/2;
-
-  // // test_ir_build(source.str(), build_object::value(std::move(args)), ans);
+  test_ir_build(source.str(), build_object::value(std::move(args)), {.expected_return =  ans});
 }
 
 TEST(Build, SumZeroVars) { sum_of_n_vars(0); }
@@ -520,7 +587,8 @@ TEST(Build, SumOneVars) { sum_of_n_vars(1); }
 TEST(Build, SumTwoVars) { sum_of_n_vars(2); }
 TEST(Build, SumTenVars) { sum_of_n_vars(10); }
 TEST(Build, SumTwentyVars) { sum_of_n_vars(20); }
-TEST(Build, SumThirtyVars) { sum_of_n_vars(20); }
+TEST(Build, SumThirtyVars) { sum_of_n_vars(30); }
+TEST(Build, SumFiftyVars) { sum_of_n_vars(50); }
 
 TEST(Build, PassingConstant) {
   std::string_view source = R"(
@@ -534,7 +602,7 @@ test_function() {
   return e;
 }
 )";
-  // test_ir_build(source, {}, 42);
+  test_ir_build(source, {}, {.expected_return = 42});
 }
 
 TEST(Build, PassingVar) {
@@ -548,12 +616,27 @@ e = d;
 return e;
 }
 )";
-  // test_ir_build(source, {42}, 42);
+  test_ir_build(source, {42}, {.call_style = as_tuple, .expected_return=42});
 }
+
+TEST(Build, PassingInput) {
+  std::string_view source = R"(
+test_function(x) {
+a = x;
+b = a;
+c = b;
+d = c;
+e = d;
+return e;
+}
+)";
+  test_ir_build(source, {42}, {.call_style = as_args, .expected_return=42});
+}
+
 using build_object::fun;
 TEST(Memory, MakeTuple) {
   std::string_view source = R"(
-test_function(num) {
+make_tuple(num) {
 block = malloc(5);
 zero = 0;
 block[0] := zero;
@@ -569,12 +652,16 @@ block[4] := m42_v;
 return block;
 }
 )";
-  test_ir_build(source, fun("test_function",1), {fun("test_function",1),1729,42});
+  test_ir_build(source,
+                fun("make_tuple", 1),
+                {.test_function="make_tuple",
+                    .expected_return={fun("make_tuple", 1), 1729, 42}});
 }
 
 TEST(Memory, CallApplyFn) {
+  // apply2 : ('a -> 'b -> 'c) -> 'a -> 'b -> 'c = <fun>
   std::string_view source = R"(
-test_function(args) {
+apply2(args) {
 f = args[2];
 x1 = args[3];
 x2 = args[4];
@@ -583,9 +670,97 @@ y2 = apply_fn(y1,x2);
 return y2;
 }
 )";
-  function::parse(source).print(std::cout);
-  test_ir_build(source, {fun("sum_fun",2),100,10}, 110,"","destroying block of size 3\ndestroying block of size 3\n");
+  test_ir_build(source,
+                {fun("sum_fun", 2), 100, 10},
+                {.test_function="apply2", .expected_return=110});
 }
+
+TEST(Recursive, ListLength) {
+  using build_object::tvar;
+  std::string_view source = R"(
+length(args) {
+  x = args[4];
+  one = 1;
+
+  one_v = int_to_v(one);
+
+  test(x,one);
+  ans_v = if (jne) then {
+    this_f = args[2];
+    cnt = x[2];
+    tl = cnt[3];
+    tl_len_v = apply_fn(this_f,tl);
+    tl_len = v_to_int(tl_len_v);
+    all_len = add(tl_len,one);
+    all_len_v = int_to_v(all_len);
+    return all_len_v;
+  } else {
+    zero = 0;
+    zero_v = int_to_v(zero);
+    return zero_v;
+  };
+  return ans_v;
+}
+)";
+  testcase_params tp = {.test_function="length",.call_style=progressive_application,.curriables={{"length",1}}};
+  build_object::value list = tvar(3); //empty-list
+  for(size_t l = 0; l < 10; ++l){
+    tp.expected_return = l;
+    test_ir_build(source, build_object::tuple{list}, tp);
+    list = tvar(5,{l,std::move(list)});
+  }
+}
+
+TEST(Recursive, ListLength_tailrecursive) {
+  using build_object::tvar;
+  std::string_view source = R"(
+
+
+length_tl(acc_args) {
+  acc = acc_args[4];
+  args = acc_args[2];
+  x = args[4];
+  one = 1;
+
+  one_v = int_to_v(one);
+
+  test(x,one);
+  ans_v = if (jne) then {
+    this_f = args[2];
+    cnt = x[2];
+    tl = cnt[3];
+    two = 2;
+    acc_p1 = add(acc,two);
+    f_tl = apply_fn(this_f,tl);
+    f_tl_nacc = apply_fn(f_tl,acc_p1);
+    ans = f_tl_nacc;
+    return ans;
+  } else {
+    return acc;
+  };
+  return ans_v;
+}
+
+length(args) {
+  list = args[4];
+  zero_v = 1;
+  fun = __fun_block_length_tl__;
+  fl = apply_fn(fun, list);
+  ans = apply_fn(fl,zero_v);
+  return ans;
+}
+
+)";
+  testcase_params tp = {.test_function="length",.code_verbose=true,.call_style=progressive_application,.curriables={{"length",1},{"length_tl",2}}};
+  build_object::value list = tvar(3); //empty-list
+  for(size_t l = 0; l < 10; ++l){
+    tp.expected_return = l;
+    test_ir_build(source, build_object::tuple{list}, tp);
+    list = tvar(5,{l,std::move(list)});
+  }
+}
+
+//TODO: ApplyList, ListLength, ListSum
 
 
 TEST(Memory, DestroyABlock) {

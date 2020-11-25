@@ -237,6 +237,7 @@ struct function : public scope {
   std::vector<std::pair<std::string_view, var>> args;
   std::string_view name;
   static function parse(std::string_view source);
+  void setup_destruction();
   void parse(parse::tokenizer &);
   void print(std::ostream &os, size_t offset = 0) const;
   void compile(std::ostream &os);

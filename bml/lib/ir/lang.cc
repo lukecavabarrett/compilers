@@ -146,7 +146,8 @@ void scope::push_back(instruction::t &&i) {
 }
 void scope::print(std::ostream &os, size_t offset) const {
   using namespace util;
-  auto print_destroy = [&](int i,size_t offset,bool newline=false){
+  auto print_destroy = [&](size_t i,size_t offset,bool newline=false){
+    assert(i<=destroys.size());
     if(destroys.at(i).empty())return;
     while(offset--)os << "  ";
     os << "//destroying ";

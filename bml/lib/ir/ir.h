@@ -18,7 +18,10 @@ std::string_view to_string(register_t r);
 constexpr auto all = util::make_array(rax, rcx, rdx, rsi, r8, r9, r10, r11, rbx, rbp, rdi, r12, r13, r14, r15);
 constexpr auto non_volatiles = util::make_array(rbx, rbp, r12, r13, r14, r15);
 constexpr auto volatiles = util::make_array(rax, rcx, rdx, rdi, rsi, r8, r9, r10, r11);
+static constexpr auto args_order = util::make_array(rdi, rsi,rdx,rcx,r8,r9);
 };
+
+
 /*
 namespace var_loc {
 struct unborn { bool operator==(const unborn &) const { return true; }};
@@ -236,29 +239,29 @@ struct context_t {
   void move_to_register(register_t dst, register_t src, std::ostream &os);
   bool is_mem(var v) const;
   bool is_reg_free(register_t r) const;
-  bool is_virtual(var v) const;
   void devirtualize(var v, std::ostream &os);
-
  public:
 
   context_t();
+
   template<typename InputIt>
   context_t(InputIt first, InputIt last) : context_t() {
-    static constexpr auto args_reg = util::make_array(rdi, rsi); //TODO: add more
-    auto it = args_reg.begin();
+    auto it = reg::args_order.begin();
     for (; first != last; ++first, ++it) {
-      assert(it != args_reg.end());// Need to specify more initial locations!
+      assert(it != reg::args_order.end());// Need to specify more initial locations!
       regs[*it] = *first;
       vars[*first] = *it;
       lru.bring_back(*it);
     }
   }
+  void debug_vars(std::ostream& os) const;
 
   void destroy(var v, std::ostream &);
   void destroy(const std::vector<var> &, std::ostream &);
   void declare_const(var v, uint64_t value);
   std::optional<uint64_t> is_constant(var v) const;
   void declare_global(var v, std::string_view name);
+  bool is_virtual(var v) const;
   void declare_copy(var dst, var src, std::ostream &os);
   void declare_move(var dst, var src);
   void declare_free(var v, std::ostream &os);
