@@ -6,7 +6,7 @@ namespace {
 
 
 TEST(Value,IntBackAndForth) {
-  auto ibaf= [](int64_t x) -> int64_t {
+  auto ibaf = [](int64_t x) -> int64_t {
     return rt::value::from_int(x).to_int();
   };
   for(int i = -10;i<=10;++i)EXPECT_EQ(i,ibaf(i)); // [-10,10]
