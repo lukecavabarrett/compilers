@@ -123,7 +123,8 @@ struct value {
           os << "mov " << reg::to_string(reg::args_order.front()) << ", " << (4 * 8) << "\n";
           os << "call malloc\n";
           os << "mov qword [rax], 3\n";
-          os << "mov qword [rax+8], " << make_tag_size_d(Tag_Fun, 2, 0) << "\n";
+          os << "mov rbx, " << make_tag_size_d(Tag_Fun, 2, 0) << "\n";
+          os << "mov qword [rax+8], rbx\n";
           os << "mov qword [rax+16], " << f.loc << "\n";
           os << "mov qword [rax+24], " << f.n_params << "\n";
           os << "push rax\n";
@@ -134,7 +135,8 @@ struct value {
           os << "mov " << reg::to_string(reg::args_order.front()) << ", " << ((t.size() + 2) * 8) << "\n";
           os << "call malloc\n";
           os << "mov qword [rax], 3\n";
-          os << "mov qword [rax+8], " << make_tag_size_d(Tag_Tuple, t.size(), 0) << "\n";
+          os << "mov rbx, " << make_tag_size_d(Tag_Tuple, t.size(), 0) << "\n";
+          os << "mov qword [rax+8], rbx\n";
           for (size_t i = 0; i < t.size(); ++i) {
             os << "pop rbx\n";
             os << "mov qword [rax+" << ((i + 2) * 8) << "], rbx\n";
@@ -147,7 +149,8 @@ struct value {
             os << "mov " << reg::to_string(reg::args_order.front()) << ", " << (3 * 8) << "\n";
             os << "call malloc\n";
             os << "mov qword [rax], 3\n";
-            os << "mov qword [rax+8], " << make_tag_size_d(tv.tag, 1, 0) << "\n";
+            os << "mov rbx, " << make_tag_size_d(tv.tag, 1, 0) << "\n";
+            os << "mov qword [rax+8], rbx\n";
             os << "pop rbx\n";
             os << "mov qword [rax+16], rbx\n";
             os << "push rax\n";
@@ -451,19 +454,31 @@ extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivia
       break;
     };
     case progressive_application: {
-      if (params.allocate_input_dynamically) FAIL() << "unimplemented dynamic input allocation\n";
+
       if (!std::holds_alternative<build_object::tuple>(arg.x))
         FAIL() << "mode \"progressive_application\" was selected, but the params were not a tuple/list.\n";
 
       if (!params.curriables.contains(params.test_function))
         FAIL() << "mode \"progressive_application\" was selected, but the selected entry point ("
                << params.test_function << ") was not specified as a curriable.\n";
+
+      const auto &arg_tuple = std::get<build_object::tuple>(arg.x);
+      if (params.allocate_input_dynamically)
+        std::for_each(arg_tuple.rbegin(), arg_tuple.rend(), [&](const auto &v) {
+          v.allocate_dynamically(oasm);
+        });
+
       oasm << "mov rax, __fun_block_" << params.test_function << "__\n";
       for (const auto &p : std::get<build_object::tuple>(arg.x)) {
         oasm << "mov rdi, rax\n";
-        oasm << "mov rsi, ";
-        p.retrieve(oasm);
-        oasm << "\n";
+        if (params.allocate_input_dynamically) {
+          oasm << "pop rsi\n";
+        } else {
+          oasm << "mov rsi, ";
+          p.retrieve(oasm);
+          oasm << "\n";
+        }
+
         oasm << "call apply_fn\n";
       }
       break;
@@ -516,8 +531,8 @@ TEST(Build, UnboxTuple) {
       return x_v;
   }
 )";
-  test_ir_build(source, {42}, {.allocate_input_dynamically=false,.expected_return = 42});
-  test_ir_build(source, {42}, {.allocate_input_dynamically=true,.expected_return = 42});
+  test_ir_build(source, {42}, {.allocate_input_dynamically=false, .expected_return = 42});
+  test_ir_build(source, {42}, {.allocate_input_dynamically=true, .expected_return = 42});
 }
 
 TEST(Build, UnboxTupleOfTuple) {
@@ -528,8 +543,8 @@ TEST(Build, UnboxTupleOfTuple) {
       return x_v;
   }
 )";
-  test_ir_build(source, {{42}}, {.allocate_input_dynamically=false,.expected_return = 42});
-  test_ir_build(source, {{42}}, {.allocate_input_dynamically=true,.expected_return = 42});
+  test_ir_build(source, {{42}}, {.allocate_input_dynamically=false, .expected_return = 42});
+  test_ir_build(source, {{42}}, {.allocate_input_dynamically=true, .expected_return = 42});
 }
 
 TEST(Build, IntMin) {
@@ -885,11 +900,12 @@ length(args : non_trivial) {
 
 )";
   testcase_params tp =
-      {.test_function="length", .code_verbose=true, .call_style=progressive_application, .curriables={{"length", 1},
-                                                                                                      {"length_tl",
-                                                                                                       2}}};
+      {.test_function="length", .code_verbose=true, .allocate_input_dynamically=true, .call_style=progressive_application, .curriables={
+          {"length", 1},
+          {"length_tl",
+           2}}};
   build_object::value list = tvar(3); //empty-list
-  for (size_t l = 0; l < 1; ++l) {
+  for (size_t l = 0; l < 10; ++l) {
     tp.expected_return = l;
     test_ir_build(source, build_object::tuple{list}, tp);
     list = tvar(5, {l, std::move(list)});
