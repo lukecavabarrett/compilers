@@ -127,16 +127,17 @@ void decrement_nontrivial(uintptr_t x) {
   uintptr_t *xb = (uintptr_t *) x;
   assert(*xb);
   (*xb) -= 2;
-  printf("decrement block %p to %lu\n", (void *) x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
+  printf("decrement block %p to %lu\n", xb, v_to_uint(*xb)); // why printf is fine while fprintf is not?
   if (*xb != 1)return;
   destroy_nontrivial(x);
 }
 
-void increment(uintptr_t x) {
+void increment_value(uintptr_t x) {
   if (x & 1)return;
   uintptr_t *xb = (uintptr_t *) x;
   if (*xb == 0)return;
   (*xb) += 2;
+  //printf("increment block %p to %lu\n", xb, v_to_uint(*xb)); // why printf is fine while fprintf is not?
 }
 
 void destroy_nontrivial(uintptr_t x_v) {
@@ -166,7 +167,7 @@ void destroy_nontrivial(uintptr_t x_v) {
       decrement_value(*xloop);
       ++xloop;
     }
-    //free(x);
+    free(x);
   }
 }
 
@@ -174,7 +175,7 @@ uintptr_t sum_fun(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
-  increment((uintptr_t) argv_a);
+  increment_value((uintptr_t) argv_a);
   //fputs("decrementing argv_b\n",stderr);
   decrement_value((uintptr_t) argv_b);
   uint64_t a = v_to_uint(argv_a[4]);
@@ -218,7 +219,7 @@ int main() {
 
   println_debug(part_app);
 
-  increment(part_app);
+  increment_value(part_app);
   uintptr_t r1 = apply_fn(part_app, uint_to_v(1729));
 
   println_debug(r1);

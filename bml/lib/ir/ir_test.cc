@@ -411,7 +411,7 @@ retcode_format db  10,"%llu", 0
   oasm << R"(
 section .text
 global main
-extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value
+extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value
 
 )";
 

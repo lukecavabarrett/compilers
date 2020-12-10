@@ -134,17 +134,19 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
         },
         [&](instruction::cmp_vars &c) {
           // cmp should ALWAYS be IMMEDIATELY followed by a branch
-          if(i+1 == s.body.size())THROW_INTERNAL_ERROR
-          if(!std::holds_alternative<instruction::assign>(s.body[i+1]))THROW_INTERNAL_ERROR;
-          if(!std::holds_alternative<rhs_expr::branch>(std::get<instruction::assign>(s.body[i+1]).src))THROW_INTERNAL_ERROR;
-          rhs_expr::branch &b = std::get<rhs_expr::branch>(std::get<instruction::assign>(s.body[i+1]).src);
+          if (i + 1 == s.body.size())THROW_INTERNAL_ERROR
+          if (!std::holds_alternative<instruction::assign>(s.body[i + 1]))THROW_INTERNAL_ERROR;
+          if (!std::holds_alternative<rhs_expr::branch>(std::get<instruction::assign>(s.body[i
+              + 1]).src))
+            THROW_INTERNAL_ERROR;
+          rhs_expr::branch &b = std::get<rhs_expr::branch>(std::get<instruction::assign>(s.body[i + 1]).src);
           //we defer the destruction to the branches. It'll probably be a trivial destruction most of the times
-          if (to_destroy.contains(c.v1)){
+          if (to_destroy.contains(c.v1)) {
             b->jmp_branch.destroys[0].push_back(c.v1);
             b->nojmp_branch.destroys[0].push_back(c.v1);
             to_destroy.erase(c.v1);
           }
-          if (to_destroy.contains(c.v2)){
+          if (to_destroy.contains(c.v2)) {
             b->jmp_branch.destroys[0].push_back(c.v2);
             b->nojmp_branch.destroys[0].push_back(c.v2);
             to_destroy.erase(c.v2);
@@ -190,7 +192,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 },
                 [&](rhs_expr::apply_fn &fun) {
                   assert(destroys.size() <= 2);
-                  for(const var v : destroys)assert(v==fun.f || v==fun.x);
+                  for (const var v : destroys)assert(v == fun.f || v == fun.x);
                   assert(contains(destroys, fun.f) || c.is_virtual(fun.f));
                   assert(contains(destroys, fun.x) || c.is_virtual(fun.x));
                   destroys.clear();
@@ -224,12 +226,14 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                     c.declare_free(a.dst, os);
                     c.make_non_both_mem(a.dst, r.v, os);
                     os << "mov " << c.at(a.dst) << ", " << c.at(r.v) << "\n";
+                    c.increment_refcount(a.dst, os);
                   }
                 },
                 [&](rhs_expr::memory_access &ma) {
                   c.declare_free(a.dst, os);
                   c.make_both_non_mem(ma.base, a.dst, os);
                   os << "mov " << c.at(a.dst) << ", qword [" << c.at(ma.base) << offset(ma.block_offset * 8) << "]\n";
+                  c.increment_refcount(a.dst, os);
                 },
                 [&](rhs_expr::malloc &m) {
                   c.call_clean({}, os);
@@ -300,7 +304,8 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 },
                 [&](rhs_expr::binary_op &b) {
                   const bool operator_commutative = rhs_expr::binary_op::is_commutative(b.op);
-                  if (!destroys.empty() && operator_commutative && contains(destroys,b.x2) && !c.is_virtual(b.x2))std::swap(b.x1, b.x2);
+                  if (!destroys.empty() && operator_commutative && contains(destroys, b.x2) && !c.is_virtual(b.x2))
+                    std::swap(b.x1, b.x2);
                   if (contains(destroys, b.x1)) {
                     //variable move
                     assert(c.contains((b.x1)));
@@ -327,7 +332,9 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
           c.make_non_both_mem(cmp.v1, cmp.v2, os);
           os << instruction::cmp_vars::ops_to_string(cmp.op) << " " << c.at(cmp.v1) << ", " << c.at(cmp.v2) << "\n";
           //assert all trivially destructible
-          assert(std::all_of(destroys.begin(),destroys.end(),[](var v){return (v.destroy_class()&non_trivial)==0;}));
+          assert(std::all_of(destroys.begin(),
+                             destroys.end(),
+                             [](var v) { return (v.destroy_class() & non_trivial) == 0; }));
         },
     }, s.body[i]);
     if (need_to_return) {
@@ -350,7 +357,7 @@ void function::compile(std::ostream &os) {
   setup_destruction();
   scope::tight_inference();
   os << name << ":\n";
-  scope_compile_rec(*this, os, context_t(args.begin(),args.end()), true);
+  scope_compile_rec(*this, os, context_t(args.begin(), args.end()), true);
 }
 function function::parse(std::string_view source) {
   parse::tokenizer tk(source);
@@ -362,7 +369,7 @@ function function::parse(std::string_view source) {
 void function::setup_destruction() {
   destroys.clear();
   for (const var &v : scope_setup_destroys(*this,
-                                           std::unordered_set<var>(args.begin(),args.end()))) {
+                                           std::unordered_set<var>(args.begin(), args.end()))) {
     destroys[0].push_back(v);
   }
 }
@@ -372,14 +379,14 @@ bool scope::tight_inference() {
   //TODO: when branching upon comparison on last bit, reclassify variable
   //TODO: ideally to be called once
   bool once = false;
-  bool actioned=true;
-  auto reduce_space = [&actioned](var v,destroy_class_t d){
-    if((d & v.destroy_class()) ==unvalid_destroy_class)THROW_UNIMPLEMENTED; //TODO: unconsitent usage
-    if(v.destroy_class() <= d)return;
+  bool actioned = true;
+  auto reduce_space = [&actioned](var v, destroy_class_t d) {
+    if ((d & v.destroy_class()) == unvalid_destroy_class)THROW_UNIMPLEMENTED; //TODO: unconsitent usage
+    if (v.destroy_class() <= d)return;
     actioned = true;
     v.destroy_class() = v.destroy_class() & d;
   };
-  while(actioned) {
+  while (actioned) {
     actioned = false;
     for (const auto &i : body) {
       std::visit(overloaded{
@@ -396,29 +403,29 @@ bool scope::tight_inference() {
                   //reduce_space(c.v, ia.dst.destroy_class());
                 },
                 [&](const rhs_expr::unary_op &u) {
-                  reduce_space(ia.dst,trivial);
+                  reduce_space(ia.dst, trivial);
                   //reduce_space(u.x,trivial);
-                  },
+                },
                 [&](const rhs_expr::binary_op &b) {
-                  reduce_space(ia.dst,trivial);
+                  reduce_space(ia.dst, trivial);
                   //reduce_space(b.x1,trivial);
                   //reduce_space(b.x2,trivial);
-                  },
+                },
                 [&](const rhs_expr::malloc &) {
-                  reduce_space(ia.dst,non_trivial);
-                  },
+                  reduce_space(ia.dst, non_trivial);
+                },
                 [&](const rhs_expr::memory_access &m) {
                   //reduce_space(m.base,boxed);
                   //nothing can be said about the result
-                  },
+                },
                 [&](const rhs_expr::apply_fn &f) {
                   //reduce_space(f.f,boxed);
-                  },
+                },
                 [&](const rhs_expr::branch &b) {
                   actioned |= b->nojmp_branch.tight_inference();
                   actioned |= b->jmp_branch.tight_inference();
-                  reduce_space(ia.dst,b->nojmp_branch.ret.destroy_class() | b->jmp_branch.ret.destroy_class());
-                  },
+                  reduce_space(ia.dst, b->nojmp_branch.ret.destroy_class() | b->jmp_branch.ret.destroy_class());
+                },
             }, ia.src);
           },
           [&](const instruction::cmp_vars &c) {
@@ -432,7 +439,7 @@ bool scope::tight_inference() {
           },
       }, i);
     }
-    if(actioned)once=true;
+    if (actioned)once = true;
   }
   return once;
 }
@@ -598,8 +605,8 @@ void context_t::compress_stack(std::ostream &os) {
   if (freed)os << "add rsp, " << (freed * 8) << " ; reclaiming stack space\n";
   assert_consistency();
 }
-void context_t::debug_vars(std::ostream& os) const {
-  for (const auto& [v,l] : vars) {
+void context_t::debug_vars(std::ostream &os) const {
+  for (const auto&[v, l] : vars) {
     os << v << " @ " << at(v) << " | ";
   }
 }
@@ -610,25 +617,28 @@ void context_t::destroy(const std::vector<var> &vs, std::ostream &os) {
 }
 void context_t::destroy(var v, std::ostream &os) {
   assert_consistency();
-  if(v.destroy_class() & non_trivial) {
+  if (v.destroy_class() & non_trivial) {
     os << "; destroying " << v << " : " << destroy_class_to_string(v.destroy_class()) << " \n";
     //TODO: maybe deep destruction
-    switch(v.destroy_class()){
+    switch (v.destroy_class()) {
 
       case value:
       case non_trivial:
       case boxed:
-      case non_global:{
+      case non_global: {
         //TODO : destroy with more specific fashion
-        move(reg::args_order.front(),location(v),os);
-        for(auto r : reg::volatiles)if(r!=reg::args_order.front() && !is_reg_free(r)){
-          os << "push "<<reg::to_string(r)<<"\n";
-        }
+        move(reg::args_order.front(), location(v), os);
+        for (auto r : reg::volatiles)
+          if (r != reg::args_order.front() && !is_reg_free(r)) {
+            os << "push " << reg::to_string(r) << "\n";
+          }
         os << "call decrement_value\n";
-        for(auto r = reg::volatiles.rbegin();r!=reg::volatiles.rend();++r)if(*r!=reg::args_order.front() && !is_reg_free(*r)){
-            os << "pop "<<reg::to_string(*r)<<"\n";
-        }
-      };break;
+        for (auto r = reg::volatiles.rbegin(); r != reg::volatiles.rend(); ++r)
+          if (*r != reg::args_order.front() && !is_reg_free(*r)) {
+            os << "pop " << reg::to_string(*r) << "\n";
+          }
+      };
+        break;
       case unboxed:break;
       case trivial:break;
       case destroy_class_t::global:break;
@@ -650,6 +660,38 @@ void context_t::destroy(var v, std::ostream &os) {
   compress_stack(os);
   assert_consistency();
 }
+void context_t::increment_refcount(var v, std::ostream &os) {
+  //TODO: increment with more specific fashion
+  assert_consistency();
+  if (v.destroy_class() & non_trivial) {
+    os << "; incrementing " << v << " : " << destroy_class_to_string(v.destroy_class()) << " \n";
+    switch (v.destroy_class()) {
+      case value:
+      case non_trivial:
+      case boxed:
+      case non_global: {
+        move(reg::args_order.front(), location(v), os);
+        assert(location(v) == strict_location_t{reg::args_order.front()}); //increment preserve the calling register
+        for (auto r : reg::volatiles)
+          if (r != reg::args_order.front() && !is_reg_free(r)) {
+            os << "push " << reg::to_string(r) << "\n";
+          }
+        os << "call increment_value\n";
+        for (auto r = reg::volatiles.rbegin(); r != reg::volatiles.rend(); ++r)
+          if (*r != reg::args_order.front() && !is_reg_free(*r)) {
+            os << "pop " << reg::to_string(*r) << "\n";
+          }
+        assert(location(v) == strict_location_t{reg::args_order.front()}); //increment preserve the calling register
+
+      };
+        break;
+      case unboxed:break;
+      case trivial:break;
+      case destroy_class_t::global:break;
+    }
+  }
+  assert_consistency();
+}
 void context_t::declare_const(var v, uint64_t value) {
   assert_consistency();
   assert(!vars.contains(v));
@@ -665,8 +707,6 @@ std::optional<uint64_t> context_t::is_constant(var v) const {
       [](const on_stack &) -> std::optional<uint64_t> { return {}; }
   }, vars.at(v));
 }
-
-
 
 void context_t::declare_global(var v, std::string_view name) {
   assert_consistency();
