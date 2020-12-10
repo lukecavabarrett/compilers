@@ -42,6 +42,7 @@ namespace rhs_expr = instruction::rhs_expr;
  then inference algorithm
 }*/
 enum destroy_class_t : uint8_t {
+  unvalid_destroy_class = 0,
   unboxed = 1,
   global = 2,
   non_trivial = 4,
@@ -50,6 +51,7 @@ enum destroy_class_t : uint8_t {
   boxed = global | non_trivial,
   non_global = value & (~global)
 };
+static_assert(unvalid_destroy_class == 0);
 static_assert(trivial == 3);
 static_assert(boxed == 6);
 static_assert(non_global == 5);
@@ -57,6 +59,13 @@ static_assert(value == 7);
 namespace parse {
 std::optional<destroy_class_t> destroy_class_of_string(std::string_view str);
 }
+std::string_view destroy_class_to_string(destroy_class_t);
+destroy_class_t operator|(const destroy_class_t a, const destroy_class_t b);
+destroy_class_t operator&(const destroy_class_t a, const destroy_class_t b);
+bool operator<=(const destroy_class_t a, const destroy_class_t b);
+bool operator>=(const destroy_class_t a, const destroy_class_t b);
+bool operator<(const destroy_class_t a,const destroy_class_t b);
+bool operator>(const destroy_class_t a,const destroy_class_t b);
 struct var {
 
   uint64_t id;
@@ -66,7 +75,7 @@ struct var {
     destroy_classes.push_back(value);
     assert(destroy_classes.size() == id + 1);
   }
-  explicit var(std::string_view name) : var() { maybe_names.try_emplace(id, name); }
+  explicit var(std::string_view name) : var() { maybe_names.try_emplace(id, name); ++(name_size[name]); }
   var(const var &) = default;
   var(var &&) = default;
   var &operator=(const var &) = default;
@@ -81,7 +90,11 @@ struct var {
     if (maybe_names.contains(id))os << maybe_names.at(id) << "_" << id;
     else os << "var__" << id;
   }
+  [[nodiscard]] std::string_view name() const {
+    return maybe_names.contains(id) ? std::string_view(maybe_names.at(id)) : "_nan_";
+  }
   static std::unordered_map<uint64_t, std::string> maybe_names;
+  static std::unordered_map<std::string_view,size_t> name_size;
   static std::vector<destroy_class_t> destroy_classes;
   destroy_class_t &destroy_class() { return destroy_classes.at(id); };
   const destroy_class_t &destroy_class() const { return destroy_classes.at(id); };
@@ -227,14 +240,14 @@ struct scope {
   void push_back(instruction::t &&i);
   scope &operator<<(instruction::t &&i);
   var ret;
-
+  bool tight_inference();
   void print(std::ostream &os, size_t offset = 0) const;
   std::string to_string();
   void parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
 };
 
 struct function : public scope {
-  std::vector<std::pair<std::string_view, var>> args;
+  std::vector<var> args;
   std::string_view name;
   static function parse(std::string_view source);
   void setup_destruction();

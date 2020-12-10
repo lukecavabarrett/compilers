@@ -133,10 +133,22 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
           destroy_here(w.src, i);
         },
         [&](instruction::cmp_vars &c) {
-          destroy_here(c.v1, i);
-          destroy_here(c.v2, i);
-          //ATCHUNG! after a cmp, destroys can potentially unvalidate the flags.
-          //However the content are likely immediate, so no actual deallocation will take place - lets ensure that
+          // cmp should ALWAYS be IMMEDIATELY followed by a branch
+          if(i+1 == s.body.size())THROW_INTERNAL_ERROR
+          if(!std::holds_alternative<instruction::assign>(s.body[i+1]))THROW_INTERNAL_ERROR;
+          if(!std::holds_alternative<rhs_expr::branch>(std::get<instruction::assign>(s.body[i+1]).src))THROW_INTERNAL_ERROR;
+          rhs_expr::branch &b = std::get<rhs_expr::branch>(std::get<instruction::assign>(s.body[i+1]).src);
+          //we defer the destruction to the branches. It'll probably be a trivial destruction most of the times
+          if (to_destroy.contains(c.v1)){
+            b->jmp_branch.destroys[0].push_back(c.v1);
+            b->nojmp_branch.destroys[0].push_back(c.v1);
+            to_destroy.erase(c.v1);
+          }
+          if (to_destroy.contains(c.v2)){
+            b->jmp_branch.destroys[0].push_back(c.v2);
+            b->nojmp_branch.destroys[0].push_back(c.v2);
+            to_destroy.erase(c.v2);
+          }
         },
     }, s.body[i]);
   return to_destroy;
@@ -287,13 +299,6 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   if (destroy_arg)c.declare_move(a.dst, u.x);
                 },
                 [&](rhs_expr::binary_op &b) {
-                  os << " ;";
-                  a.dst.print(os);
-                  os << " = " << rhs_expr::binary_op::ops_to_string(b.op) << "(";
-                  b.x1.print(os);
-                  os << ", ";
-                  b.x2.print(os);
-                  os << ")\n";
                   const bool operator_commutative = rhs_expr::binary_op::is_commutative(b.op);
                   if (!destroys.empty() && operator_commutative && contains(destroys,b.x2) && !c.is_virtual(b.x2))std::swap(b.x1, b.x2);
                   if (contains(destroys, b.x1)) {
@@ -320,8 +325,9 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
         },
         [&](instruction::cmp_vars &cmp) {
           c.make_non_both_mem(cmp.v1, cmp.v2, os);
-          //TODO: assert trivially destructible
           os << instruction::cmp_vars::ops_to_string(cmp.op) << " " << c.at(cmp.v1) << ", " << c.at(cmp.v2) << "\n";
+          //assert all trivially destructible
+          assert(std::all_of(destroys.begin(),destroys.end(),[](var v){return (v.destroy_class()&non_trivial)==0;}));
         },
     }, s.body[i]);
     if (need_to_return) {
@@ -339,16 +345,12 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   return c;
 }
 
-auto view_second(auto it) { return boost::make_transform_iterator(it,
-                                                                  std::mem_fn(&std::pair<std::string_view,
-                                                                                         var>::second));
-};
-
 void function::compile(std::ostream &os) {
   //TODO: destroyability analysis
   setup_destruction();
+  scope::tight_inference();
   os << name << ":\n";
-  scope_compile_rec(*this, os, context_t(view_second(args.begin()), view_second(args.end())), true);
+  scope_compile_rec(*this, os, context_t(args.begin(),args.end()), true);
 }
 function function::parse(std::string_view source) {
   parse::tokenizer tk(source);
@@ -360,10 +362,79 @@ function function::parse(std::string_view source) {
 void function::setup_destruction() {
   destroys.clear();
   for (const var &v : scope_setup_destroys(*this,
-                                           std::unordered_set<var>(view_second(args.begin()),
-                                                                   view_second(args.end())))) {
+                                           std::unordered_set<var>(args.begin(),args.end()))) {
     destroys[0].push_back(v);
   }
+}
+
+bool scope::tight_inference() {
+  //TODO: implement tightening to be scope-wise
+  //TODO: when branching upon comparison on last bit, reclassify variable
+  //TODO: ideally to be called once
+  bool once = false;
+  bool actioned=true;
+  auto reduce_space = [&actioned](var v,destroy_class_t d){
+    if((d & v.destroy_class()) ==unvalid_destroy_class)THROW_UNIMPLEMENTED; //TODO: unconsitent usage
+    if(v.destroy_class() <= d)return;
+    actioned = true;
+    v.destroy_class() = v.destroy_class() & d;
+  };
+  while(actioned) {
+    actioned = false;
+    for (const auto &i : body) {
+      std::visit(overloaded{
+          [&](const instruction::assign &ia) {
+            std::visit(overloaded{
+                [&](const rhs_expr::constant &) {
+                  reduce_space(ia.dst, trivial);
+                },
+                [&](const rhs_expr::global &) {
+                  reduce_space(ia.dst, global);
+                },
+                [&](const rhs_expr::copy &c) {
+                  reduce_space(ia.dst, c.v.destroy_class());
+                  //reduce_space(c.v, ia.dst.destroy_class());
+                },
+                [&](const rhs_expr::unary_op &u) {
+                  reduce_space(ia.dst,trivial);
+                  //reduce_space(u.x,trivial);
+                  },
+                [&](const rhs_expr::binary_op &b) {
+                  reduce_space(ia.dst,trivial);
+                  //reduce_space(b.x1,trivial);
+                  //reduce_space(b.x2,trivial);
+                  },
+                [&](const rhs_expr::malloc &) {
+                  reduce_space(ia.dst,non_trivial);
+                  },
+                [&](const rhs_expr::memory_access &m) {
+                  //reduce_space(m.base,boxed);
+                  //nothing can be said about the result
+                  },
+                [&](const rhs_expr::apply_fn &f) {
+                  //reduce_space(f.f,boxed);
+                  },
+                [&](const rhs_expr::branch &b) {
+                  actioned |= b->nojmp_branch.tight_inference();
+                  actioned |= b->jmp_branch.tight_inference();
+                  reduce_space(ia.dst,b->nojmp_branch.ret.destroy_class() | b->jmp_branch.ret.destroy_class());
+                  },
+            }, ia.src);
+          },
+          [&](const instruction::cmp_vars &c) {
+            if (c.op != instruction::cmp_vars::test) {
+              //reduce_space(c.v1,trivial);
+              //reduce_space(c.v2,trivial);
+            }
+          },
+          [&](const instruction::write_uninitialized_mem &wm) {
+            //reduce_space(wm.base, boxed);
+          },
+      }, i);
+    }
+    if(actioned)once=true;
+  }
+  return once;
 }
 namespace {
 
@@ -538,8 +609,31 @@ void context_t::destroy(const std::vector<var> &vs, std::ostream &os) {
   }
 }
 void context_t::destroy(var v, std::ostream &os) {
-  //TODO: maybe deep destruction
-  os << "; destroying var " << v << " \n";
+  assert_consistency();
+  if(v.destroy_class() & non_trivial) {
+    os << "; destroying " << v << " : " << destroy_class_to_string(v.destroy_class()) << " \n";
+    //TODO: maybe deep destruction
+    switch(v.destroy_class()){
+
+      case value:
+      case non_trivial:
+      case boxed:
+      case non_global:{
+        //TODO : destroy with more specific fashion
+        move(reg::args_order.front(),location(v),os);
+        for(auto r : reg::volatiles)if(r!=reg::args_order.front() && !is_reg_free(r)){
+          os << "push "<<reg::to_string(r)<<"\n";
+        }
+        os << "call decrement_value\n";
+        for(auto r = reg::volatiles.rbegin();r!=reg::volatiles.rend();++r)if(*r!=reg::args_order.front() && !is_reg_free(*r)){
+            os << "pop "<<reg::to_string(*r)<<"\n";
+        }
+      };break;
+      case unboxed:break;
+      case trivial:break;
+      case destroy_class_t::global:break;
+    }
+  }
   assert_consistency();
   assert(vars.contains(v));
   std::visit(overloaded{

@@ -11,6 +11,39 @@ std::ostream &operator<<(std::ostream &os, const var &v) {
   return os;
 }
 
+std::string_view destroy_class_to_string(destroy_class_t dc) {
+  switch (dc) {
+    case unboxed:return "unboxed";
+    case global:return "global";
+    case non_trivial:return "non_trivial";
+    case value:return "value";
+    case trivial:return "trivial";
+    case boxed:return "boxed";
+    case non_global:return "non_global";
+    case unvalid_destroy_class:return "unvalid_destroy_class";
+  }
+}
+
+destroy_class_t operator|(const destroy_class_t a, const destroy_class_t b){
+  return destroy_class_t(uint8_t(a)|uint8_t(b));
+};
+destroy_class_t operator&(const destroy_class_t a, const destroy_class_t b){
+  return destroy_class_t(uint8_t(a)&uint8_t(b));
+};
+bool operator<=(const destroy_class_t a, const destroy_class_t b){
+  return ((uint8_t(a)|uint8_t(b)) == uint8_t(b));
+};
+bool operator>=(const destroy_class_t a, const destroy_class_t b){
+  return b<=a;
+};
+bool operator<(const destroy_class_t a,const destroy_class_t b){
+  return a<=b && a!=b;
+}
+bool operator>(const destroy_class_t a,const destroy_class_t b){
+  return b<a;
+}
+
+
 namespace parse {
 
 std::optional<destroy_class_t> destroy_class_of_string(std::string_view str) {
@@ -121,6 +154,7 @@ std::string_view tokenizer::get_source() const {
 }
 
 std::unordered_map<uint64_t, std::string> var::maybe_names;
+std::unordered_map<std::string_view,size_t> var::name_size;
 std::vector<destroy_class_t> var::destroy_classes;
 
 rhs_expr::memory_access var::operator*() const {
@@ -155,7 +189,9 @@ void scope::print(std::ostream &os, size_t offset) const {
     for(var v : destroys.at(i)){
       if(comma)os<<", ";
       comma=true;
+      if(v.destroy_class()<=trivial)os<<"(";
       os<<v;
+      if(v.destroy_class()<=trivial)os<<")";
     }
     if(newline)os<<"\n";
   };
@@ -165,7 +201,10 @@ void scope::print(std::ostream &os, size_t offset) const {
     for (int i = offset; i--;)os << "  ";
     std::visit(overloaded{
         [&](const instruction::assign &a) {
-          os << a.dst << " = ";
+          os << a.dst ;
+          if(a.dst.destroy_class()!=value)
+            os<<" : "<<destroy_class_to_string(a.dst.destroy_class());
+          os << " = ";
           std::visit(overloaded{
               [&](const rhs_expr::constant &ce) { os << ce.v; },
               [&](const rhs_expr::global &g) { os << g.name; },
@@ -407,11 +446,11 @@ void function::parse(parse::tokenizer &tk) {
     while (tk.peek() != PARENS_CLOSE) {
       tk.expect_peek(IDENTIFIER);
       std::string_view param_name = tk.pop().sv;
-      std::optional<destroy_class_t> dc;
+      std::optional<destroy_class_t> dc = {};
       if (tk.peek() == COLON) {
         tk.expect_pop(COLON);
         tk.expect_peek(IDENTIFIER);
-        auto dc = destroy_class_of_string(tk.peek_sv());
+        dc = destroy_class_of_string(tk.peek_sv());
         if (!dc) throw error::report_token(tk.peek_sv(), "Specifier", "is not a recognized destroyability class");
         tk.expect_pop(IDENTIFIER);
       }
@@ -420,7 +459,7 @@ void function::parse(parse::tokenizer &tk) {
       var v(param_name);
       if(dc.has_value())v.destroy_class() = dc.value();
       names.try_emplace(param_name, v);
-      args.emplace_back(param_name, v);
+      args.emplace_back(v);
     }
     tk.expect_pop(PARENS_CLOSE);
     tk.expect_pop(CURLY_OPEN);
@@ -430,15 +469,15 @@ void function::parse(parse::tokenizer &tk) {
     e.print(std::cout, tk.get_source(), "source.ir");
     throw std::runtime_error("ir parsing error");
   }
-
+  scope::tight_inference();
 }
 void function::print(std::ostream &os, size_t offset) const {
   os << name << "(";
   bool comma = false;
-  for (const auto&[s, _] : args) {
+  for (const var v : args) {
     if (comma)os << ", ";
     comma = true;
-    os << s;
+    os << v << " : " << destroy_class_to_string(v.destroy_class());
   }
   os << ") {\n";
   scope::print(os, offset + 1);

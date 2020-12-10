@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #define Tag_Tuple  0
 #define Tag_Fun 1
@@ -36,7 +37,7 @@ void print_debug(uintptr_t x) {
   if (x & 1) {
     //immediate
     x >>= 1;
-    fprintf(debug_stream,"[%lu]", x);
+    fprintf(debug_stream, "[%lu]", x);
   } else {
     //block
 
@@ -46,7 +47,7 @@ void print_debug(uintptr_t x) {
       uintptr_t refcount = v[0];
       if (refcount & 1) {
         refcount >>= 1;
-        fprintf(debug_stream,"%lu", refcount);
+        fprintf(debug_stream, "%lu", refcount);
       } else {
         fputs(refcount ? "abstr" : "static", debug_stream);
       }
@@ -54,26 +55,26 @@ void print_debug(uintptr_t x) {
     uint32_t tag = get_tag(v[1]);
     uint32_t size = get_size(v[1]);
     uint8_t d = get_d(v[1]);
-    fprintf(debug_stream,", tag:%u, size:%u | ", tag, size);
+    fprintf(debug_stream, ", tag:%u, size:%u | ", tag, size);
     v += 2;
     if (tag == Tag_Fun) {
       --size;
       v += 1;
-      fputs("[text_ptr]", stderr);
+      fputs("[text_ptr]", debug_stream);
     }
     while (size--) {
       print_debug(*v);
       ++v;
     }
     if (d) {
-      fputs("[destructor]", stderr);
+      fputs("[destructor]", debug_stream);
     }
-    fputs("}", stderr);
+    fputs("}", debug_stream);
   }
 }
 void println_debug(uintptr_t x) {
   print_debug(x);
-  putc(10,stderr);
+  putc(10, debug_stream);
 }
 
 typedef uintptr_t (*text_ptr)(uintptr_t);
@@ -95,47 +96,41 @@ uintptr_t apply_fn(uintptr_t f, uintptr_t x) {
 }
 
 void decrement_value(uintptr_t x);//partially_inlined
-void decrement_trivial(uintptr_t x){}//inlined
+void decrement_trivial(uintptr_t x) {}//inlined
 void decrement_boxed(uintptr_t x);//partially inlined
 void decrement_nonglobal(uintptr_t x);//partially inlined
-void decrement_unboxed(uintptr_t x){}//inlined
-void decrement_global(uintptr_t x){}//inlined
+void decrement_unboxed(uintptr_t x) {}//inlined
+void decrement_global(uintptr_t x) {}//inlined
 void decrement_nontrivial(uintptr_t x);//partially inlined
 void destroy_nontrivial(uintptr_t x);
 
 void decrement_value(uintptr_t x) { //partially inlined
   if (x & 1)return; // rule out unboxed
-  uintptr_t *xb = (uintptr_t *) x;
-  if (*xb == 0)return; // rule out global
-  (*xb) -= 2;
-  if (*xb != 1)return;
-  destroy_nontrivial(x);
+  decrement_boxed(x);
 }
 
 void decrement_boxed(uintptr_t x) { //partially inlined
+  assert((x & 0) == 0);
   uintptr_t *xb = (uintptr_t *) x;
   if (*xb == 0)return; // rule out global
-  (*xb) -= 2;
-  if (*xb != 1)return;
-  destroy_nontrivial(x);
+  decrement_nontrivial(x);
 }
 
 void decrement_nonglobal(uintptr_t x) { //partially inlined
   if (x & 1)return; // rule out unboxed
+  assert(*(uintptr_t *) x);
+  decrement_nontrivial(x);
+}
+
+void decrement_nontrivial(uintptr_t x) {
+  assert((x & 0) == 0);
   uintptr_t *xb = (uintptr_t *) x;
+  assert(*xb);
   (*xb) -= 2;
+  printf("decrement block %p to %lu\n", (void *) x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
   if (*xb != 1)return;
   destroy_nontrivial(x);
 }
-
-
-void decrement_nontrivial(uintptr_t x){
-  uintptr_t *xb = (uintptr_t *) x;
-  (*xb) -= 2;
-  if (*xb != 1)return;
-  destroy_nontrivial(x);
-}
-
 
 void increment(uintptr_t x) {
   if (x & 1)return;
@@ -145,7 +140,7 @@ void increment(uintptr_t x) {
 }
 
 void destroy_nontrivial(uintptr_t x_v) {
-  uintptr_t * x = (uintptr_t *)x_v;
+  uintptr_t *x = (uintptr_t *) x_v;
   //get size, tag, d.
   //assert(x[0] == 1);
   uint32_t tag = get_tag(x[1]);
@@ -155,11 +150,12 @@ void destroy_nontrivial(uintptr_t x_v) {
     x[0] = 3; //refcount:=1
     x[1] ^= 1; // d:=0
     uintptr_t f = x[size + 2];
-    uintptr_t y = apply_fn(f, (uintptr_t)x);
+    uintptr_t y = apply_fn(f, (uintptr_t) x);
     decrement_value(y);
     return;
   } else {
-    fprintf(stderr, "destroying block of size %u\n", size);
+    printf("destroying block of size %u at %p;\n", size, x);
+    //println_debug(x_v);
     const uintptr_t *xloop = x;
     xloop += 2;
     if (tag == Tag_Fun) {
@@ -170,26 +166,26 @@ void destroy_nontrivial(uintptr_t x_v) {
       decrement_value(*xloop);
       ++xloop;
     }
-    free(x);
+    //free(x);
   }
 }
 
 uintptr_t sum_fun(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
-  uintptr_t * argv_a = (uintptr_t *) argv_b[2];
-  increment((uintptr_t)argv_a);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment((uintptr_t) argv_a);
   //fputs("decrementing argv_b\n",stderr);
-  decrement_value((uintptr_t)argv_b);
+  decrement_value((uintptr_t) argv_b);
   uint64_t a = v_to_uint(argv_a[4]);
-  decrement_value((uintptr_t)argv_a);
+  decrement_value((uintptr_t) argv_a);
   return uint_to_v(a + b);
 }
 
-#define Make_Tag_Size_d(tag,size,d)  ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
+#define Make_Tag_Size_d(tag, size, d)  ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
 #define Uint_to_v(x) ((uintptr_t)((x<<1)|1))
 #define V_to_uint(x) ((uint64_t)(x>>1))
-const uintptr_t sum_block[4] = {0,Make_Tag_Size_d(Tag_Fun,2,0),(uintptr_t) &sum_fun,Uint_to_v(2)};
+const uintptr_t sum_block[4] = {0, Make_Tag_Size_d(Tag_Fun, 2, 0), (uintptr_t) &sum_fun, Uint_to_v(2)};
 
 /*TEST*/
 /*

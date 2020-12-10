@@ -11,6 +11,8 @@
 // - fix format of ALL tests
 // - fix testing pipeline (creation of object files included)
 // - add destruction in compilation
+// - make sure memory_access is incrementing the refcount
+// - delay destruction after comparison
 
 // TODO: optional: is there a way to override the ostream for doing (for instance) putting ";" before evry line?
 //TODO-someday: understand why pushing and retrieving {rdi} is okay, but not {} or (rdi,rsi}
@@ -364,7 +366,7 @@ retcode_format db  10,"%llu", 0
   oasm << R"(
 section .text
 global main
-extern printf, malloc, exit, print_debug, sum_fun, apply_fn
+extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value
 
 )";
 
@@ -424,6 +426,7 @@ xor     eax, eax
 ret
 )";
   oasm.close();
+  ASSERT_EQ(system("gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O2"),0);
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
   int exit_code = (WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout")));
@@ -760,7 +763,56 @@ length(args) {
   }
 }
 
-//TODO: ApplyList, ListLength, ListSum
+TEST(Recursive, ListLength_tailrecursive_annotated) {
+  using build_object::tvar;
+  std::string_view source = R"(
+
+
+length_tl(acc_args : non_trivial) {
+  acc : unboxed = acc_args[4];
+  args : non_trivial = acc_args[2];
+  x : non_global = args[4];
+  one : trivial = 1;
+
+  one_v : trivial = int_to_v(one);
+
+  test(x,one);
+  ans_v : unboxed = if (jne) then {
+    this_f : global = args[2];
+    cnt : non_trivial = x[2];
+    tl : non_global = cnt[3];
+    two : trivial = 2;
+    acc_p1 : unboxed = add(acc,two);
+    f_tl : non_trivial = apply_fn(this_f,tl);
+    f_tl_nacc : unboxed = apply_fn(f_tl,acc_p1);
+    ans : unboxed = f_tl_nacc;
+    return ans;
+  } else {
+    return acc;
+  };
+  return ans_v;
+}
+
+length(args : non_trivial) {
+  list = args[4];
+  zero_v = 1;
+  fun = __fun_block_length_tl__;
+  fl = apply_fn(fun, list);
+  ans = apply_fn(fl,zero_v);
+  return ans;
+}
+
+)";
+  testcase_params tp = {.test_function="length",.code_verbose=true,.call_style=progressive_application,.curriables={{"length",1},{"length_tl",2}}};
+  build_object::value list = tvar(3); //empty-list
+  for(size_t l = 0; l < 1; ++l){
+    tp.expected_return = l;
+    test_ir_build(source, build_object::tuple{list}, tp);
+    list = tvar(5,{l,std::move(list)});
+  }
+}
+
+//TODO: ApplyList, ListSum
 
 
 TEST(Memory, DestroyABlock) {
