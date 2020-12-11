@@ -12,4 +12,4 @@ target_compile_features(ir PRIVATE cxx_std_17)
 
 
 add_executable(ir_test ir_test.cc)
-target_link_libraries(ir_test gtest gtest_main util ir)
+target_link_libraries(ir_test gtest gtest_main gmock util ir)

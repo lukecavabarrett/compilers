@@ -1,6 +1,7 @@
 #include <ir/lang.h>
 #include <ir/ir.h>
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include <rt/rt2.h>
 #include <numeric>
 #include <charconv>
@@ -375,7 +376,9 @@ struct testcase_params {
   std::unordered_map<std::string_view, size_t> curriables = {};
   int expected_exit_code = 0;
   build_object::value expected_return = 42;
-  std::optional<std::string_view> expected_stdout = {}, expected_stderr = {};
+  bool debug_log = false;
+  std::variant<std::monostate, std::string_view, ::testing::PolymorphicMatcher<testing::internal::MatchesRegexMatcher> >
+      expected_stdout, expected_stderr;
 };
 
 void test_ir_build(std::string_view source,
@@ -414,7 +417,7 @@ retcode_format db  10,"%llu", 0
   oasm << R"(
 section .text
 global main
-extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value
+extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value, println_int, println_int_err
 
 )";
 
@@ -426,16 +429,24 @@ extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivia
   switch (params.call_style) {
 
     case as_args: {
-      if (params.allocate_input_dynamically) FAIL() << "unimplemented dynamic input allocation\n";
       if (!std::holds_alternative<build_object::tuple>(arg.x))
         FAIL() << "mode \"as_args\" was selected, but the params were not a tuple/list.\n";
       auto it = reg::args_order.begin();
-      for (const auto &p : std::get<build_object::tuple>(arg.x)) {
+      const auto &arg_tuple = std::get<build_object::tuple>(arg.x);
+      if (params.allocate_input_dynamically)
+        std::for_each(arg_tuple.rbegin(), arg_tuple.rend(), [&](const auto &v) {
+          v.allocate_dynamically(oasm);
+        });
+      for (const auto &p : arg_tuple) {
         if (it == reg::args_order.end())
           FAIL() << "specified arguments exceeded the number of parameter-specific registers\n";
-        oasm << "mov " << reg::to_string(*it) << ", ";
-        p.retrieve(oasm);
-        oasm << "\n";
+        if (params.allocate_input_dynamically) {
+          oasm << "pop " << reg::to_string(*it) << "\n";
+        } else {
+          oasm << "mov " << reg::to_string(*it) << ", ";
+          p.retrieve(oasm);
+          oasm << "\n";
+        }
         ++it;
       }
       oasm << "call " << params.test_function << "\n";
@@ -494,8 +505,10 @@ xor     eax, eax
 ret
 )";
   oasm.close();
-  ASSERT_EQ(system(
-      "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O2"),
+  ASSERT_EQ(system(params.debug_log
+                   ? "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O2 -DDEBUG_LOG"
+                   :
+                   "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O2"),
             0);
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
@@ -507,13 +520,29 @@ ret
   out_object::value actual_return = out_object::parse(returned_stderr);
   EXPECT_TRUE(returned_stderr.empty());
   EXPECT_EQ(actual_return, params.expected_return);
-  if (params.expected_stdout.has_value())EXPECT_EQ(actual_stdout, params.expected_stdout.value());
-  if (params.expected_stderr.has_value())EXPECT_EQ(actual_stderr, params.expected_stderr.value());
+  std::visit(util::overloaded{
+      [](std::monostate) {},
+      [&](std::string_view expected_stdout) { EXPECT_EQ(actual_stdout, expected_stdout); },
+      [&](const ::testing::PolymorphicMatcher<testing::internal::MatchesRegexMatcher> &expected_stdout) {
+        EXPECT_THAT(actual_stdout, expected_stdout);
+      }
+  }, params.expected_stdout);
+  std::visit(util::overloaded{
+      [](std::monostate) {},
+      [&actual_stderr = actual_stderr](std::string_view expected_stderr) { EXPECT_EQ(actual_stderr, expected_stderr); },
+      [&actual_stderr =
+      actual_stderr](const ::testing::PolymorphicMatcher<testing::internal::MatchesRegexMatcher> &expected_stderr) {
+        EXPECT_THAT(actual_stderr, expected_stderr);
+      }
+  }, params.expected_stderr);
+
 #undef target
 
 }
 
 }
+
+using ::testing::MatchesRegex;
 
 TEST(RegLru, CopyConstr) {
   ir::reg_lru rl1;
@@ -802,7 +831,7 @@ length(args) {
   build_object::value list = tvar(3); //empty-list
   for (size_t l = 0; l < 10; ++l) {
     tp.expected_return = l;
-    test_ir_build(source, build_object::tuple{list}, tp);
+    test_ir_build(source, {list}, tp);
     list = tvar(5, {l, std::move(list)});
   }
 }
@@ -848,13 +877,13 @@ length(args) {
 
 )";
   testcase_params tp =
-      {.test_function="length", .code_verbose=true, .call_style=progressive_application, .curriables={{"length", 1},
-                                                                                                      {"length_tl",
-                                                                                                       2}}};
+      {.test_function="length", .call_style=progressive_application, .curriables={{"length", 1},
+                                                                                  {"length_tl",
+                                                                                   2}}};
   build_object::value list = tvar(3); //empty-list
   for (size_t l = 0; l < 10; ++l) {
     tp.expected_return = l;
-    test_ir_build(source, build_object::tuple{list}, tp);
+    test_ir_build(source, {list}, tp);
     list = tvar(5, {l, std::move(list)});
   }
 }
@@ -900,23 +929,113 @@ length(args : non_trivial) {
 
 )";
   testcase_params tp =
-      {.test_function="length", .code_verbose=true, .allocate_input_dynamically=true, .call_style=progressive_application, .curriables={
+      {.test_function="length", .allocate_input_dynamically=true, .call_style=progressive_application, .curriables={
           {"length", 1},
           {"length_tl",
            2}}};
   build_object::value list = tvar(3); //empty-list
   for (size_t l = 0; l < 10; ++l) {
     tp.expected_return = l;
-    test_ir_build(source, build_object::tuple{list}, tp);
+    test_ir_build(source, {list}, tp);
     list = tvar(5, {l, std::move(list)});
   }
 }
 
 //TODO: ApplyList, ListSum
 
+TEST(IO, Stdout) {
+  test_ir_build("", {42}, {
+      .test_function = "println_int",
+      .call_style=progressive_application,
+      .curriables = {
+          {"println_int", 1}
+      },
+      .expected_return = 0,
+      .expected_stdout = "42\n",
+      .expected_stderr = "",
+  });
+}
+
+TEST(IO, Stderr) {
+  test_ir_build("", {42}, {
+      .test_function = "println_int_err",
+      .call_style=progressive_application,
+      .curriables = {
+          {"println_int_err", 1}
+      },
+      .expected_return = 0,
+      .expected_stdout = "",
+      .expected_stderr = "42\n",
+  });
+}
 
 TEST(Memory, DestroyABlock) {
+  static constexpr std::string_view source = R"(
+ignore (x) {
+  zero = 0;
+  unit = int_to_v(zero);
+  return unit;
+}
+)";
+  test_ir_build(source, {{1, 2, 3, 4}}, {
+      .test_function = "ignore",
+      .allocate_input_dynamically = true,
+      .call_style=as_args,
+      .curriables = {
+          {"ignore", 1}
+      },
+      .expected_return = 0,
+      .debug_log=true,
+      .expected_stdout = MatchesRegex("decrement block 0x................ to 0\n"
+                                      "destroying block of size 4 at 0x................;\n"),
+      .expected_stderr = "",
+  });
 
 }
+
+TEST(Memory, Destructor){
+  static constexpr std::string_view source = R"(
+print_box (args) {
+  tuple = args[4];
+  pint = __fun_block_println_int__;
+  x = tuple[2];
+  unit = apply_fn(pint,x);
+  return unit;
+}
+
+make_epitaffable_box(args) {
+  x = args[4];
+  tuple = malloc(4);
+  c3 = 3;
+  c2 = 2;
+  pb = __fun_block_print_box__;
+  tuple[0] := c3;
+  tuple[1] := c3;
+  tuple[2] := x;
+  tuple[3] := pb;
+  return tuple;
+}
+
+test_function(x){
+  meb = __fun_block_make_epitaffable_box__;
+  box = apply_fn(meb,x);
+  unit = 1;
+  return unit;
+}
+)";
+  test_ir_build(source, {1546}, {
+      .allocate_input_dynamically = true,
+      .call_style=as_args,
+      .curriables = {
+          {"println_int", 1},{"make_epitaffable_box", 1},{"print_box",1}
+      },
+      .expected_return = 0,
+      .expected_stdout = "1546\n",
+      .expected_stderr = "",
+  });
+}
+
+//TODO: testing idea
+// make a function that take a pair and an index and return the indexed object; both object have an attached destructor
 
 }
