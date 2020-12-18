@@ -33,7 +33,14 @@ uint64_t v_to_uint(uintptr_t x) {
   return ((uint64_t) x) >> 1;
 }
 
-//TODO:  int_to_v, uint_to_v
+uintptr_t int_to_v(int64_t x) {
+  return (uintptr_t) ((x << 1) | 1);
+}
+
+uint64_t v_to_int(uintptr_t x) {
+  return ((int64_t) x) >> 1;
+}
+
 #define debug_stream stderr
 void print_debug(uintptr_t x) {
   if (x & 1) {

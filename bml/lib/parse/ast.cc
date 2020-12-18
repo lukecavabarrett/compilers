@@ -39,7 +39,7 @@ capture_set identifier::capture_group() {
   if (!definition_point) {
     std::string_view n = name;
   }
-  assert(definition_point); //TODO: internal fail
+  if(!definition_point)THROW_INTERNAL_ERROR;
   if (definition_point->top_level) return {};
   return {definition_point};
 }

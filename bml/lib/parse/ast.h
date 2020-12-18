@@ -155,7 +155,7 @@ struct identifier;
 namespace matcher {
 struct t;
 typedef std::unique_ptr<t> ptr;
-struct universal_matcher; //TODO: remove
+struct universal_matcher;
 }
 
 namespace matcher {
