@@ -417,7 +417,7 @@ retcode_format db  10,"%llu", 0
   oasm << R"(
 section .text
 global main
-extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value, println_int, println_int_err
+extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value, println_int, println_int_err,println_int_err_skim
 
 )";
 
@@ -506,9 +506,9 @@ ret
 )";
   oasm.close();
   ASSERT_EQ(system(params.debug_log
-                   ? "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O2 -DDEBUG_LOG"
+                   ? "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O0 -DDEBUG_LOG"
                    :
-                   "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O2"),
+                   "gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O0 "),
             0);
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
@@ -987,25 +987,25 @@ ignore (x) {
       .expected_return = 0,
       .debug_log=true,
       .expected_stdout = MatchesRegex("decrement block 0x................ to 0\n"
-                                      "destroying block of size 4 at 0x................;\n"),
+                                      "destroying block of size 4 at 0x................\n"),
       .expected_stderr = "",
   });
 
 }
 
-TEST(Memory, Destructor){
+TEST(Memory, DestroyCallDestructor) {
   static constexpr std::string_view source = R"(
-print_box (args) {
-  tuple = args[4];
+print_box (args : non_trivial) {
+  boxed_int : boxed = args[4];
   pint = __fun_block_println_int__;
-  x = tuple[2];
-  unit = apply_fn(pint,x);
+  x : trivial = boxed_int[2];
+  unit : trivial = apply_fn(pint,x);
   return unit;
 }
 
-make_epitaffable_box(args) {
-  x = args[4];
-  tuple = malloc(4);
+make_epitaffable_box(args : non_trivial) {
+  x : trivial = args[4];
+  tuple : non_trivial = malloc(4);
   c3 = 3;
   c2 = 2;
   pb = __fun_block_print_box__;
@@ -1018,20 +1018,30 @@ make_epitaffable_box(args) {
 
 test_function(x){
   meb = __fun_block_make_epitaffable_box__;
-  box = apply_fn(meb,x);
+  box : non_trivial = apply_fn(meb,x);
   unit = 1;
   return unit;
 }
 )";
   test_ir_build(source, {1546}, {
-      .allocate_input_dynamically = true,
       .call_style=as_args,
       .curriables = {
-          {"println_int", 1},{"make_epitaffable_box", 1},{"print_box",1}
+          {"println_int", 1}, {"make_epitaffable_box", 1}, {"print_box", 1}
       },
       .expected_return = 0,
-      .expected_stdout = "1546\n",
-      .expected_stderr = "",
+      .debug_log = true,
+      .expected_stdout = MatchesRegex("decrement block 0x................ to 0\n"
+                                      "destroying block of size 3 at 0x................\n"
+                                      "decrement block 0x................ to 0\n"
+                                      "increment block 0x................ to 2\n"
+                                      "decrement block 0x................ to 0\n"
+                                      "destroying block of size 3 at 0x................\n"
+                                      "decrement block 0x................ to 1\n"
+                                      "decrement block 0x................ to 0\n"
+                                      "destroying block of size 1 at 0x................\n"
+                                      "1546\n"
+                                      "decrement block 0x................ to 0\n"
+                                      "destroying block of size 3 at 0x................\n"),
   });
 }
 

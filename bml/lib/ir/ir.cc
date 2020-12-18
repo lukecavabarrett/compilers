@@ -255,6 +255,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   } else copied.emplace_back(x, rsi);
                   c.call_clean(moved, os);
                   c.call_copy(copied, os);
+                  c.align_stack_16_precall(os);
                   os << "call apply_fn\n"; //TODO: avoid additional call, traverse it here
                   c.call_happened(moved);
                   c.declare_in(a.dst, rax);
@@ -672,11 +673,16 @@ void context_t::increment_refcount(var v, std::ostream &os) {
       case non_global: {
         move(reg::args_order.front(), location(v), os);
         assert(location(v) == strict_location_t{reg::args_order.front()}); //increment preserve the calling register
+        bool push_for_align = !(stack_size()&1);
         for (auto r : reg::volatiles)
           if (r != reg::args_order.front() && !is_reg_free(r)) {
             os << "push " << reg::to_string(r) << "\n";
+            push_for_align^=1;
           }
+        if(push_for_align)os<<"sub rsp, 8\n";
         os << "call increment_value\n";
+        if(push_for_align)os<<"add rsp, 8\n";
+        os << "mov " << reg::to_string(reg::args_order.front()) << ", rax \n";
         for (auto r = reg::volatiles.rbegin(); r != reg::volatiles.rend(); ++r)
           if (*r != reg::args_order.front() && !is_reg_free(*r)) {
             os << "pop " << reg::to_string(*r) << "\n";
@@ -1124,6 +1130,20 @@ void context_t::call_copy(const std::vector<std::pair<var, register_t>> &args, s
     //TODO: increase refcount if necessary
   }
 }
+
+void context_t::align_stack_16_precall( std::ostream &os) {
+  assert_consistency();
+  if (stack.size() & 1)return; //already aligned
+  if(!stack.empty() && is_free(stack.back())){
+    stack.pop_back();
+    os << "add rsp, 8\n";
+  } else {
+    stack.emplace_back(free{});
+    os << "sub rsp, 8 ; ensure stack is 16-byte aligned before calls\n";
+  }
+  assert_consistency();
+}
+
 void context_t::call_happened(const std::vector<std::pair<var, register_t>> &args) {
   assert_consistency();
   for (const auto&[v, r] : args) {

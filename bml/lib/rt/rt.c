@@ -136,14 +136,16 @@ void decrement_nontrivial(uintptr_t x) {
   destroy_nontrivial(x);
 }
 
-void increment_value(uintptr_t x) {
-  if (x & 1)return;
+uintptr_t increment_value(uintptr_t x) {
+  if (x & 1)return x;
   uintptr_t *xb = (uintptr_t *) x;
-  if (*xb == 0)return;
+  if (*xb == 0)return x;
   (*xb) += 2;
 #ifdef DEBUG_LOG
   printf("increment block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
+  fprintf(stderr,"increment block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
 #endif
+  return x;
 }
 
 void destroy_nontrivial(uintptr_t x_v) {
@@ -162,7 +164,7 @@ void destroy_nontrivial(uintptr_t x_v) {
     return;
   } else {
 #ifdef DEBUG_LOG
-    printf("destroying block of size %u at 0x%016" PRIxPTR ";\n", size, x_v);
+    printf("destroying block of size %u at 0x%016" PRIxPTR "\n", size, x_v);
     //println_debug(x_v);
 #endif
     const uintptr_t *xloop = x;
@@ -204,6 +206,11 @@ uintptr_t println_int_err(uintptr_t argv) {
   fprintf(stderr,"%ld\n",b);
   decrement_boxed(argv);
   return uint_to_v(0);
+}
+
+uintptr_t println_int_err_skim(uintptr_t x) {
+  fprintf(stderr,"%lu\n",x);
+  return x;
 }
 
 #define Make_Tag_Size_d(tag, size, d)  ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))

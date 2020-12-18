@@ -18,9 +18,8 @@ std::string_view to_string(register_t r);
 constexpr auto all = util::make_array(rax, rcx, rdx, rsi, r8, r9, r10, r11, rbx, rbp, rdi, r12, r13, r14, r15);
 constexpr auto non_volatiles = util::make_array(rbx, rbp, r12, r13, r14, r15);
 constexpr auto volatiles = util::make_array(rax, rcx, rdx, rdi, rsi, r8, r9, r10, r11);
-static constexpr auto args_order = util::make_array(rdi, rsi,rdx,rcx,r8,r9);
+static constexpr auto args_order = util::make_array(rdi, rsi, rdx, rcx, r8, r9);
 };
-
 
 /*
 namespace var_loc {
@@ -254,11 +253,11 @@ struct context_t {
       lru.bring_back(*it);
     }
   }
-  void debug_vars(std::ostream& os) const;
+  void debug_vars(std::ostream &os) const;
 
   void destroy(var v, std::ostream &);
   void destroy(const std::vector<var> &, std::ostream &);
-  void increment_refcount(var v,std::ostream&);
+  void increment_refcount(var v, std::ostream &);
   void declare_const(var v, uint64_t value);
   std::optional<uint64_t> is_constant(var v) const;
   void declare_global(var v, std::string_view name);
@@ -278,6 +277,7 @@ struct context_t {
                   std::ostream &os); // those variable will go in the specified volatile registers.
   void call_copy(const std::vector<std::pair<var, register_t>> &args, std::ostream &os);
   void call_happened(const std::vector<std::pair<var, register_t>> &args);
+  void align_stack_16_precall(std::ostream &os);
   void compress_stack(std::ostream &);
 
   struct streamable {
