@@ -130,7 +130,7 @@ void decrement_nontrivial(uintptr_t x) {
   assert(*xb);
   (*xb) -= 2;
 #ifdef DEBUG_LOG
-  printf("decrement block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
+  fprintf(stderr,"decrement block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb));
 #endif
   if (*xb != 1)return;
   destroy_nontrivial(x);
@@ -142,8 +142,7 @@ uintptr_t increment_value(uintptr_t x) {
   if (*xb == 0)return x;
   (*xb) += 2;
 #ifdef DEBUG_LOG
-  printf("increment block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
-  fprintf(stderr,"increment block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb)); // why printf is fine while fprintf is not?
+  fprintf(stderr,"increment block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb));
 #endif
   return x;
 }
@@ -164,8 +163,7 @@ void destroy_nontrivial(uintptr_t x_v) {
     return;
   } else {
 #ifdef DEBUG_LOG
-    printf("destroying block of size %u at 0x%016" PRIxPTR "\n", size, x_v);
-    //println_debug(x_v);
+    fprintf(stderr,"destroying block of size %u at 0x%016" PRIxPTR "\n", size, x_v);
 #endif
     const uintptr_t *xloop = x;
     xloop += 2;

@@ -629,11 +629,15 @@ void context_t::destroy(var v, std::ostream &os) {
       case non_global: {
         //TODO : destroy with more specific fashion
         move(reg::args_order.front(), location(v), os);
+        bool push_for_align = !(stack_size()&1);
         for (auto r : reg::volatiles)
           if (r != reg::args_order.front() && !is_reg_free(r)) {
             os << "push " << reg::to_string(r) << "\n";
+            push_for_align^=1;
           }
+        if(push_for_align)os<<"sub rsp, 8\n";
         os << "call decrement_value\n";
+        if(push_for_align)os<<"add rsp, 8\n";
         for (auto r = reg::volatiles.rbegin(); r != reg::volatiles.rend(); ++r)
           if (*r != reg::args_order.front() && !is_reg_free(*r)) {
             os << "pop " << reg::to_string(*r) << "\n";

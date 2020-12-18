@@ -7,16 +7,9 @@
 #include <charconv>
 #include <random>
 //TODO: improve test structure
-// - pass parameters as a aggregate-initialized struct
-// - use optionals if you don't want to execute the comparison (e.g. with stdout)
-// - fix format of ALL tests
-// - fix testing pipeline (creation of object files included)
-// - add destruction in compilation
-// - make sure memory_access is incrementing the refcount
-// - delay destruction after comparison
+// - increment_value would be much more efficient if inlined
 
 // TODO: optional: is there a way to override the ostream for doing (for instance) putting ";" before evry line?
-//TODO-someday: understand why pushing and retrieving {rdi} is okay, but not {} or (rdi,rsi}
 namespace ir::lang {
 namespace {
 
@@ -424,7 +417,7 @@ extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivia
   for (auto &f : fs)f.compile(oasm);
 
   oasm << "main:\n";
-  oasm << "push rdi\n";
+  oasm << "sub rsp, 8\n";
   //load args
   switch (params.call_style) {
 
@@ -500,7 +493,7 @@ extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivia
   oasm << R"(
 mov     rdi, rax
 call    print_debug
-pop     rdi
+add     rsp, 8
 xor     eax, eax
 ret
 )";
@@ -986,9 +979,9 @@ ignore (x) {
       },
       .expected_return = 0,
       .debug_log=true,
-      .expected_stdout = MatchesRegex("decrement block 0x................ to 0\n"
+      .expected_stdout = "",
+      .expected_stderr = MatchesRegex("decrement block 0x................ to 0\n"
                                       "destroying block of size 4 at 0x................\n"),
-      .expected_stderr = "",
   });
 
 }
@@ -1030,7 +1023,8 @@ test_function(x){
       },
       .expected_return = 0,
       .debug_log = true,
-      .expected_stdout = MatchesRegex("decrement block 0x................ to 0\n"
+      .expected_stdout =  "1546\n",
+      .expected_stderr = MatchesRegex("decrement block 0x................ to 0\n"
                                       "destroying block of size 3 at 0x................\n"
                                       "decrement block 0x................ to 0\n"
                                       "increment block 0x................ to 2\n"
@@ -1039,9 +1033,8 @@ test_function(x){
                                       "decrement block 0x................ to 1\n"
                                       "decrement block 0x................ to 0\n"
                                       "destroying block of size 1 at 0x................\n"
-                                      "1546\n"
                                       "decrement block 0x................ to 0\n"
-                                      "destroying block of size 3 at 0x................\n"),
+                                      "destroying block of size 3 at 0x................\n")
   });
 }
 
