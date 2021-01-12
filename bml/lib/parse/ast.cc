@@ -605,6 +605,7 @@ void matcher::universal_matcher::globally_allocate_funblock(size_t n_args,
   use_as_immediate = true;
   os << asm_name() << " dq 1," << n_args << "," << text_ptr << "\n" << std::endl;
 }
+
 void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, size_t tuple_size) {
   use_as_immediate = true;
   os << asm_name() << " dq ";
@@ -625,6 +626,11 @@ uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
   return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
 }
 
+void matcher::universal_matcher::ir_allocate_globally_funblock(std::ostream &os,size_t n_args,
+                                                               std::string_view text_ptr) {
+  use_as_immediate = true;
+  os << ir_asm_name() << " dq 0, "<<  make_tag_size_d(Tag_Fun, 2, 0)<< n_args << "," << text_ptr << "; "<<name << " : funblock\n";
+}
 void matcher::universal_matcher::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
   use_as_immediate = true;
   os << ir_asm_name() << " dq 0," << make_tag_size_d(Tag_Tuple, tuple_size, 0);

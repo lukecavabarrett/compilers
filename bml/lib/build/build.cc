@@ -5,8 +5,10 @@ ast::global_map make_ir_data_section(std::ostream& target){
   ast::global_map globals;
   target << "section .data\n";
 
+  target << "extern int_sum_fun \n";
   static ast::matcher::universal_matcher int_sum("int_sum");
   int_sum.ir_globally_register(globals);
+  int_sum.ir_allocate_globally_funblock(target,2,"int_sum_fun");
   int_sum.use_as_immediate = int_sum.top_level = true;
   globals.try_emplace("int_sum", &int_sum);
   globals.try_emplace("+", &int_sum);
