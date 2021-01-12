@@ -62,8 +62,12 @@ void identifier::compile(direct_sections_t s, size_t stack_pos) {
 }
 identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
 void identifier::bind(const constr_map &) {}
-ir::lang::var identifier::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var identifier::ir_compile(ir_sections_t s) {
+  if (definition_point->top_level) {
+    return definition_point->ir_evaluate_global(s.main);
+  } else {
+    THROW_UNIMPLEMENTED;
+  }
 }
 
 literal::literal(ast::literal::ptr &&v) : value(std::move(v)) {}
@@ -143,9 +147,15 @@ void if_then_else::bind(const constr_map &cm) {
   true_branch->bind(cm);
   false_branch->bind(cm);
 }
-ir::lang::var if_then_else::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var if_then_else::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  s.main.push_back(instruction::cmp_vars{ .v1 = condition->ir_compile(s), .v2 = s.main.declare_constant(2), .op=instruction::cmp_vars::test});
+  scope true_scope, false_scope;
+  true_scope.ret =  true_branch->ir_compile(s.with_main(true_scope));
+  false_scope.ret =  false_branch->ir_compile(s.with_main(false_scope));
+  return s.main.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jmp_instr::jz,.nojmp_branch = std::move(true_scope), .jmp_branch = std::move(false_scope) }));
 }
+
 build_tuple::build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
 free_vars_t build_tuple::free_vars() {
   free_vars_t fv;
@@ -195,8 +205,11 @@ void fun_app::bind(const constr_map &cm) {
   f->bind(cm);
   x->bind(cm);
 }
-ir::lang::var fun_app::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var fun_app::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  var vf = f->ir_compile(s);
+  var vx = x->ir_compile(s);
+  return s.main.declare_assign(rhs_expr::apply_fn{.f = vf, .x = vx});
 }
 seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
 free_vars_t seq::free_vars() { return join_free_vars(a->free_vars(), b->free_vars()); }
@@ -209,8 +222,9 @@ void seq::bind(const constr_map &cm) {
   a->bind(cm);
   b->bind(cm);
 }
-ir::lang::var seq::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var seq::ir_compile(ir_sections_t s) {
+  a->ir_compile(s);
+  return b->ir_compile(s);
 }
 
 match_with::match_with(expression::ptr &&w) : what(std::move(w)) {}
@@ -621,7 +635,9 @@ void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, 
 #define Tag_Tuple  0
 #define Tag_Fun 1
 #define Tag_Arg 2
-
+uintptr_t uint_to_v(uint64_t x) {
+  return (uintptr_t) ((x << 1) | 1);
+}
 uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
   return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
 }
@@ -629,7 +645,7 @@ uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
 void matcher::universal_matcher::ir_allocate_globally_funblock(std::ostream &os, size_t n_args,
                                                                std::string_view text_ptr) {
   use_as_immediate = true;
-  os << ir_asm_name() << " dq 0, " << make_tag_size_d(Tag_Fun, 2, 0) << n_args << "," << text_ptr << "; " << name
+  os << ir_asm_name() << " dq 0, " << make_tag_size_d(Tag_Fun, 2, 0) << "," << text_ptr<< "," << uint_to_v(n_args) << "; " << name
      << " : funblock\n";
 }
 void matcher::universal_matcher::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
@@ -699,6 +715,17 @@ void matcher::universal_matcher::globally_evaluate(std::ostream &os) const {
     os << "mov rax, " << asm_name() << std::endl;
   } else {
     os << "mov rax, qword [" << asm_name() << "]" << std::endl;
+  }
+}
+
+ir::lang::var matcher::universal_matcher::ir_evaluate_global(ir::lang::scope &s) const {
+  assert(top_level);
+  using namespace ir::lang;
+  var gl = s.declare_global(ir_asm_name());
+  if (use_as_immediate) {
+    return gl;
+  } else {
+    return s.declare_assign(gl[0]);
   }
 }
 

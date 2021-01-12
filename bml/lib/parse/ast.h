@@ -384,6 +384,7 @@ struct universal_matcher : public t {
   usage_list usages;
  TO_TEXP(name)
   void ir_allocate_globally_funblock(std::ostream &os, size_t n_args, std::string_view text_ptr);
+  ir::var ir_evaluate_global(ir::scope &s) const;
 };
 
 struct anonymous_universal_matcher : public t {

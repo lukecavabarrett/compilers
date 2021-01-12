@@ -10,10 +10,10 @@
 struct ir_sections_t {
   std::ostream &data;
   std::back_insert_iterator<std::vector<ir::lang::function>> text;
-  ir::lang::function &main;
+  ir::lang::scope &main;
   ir_sections_t(const ir_sections_t&) = default;
-  ir_sections_t(std::ostream& d, std::back_insert_iterator<std::vector<ir::lang::function>> t, ir::lang::function &m) : data(d), text(t), main(m) {}
-  ir_sections_t with_main(ir::lang::function &m)  {
+  ir_sections_t(std::ostream& d, std::back_insert_iterator<std::vector<ir::lang::function>> t, ir::lang::scope &m) : data(d), text(t), main(m) {}
+  ir_sections_t with_main(ir::lang::scope &m)  {
     return ir_sections_t(data, text, m);
   }
 };
@@ -352,6 +352,7 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
 bool unroll_last_copy(scope &s);
 
 context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_call);
+//last_call: true if we can apply last call optimization i.e. just return the scope's value
 
 }
 

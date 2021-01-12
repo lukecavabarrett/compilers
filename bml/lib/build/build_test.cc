@@ -83,6 +83,45 @@ TEST(Build, Expression0) {
 
 }
 
+TEST(Build, Expression0_1) {
+  constexpr std::string_view source = "let () = int_print (int_sum 10 20);;\n";
+  test_build(source, "30 ", ir_build::COMPILE_AND_RUN);
+}
+
+TEST(Build, Expression0_2) {
+  constexpr std::string_view source = "let cond = false;;\n"
+                                      "let () = int_print (if cond then 42 else 1729);;\n";
+  test_build(source, "1729 ", ir_build::COMPILE_AND_RUN);
+}
+
+TEST(Build, Expression0_3) {
+  constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
+                                      "let (x,y) = a_pair;;\n"
+                                      "let () = int_print x; int_print y;;\n";
+  test_build(source, "92 54 ", ir_build::COMPILE_AND_RUN);
+}
+
+TEST(Build, Expression0_4) {
+  constexpr std::string_view source = "let () = int_print (if (int_eq 107 106) then 10 else 12);;\n";
+  test_build(source, "12 ", ir_build::COMPILE_AND_RUN);
+}
+
+TEST(Build, PartialApplication) {
+  constexpr std::string_view source = "let s100 = int_sum 100;;\n"
+                                      "let () = int_print (s100 54);;\n";
+  test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
+}
+
+TEST(Build, Expression0_5) {
+  constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
+                                      "let (x,y) = a_pair;;\n"
+                                      "let sum_100 = int_sum 100 ;;\n"
+                                      "let () = int_print (sum_100 54);;"
+                                      //"let () = int_print (int_sum 100 (if (int_eq 107 106) then x else y));;\n"
+                                      ;
+  test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
+}
+
 TEST(Build, Expression1) {
   constexpr std::string_view source = "let answer = 42 ;;\n"
                                       "let another_answer = answer;;\n"
@@ -92,7 +131,7 @@ TEST(Build, Expression1) {
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = int_sum 100 ;;\n"
                                       "let () = int_print (sum_100 (if (int_eq 107 106) then x else y)) ;;\n";
-  test_build(source, "154 ");
+  test_build(source, "154 ",ir_build::COMPILE_AND_RUN);
 
 }
 

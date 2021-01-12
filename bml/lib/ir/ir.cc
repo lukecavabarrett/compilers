@@ -74,9 +74,7 @@ std::unordered_set<var> scope_setup_destroys(scope &s, std::unordered_set<var> t
   for (auto &i : s.body)
     if (std::holds_alternative<instruction::assign>(i)) {
       const auto &ia = std::get<instruction::assign>(i);
-      if (!std::holds_alternative<rhs_expr::constant>(ia.src)
-          && !std::holds_alternative<rhs_expr::global>(ia.src))
-        to_destroy.insert(ia.dst);
+      to_destroy.insert(ia.dst);
     }
 
   auto destroy_here = [&](var v, size_t i) {
@@ -165,11 +163,12 @@ bool unroll_last_copy(scope &s) {
   s.body.pop_back();
   return true;
 }
+
 context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_call) {
   static size_t branch_id_factory = 0;
   while (unroll_last_copy(s)); //TODO: unroll all better
 
-  bool need_to_return = last_call;
+  bool need_to_return = last_call; //whether we'll return the final value
   c.destroy(s.destroys.at(0), os);
   for (size_t i = 0; i < s.body.size(); ++i) {
     //os<<"; ";c.debug_vars(os);os<<"\n"; // print state infos
@@ -327,6 +326,13 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
         },
         [&](instruction::write_uninitialized_mem &m) {
           c.make_both_non_mem(m.src, m.base, os);
+          //TODO: ensure survival
+          c.increment_refcount(m.src,os);
+//          if(contains(destroys, m.src)){
+//            destroys.erase(std::find(destroys.begin(), destroys.end(), m.src));
+//          } else {
+//            c.increment_refcount(m.src,os);
+//          }
           os << "mov qword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << c.at(m.src) << "\n";
         },
         [&](instruction::cmp_vars &cmp) {
@@ -338,11 +344,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                              [](var v) { return (v.destroy_class() & non_trivial) == 0; }));
         },
     }, s.body[i]);
-    if (need_to_return) {
-      c.destroy(destroys, os);
-    } else {
-      assert(destroys.empty());
-    }
+    c.destroy(destroys, os);
   }
 
   if (need_to_return) {
@@ -629,15 +631,15 @@ void context_t::destroy(var v, std::ostream &os) {
       case non_global: {
         //TODO : destroy with more specific fashion
         move(reg::args_order.front(), location(v), os);
-        bool push_for_align = !(stack_size()&1);
+        bool push_for_align = !(stack_size() & 1);
         for (auto r : reg::volatiles)
           if (r != reg::args_order.front() && !is_reg_free(r)) {
             os << "push " << reg::to_string(r) << "\n";
-            push_for_align^=1;
+            push_for_align ^= 1;
           }
-        if(push_for_align)os<<"sub rsp, 8\n";
+        if (push_for_align)os << "sub rsp, 8\n";
         os << "call decrement_value\n";
-        if(push_for_align)os<<"add rsp, 8\n";
+        if (push_for_align)os << "add rsp, 8\n";
         for (auto r = reg::volatiles.rbegin(); r != reg::volatiles.rend(); ++r)
           if (*r != reg::args_order.front() && !is_reg_free(*r)) {
             os << "pop " << reg::to_string(*r) << "\n";
@@ -677,15 +679,15 @@ void context_t::increment_refcount(var v, std::ostream &os) {
       case non_global: {
         move(reg::args_order.front(), location(v), os);
         assert(location(v) == strict_location_t{reg::args_order.front()}); //increment preserve the calling register
-        bool push_for_align = !(stack_size()&1);
+        bool push_for_align = !(stack_size() & 1);
         for (auto r : reg::volatiles)
           if (r != reg::args_order.front() && !is_reg_free(r)) {
             os << "push " << reg::to_string(r) << "\n";
-            push_for_align^=1;
+            push_for_align ^= 1;
           }
-        if(push_for_align)os<<"sub rsp, 8\n";
+        if (push_for_align)os << "sub rsp, 8\n";
         os << "call increment_value\n";
-        if(push_for_align)os<<"add rsp, 8\n";
+        if (push_for_align)os << "add rsp, 8\n";
         os << "mov " << reg::to_string(reg::args_order.front()) << ", rax \n";
         for (auto r = reg::volatiles.rbegin(); r != reg::volatiles.rend(); ++r)
           if (*r != reg::args_order.front() && !is_reg_free(*r)) {
@@ -1088,17 +1090,19 @@ void context_t::call_clean(const std::vector<std::pair<var, register_t>> &args, 
 
   //move registers
   for (register_t r : reg::volatiles)
-    if (!is_reg_free(r) && !reg_target.contains(r)) {
+    if (!is_reg_free(r) && (!reg_target.contains(r) || content_t{reg_target.at(r)} != regs[r])) {
       //try first registers
       auto nr = lru.front_non_volatile();
       if (is_reg_free(nr)) {
         //use reg
+        assert(reg::is_non_volatile(nr));
         move_to_register(nr, r, os);
         lru.bring_back(nr);
       } else {
         //use stack
         move_to_stack(r, os);
       }
+      assert(is_reg_free(r));
     }
 
   //move virtuals
@@ -1135,10 +1139,10 @@ void context_t::call_copy(const std::vector<std::pair<var, register_t>> &args, s
   }
 }
 
-void context_t::align_stack_16_precall( std::ostream &os) {
+void context_t::align_stack_16_precall(std::ostream &os) {
   assert_consistency();
   if (stack.size() & 1)return; //already aligned
-  if(!stack.empty() && is_free(stack.back())){
+  if (!stack.empty() && is_free(stack.back())) {
     stack.pop_back();
     os << "add rsp, 8\n";
   } else {

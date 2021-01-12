@@ -751,6 +751,35 @@ return e;
   test_ir_build(source, {42}, {.call_style = as_args, .expected_return=42});
 }
 
+TEST(Build, NeedToReturn) {
+  std::string_view source = R"(
+test_function(a_v,b_v) {
+a : trivial = v_to_int(a_v);
+b : trivial = v_to_int(b_v);
+one : trivial = 1;
+two : trivial = 2;
+cmp(a,b);
+y = if (jle) then {
+  z_1 : trivial = add(a,one);
+  x_1 : trivial = add(b,two);
+  sum_1 : trivial = add(z_1,x_1);
+  return sum_1;
+} else {
+  z_2 : trivial = add(b,two);
+  x_2 : trivial = add(a,one);
+  sum_2 : trivial = add(z_2,x_2);
+  return sum_2;
+};
+yp : trivial = add(y,one);
+yp_v : trivial = int_to_v(yp);
+return yp_v;
+}
+)";
+  test_ir_build(source, {42, 66}, {.call_style = as_args, .expected_return=42+66+4});
+  //Note: this is using the fact that 3 additions are performed, so the result should be decremented by 1 each time
+  // as 63bit addition is x+y-1
+}
+
 using build_object::fun;
 TEST(Memory, MakeTuple) {
   std::string_view source = R"(

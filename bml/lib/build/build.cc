@@ -1,17 +1,31 @@
 #include <build.h>
 
-ast::global_map make_ir_data_section(std::ostream& target){
+ast::global_map make_ir_data_section(std::ostream &target) {
   //prepare all the standard data
   ast::global_map globals;
   target << "section .data\n";
+  target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value\n";
 
   target << "extern int_sum_fun \n";
   static ast::matcher::universal_matcher int_sum("int_sum");
   int_sum.ir_globally_register(globals);
-  int_sum.ir_allocate_globally_funblock(target,2,"int_sum_fun");
+  int_sum.ir_allocate_globally_funblock(target, 2, "int_sum_fun");
   int_sum.use_as_immediate = int_sum.top_level = true;
-  globals.try_emplace("int_sum", &int_sum);
-  globals.try_emplace("+", &int_sum);
+  globals.try_emplace("+", &int_sum); // + maps to the same
+
+  target << "extern print_int \n";
+  static ast::matcher::universal_matcher int_print("int_print");
+  int_print.ir_globally_register(globals);
+  int_print.ir_allocate_globally_funblock(target, 1, "print_int");
+  int_print.use_as_immediate = int_print.top_level = true;
+
+  target << "extern int_eq_fun \n";
+  static ast::matcher::universal_matcher int_eq("int_eq");
+  int_eq.ir_globally_register(globals);
+  int_eq.ir_allocate_globally_funblock(target, 2, "int_eq_fun");
+  int_eq.use_as_immediate = int_print.top_level = true;
+  globals.try_emplace("=", &int_eq);
+
 
   /*static ast::matcher::universal_matcher int_sub("int_sub");
   int_sub.use_as_immediate = int_sub.top_level = true;
@@ -41,7 +55,6 @@ ast::global_map make_ir_data_section(std::ostream& target){
 void build_ir(std::string_view s, std::ostream &target) {
   parse::tokenizer tk(s);
   ast::global_map globals = make_ir_data_section(target);
-
 
   ast::constr_map constr_map;
   std::vector<ir::lang::function> functions;
@@ -83,7 +96,7 @@ void build_ir(std::string_view s, std::ostream &target) {
             for (auto &v : sv->variants) {
               v.tag = tag_id;
               tag_id += 2;
-              constr_map.try_emplace(v.name,&v);
+              constr_map.try_emplace(v.name, &v);
               //data_section << "; " << v.name << " equ " << v.tag << "\n";
             }
           }
@@ -99,7 +112,10 @@ void build_ir(std::string_view s, std::ostream &target) {
   target << "global main\n" "section .text\n";
   main.ret = main.declare_constant(0);
   functions.push_back(std::move(main));
-  for(auto& f : functions)f.compile(target);
+  for (auto &f : functions) {
+    f.compile(target);
+    f.print(std::cout);
+  }
 }
 void build_direct(std::string_view s, std::ostream &target) {
 
@@ -176,7 +192,7 @@ void build_direct(std::string_view s, std::ostream &target) {
             for (auto &v : sv->variants) {
               v.tag = tag_id;
               tag_id += 2;
-              constr_map.try_emplace(v.name,&v);
+              constr_map.try_emplace(v.name, &v);
               //data_section << "; " << v.name << " equ " << v.tag << "\n";
             }
           }
@@ -196,10 +212,15 @@ void build_direct(std::string_view s, std::ostream &target) {
 
 }
 void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m) {
-  for (auto&[name, usages] : fv){
+  for (auto&[name, usages] : fv) {
     if (auto it = m.find(name); it != m.end()) {
       for (auto id : usages)id->definition_point = it->second;
       it->second->usages.merge(std::move(usages));
-    } else throw ast::unbound_value((*std::min_element(usages.begin(), usages.end(), [](const auto &i1, const auto &i2) { return i1->name.begin() < i2->name.begin(); }))->name);
+    } else
+      throw ast::unbound_value((*std::min_element(usages.begin(),
+                                                  usages.end(),
+                                                  [](const auto &i1, const auto &i2) {
+                                                    return i1->name.begin() < i2->name.begin();
+                                                  }))->name);
   }
 }
