@@ -1,6 +1,5 @@
 #include <ir.h>
 #include <lang.h>
-#include <boost/iterator/transform_iterator.hpp>
 
 namespace ir {
 using namespace util;

@@ -8,11 +8,11 @@ std::string load_file(const char *path) {
   return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
-void test_build(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr = "") {
+void test_build_direct(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr = "") {
 #define target  "/home/luke/CLionProjects/compilers/bml/output"
   std::ofstream oasm;
   oasm.open(target ".asm");
-  ASSERT_NO_THROW(build(source, oasm));
+  ASSERT_NO_THROW(build_direct(source, oasm));
   oasm.close();
 
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
@@ -22,6 +22,33 @@ void test_build(std::string_view source, std::string_view expected_stdout, int e
   EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
   EXPECT_EQ(exit_code, expected_exit_code);
 #undef target
+}
+enum class ir_build {NONE, COMPILE, COMPILE_AND_RUN};
+
+void test_build_ir(std::string_view source, std::string_view expected_stdout, int expected_exit_code = 0, std::string_view expected_stderr = "",ir_build mode = ir_build::NONE) {
+  if(mode==ir_build::NONE)return;
+#define target  "/home/luke/CLionProjects/compilers/bml/output"
+  std::ofstream oasm;
+  oasm.open(target ".asm");
+  ASSERT_NO_THROW(build_ir(source, oasm));
+  oasm.close();
+  if(mode==ir_build::COMPILE)return;
+  ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
+  ASSERT_EQ(system("gcc -no-pie " target ".o -o " target), 0);
+  int exit_code = WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout"));
+  EXPECT_EQ(load_file(target ".stdout"), expected_stdout);
+  EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
+  EXPECT_EQ(exit_code, expected_exit_code);
+#undef target
+}
+
+void test_build(std::string_view source, std::string_view expected_stdout,ir_build mode=ir_build::NONE, int expected_exit_code = 0, std::string_view expected_stderr = "") {
+  test_build_direct(source,expected_stdout,expected_exit_code,expected_stderr);
+  test_build_ir(source,expected_stdout,expected_exit_code,expected_stderr,mode);
+}
+
+TEST(Build, EmptyProgram){
+  test_build("","",ir_build::COMPILE);
 }
 
 TEST(Build, Expression0) {
@@ -103,7 +130,7 @@ TEST(Build, OptionMapNone) {
 TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print Another;;\n", "", 1, "match failed\n");
+             "let _ = option_map int_print Another;;\n", "",ir_build::NONE, 1, "match failed\n");
 }
 
 TEST(Build, ApplyTwice) {
@@ -256,7 +283,7 @@ TEST(Build, InfiniteList) {
              "| Null -> 0\n"
              "| Cons (_,xs) -> (length xs) + 1;;\n"
              "let rec a = Cons(1,a);;\n"
-             "let () = int_print (length a) ;;", "", 139, "timeout: the monitored command dumped core\nSegmentation fault\n");
+             "let () = int_print (length a) ;;", "",ir_build::NONE, 139, "timeout: the monitored command dumped core\nSegmentation fault\n");
 }
 
 TEST(Build, TakeFromInfiniteList) {

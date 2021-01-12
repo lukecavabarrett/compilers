@@ -12,7 +12,7 @@ void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m) {
   }
 }
 
-void build(std::string_view s, std::ostream &target) {
+void build_direct(std::string_view s, std::ostream &target) {
 
   parse::tokenizer tk(s);
   ast::global_map globals;
@@ -46,9 +46,9 @@ void build(std::string_view s, std::ostream &target) {
   ast::constr_map constr_map;
 
   std::stringstream data_section;
-  data_section << std::ifstream("/home/luke/CLionProjects/compilers/bml/lib/build/data_preamble.asm").rdbuf();
+  data_section << std::ifstream("/home/luke/CLionProjects/compilers/bml/lib/build/data_preamble_direct.asm").rdbuf();
   std::stringstream text_section;
-  text_section << std::ifstream("/home/luke/CLionProjects/compilers/bml/lib/build/text_preamble.asm").rdbuf();
+  text_section << std::ifstream("/home/luke/CLionProjects/compilers/bml/lib/build/text_preamble_direct.asm").rdbuf();
   std::stringstream main_section;
   main_section << "main:" << std::endl;
   std::vector<ast::definition::ptr> defs;
@@ -106,7 +106,9 @@ void build(std::string_view s, std::ostream &target) {
   target << data_section.str() << std::endl << text_section.str() << std::endl << main_section.str() << std::endl;
 
 }
+void build_ir(std::string_view s, std::ostream &target){
 
+}
 /*
  IDEA for tests:
  1. let (a,b) = fun () -> 3 ;;  // Error: This expression should not be a function, the expected type is 'a * 'b

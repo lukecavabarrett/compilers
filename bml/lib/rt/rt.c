@@ -186,7 +186,7 @@ void destroy_nontrivial(uintptr_t x_v) {
   }
 }
 
-uintptr_t sum_fun(uintptr_t argv) {
+uintptr_t int_sum_fun(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
