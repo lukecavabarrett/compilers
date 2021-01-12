@@ -246,6 +246,7 @@ struct scope {
   void parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
   ir::lang::var declare_constant(uint64_t);
   ir::lang::var declare_global(std::string_view);
+  ir::lang::var declare_assign(rhs_expr::t&&);
 };
 
 struct function : public scope {

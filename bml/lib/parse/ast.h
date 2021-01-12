@@ -330,9 +330,12 @@ struct t : public locable, texp_of_t {
   virtual void globally_register(global_map &) = 0;
   virtual void ir_globally_register(global_map &) = 0;
   virtual void globally_allocate(std::ostream &os) = 0;
+  virtual void ir_allocate_global_value(std::ostream &os) = 0;
   virtual size_t unrolled_size() const = 0; // number of universal_matchers contained
   virtual size_t stack_unrolling_dimension() const = 0; // how much stack is going to be used for unrolling
   virtual void global_unroll(std::ostream &os) = 0; // match value in rax, unrolling on globals
+  virtual void ir_global_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on globals
+
   virtual size_t locally_unroll(std::ostream &os, size_t stack_pos) = 0;  // match value in rax, unrolling on stack; returns new stack_pos
   virtual size_t test_locally_unroll(std::ostream &os,
                                      size_t stack_pos,
@@ -361,6 +364,7 @@ struct universal_matcher : public t {
   void globally_register(global_map &m) final;
   void ir_globally_register(global_map &m) final;
   void globally_allocate(std::ostream &os) final;
+  void ir_allocate_global_value(std::ostream &os) final;
   void globally_allocate_funblock(size_t n_args, std::ostream &os, std::string_view text_ptr);
   void globally_allocate_tupleblock(std::ostream &os, size_t tuple_size);
   void ir_allocate_global_tuple(std::ostream &os, size_t tuple_size);
@@ -370,6 +374,7 @@ struct universal_matcher : public t {
   void globally_allocate_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
   void ir_allocate_global_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
   void global_unroll(std::ostream &os) final;
+  void ir_global_unroll(ir::scope &s, ir::lang::var ) final;
   size_t unrolled_size() const final { return 1; }
   size_t stack_unrolling_dimension() const final { return 1; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
@@ -386,10 +391,12 @@ struct anonymous_universal_matcher : public t {
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
   void bind(const constr_map &cm) final {}
+  void ir_allocate_global_value(std::ostream &os) final {}
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
   void ir_globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
+  void ir_global_unroll(ir::scope &s, ir::lang::var ) final {}
   size_t unrolled_size() const final { return 0; }
   size_t stack_unrolling_dimension() const final { return 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
@@ -410,8 +417,10 @@ struct constructor_matcher : public t {
   void globally_register(global_map &m) final;
   void ir_globally_register(global_map &m) final;
   void bind(const constr_map &cm) final;
+  void ir_allocate_global_value(std::ostream &os) final {if(arg)arg->ir_allocate_global_value(os);}
   void globally_allocate(std::ostream &os) final { if (arg)arg->globally_allocate(os); }
   void global_unroll(std::ostream &os) final;
+  void ir_global_unroll(ir::scope &s, ir::lang::var) final;
   size_t unrolled_size() const final { return arg ? arg->unrolled_size() : 0; }
   size_t stack_unrolling_dimension() const final { return arg ? arg->stack_unrolling_dimension() : 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
@@ -429,7 +438,9 @@ struct literal_matcher : public t {
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
   void ir_globally_register(global_map &m) final {}
+  void ir_allocate_global_value(std::ostream &os) final {}
   void global_unroll(std::ostream &os) final {}
+  void ir_global_unroll(ir::scope &s, ir::lang::var) final {}
   size_t unrolled_size() const final { return 0; }
   size_t stack_unrolling_dimension() const final { return 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
@@ -446,11 +457,13 @@ struct tuple_matcher : public t {
   void bind(const constr_map &cm) final;
 
   void globally_allocate(std::ostream &os) final;
+  void ir_allocate_global_value(std::ostream &os) final;
   size_t unrolled_size() const final;
   size_t stack_unrolling_dimension() const final;
   void globally_register(global_map &m) final;
   void ir_globally_register(global_map &m) final;
   void global_unroll(std::ostream &os) final;
+  void ir_global_unroll(ir::scope &s, ir::lang::var) final;
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
 

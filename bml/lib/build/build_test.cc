@@ -70,7 +70,8 @@ TEST(Build, SomeAllocations) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let tuple = (1,2,3)\n"
              "and some_int = Some 3\n"
-             "and none = None"
+             "and none = None\n"
+             "and three = 3\n"
              ";;", "", ir_build::COMPILE_AND_RUN);
 }
 
@@ -78,7 +79,7 @@ TEST(Build, Expression0) {
   constexpr std::string_view source = "let answer = 42;;"
                                       "let () = int_print 42;;\n"
                                       "let () = int_print answer;;\n";
-  test_build(source, "42 42 ");
+  test_build(source, "42 42 ", ir_build::NONE);
 
 }
 

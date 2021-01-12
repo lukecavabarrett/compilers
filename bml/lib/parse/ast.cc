@@ -482,12 +482,8 @@ void t::ir_compile_global(ir_sections_t s) {
       }
 
     } else {
-      THROW_UNIMPLEMENTED
-      /*
-      def.name->globally_allocate(s.data);
-      def.e->compile(s, 0); // the value is left on rax
-      def.name->global_unroll(s.main); // take rax, unroll it onto globals.
-      */
+      def.name->ir_allocate_global_value(s.data);
+      def.name->ir_global_unroll(s.main, def.e->ir_compile(s)); // take rax, unroll it onto globals.
     }
   }
 }
@@ -596,8 +592,12 @@ void matcher::universal_matcher::globally_register(global_map &m) {
   }
 }
 void matcher::universal_matcher::globally_allocate(std::ostream &os) {
+  use_as_immediate = false;
   os << asm_name() << " dq 0" << std::endl;
-
+}
+void matcher::universal_matcher::ir_allocate_global_value(std::ostream &os) {
+  use_as_immediate = false;
+  os << ir_asm_name() << " dq 0 ; " << name << " : value \n";
 }
 void matcher::universal_matcher::globally_allocate_funblock(size_t n_args,
                                                             std::ostream &os,
@@ -626,22 +626,25 @@ uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
   return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
 }
 
-void matcher::universal_matcher::ir_allocate_globally_funblock(std::ostream &os,size_t n_args,
+void matcher::universal_matcher::ir_allocate_globally_funblock(std::ostream &os, size_t n_args,
                                                                std::string_view text_ptr) {
   use_as_immediate = true;
-  os << ir_asm_name() << " dq 0, "<<  make_tag_size_d(Tag_Fun, 2, 0)<< n_args << "," << text_ptr << "; "<<name << " : funblock\n";
+  os << ir_asm_name() << " dq 0, " << make_tag_size_d(Tag_Fun, 2, 0) << n_args << "," << text_ptr << "; " << name
+     << " : funblock\n";
 }
 void matcher::universal_matcher::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
   use_as_immediate = true;
   os << ir_asm_name() << " dq 0," << make_tag_size_d(Tag_Tuple, tuple_size, 0);
-  for(int i=0;i<tuple_size;++i)os << ", 0";
+  for (int i = 0; i < tuple_size; ++i)os << ", 0";
   os << "; " << name << " : tuple[" << tuple_size << "]\n";
 }
 
-void matcher::universal_matcher::ir_allocate_global_constrblock(std::ostream &os,  const type::definition::single_variant::constr &constr) {
+void matcher::universal_matcher::ir_allocate_global_constrblock(std::ostream &os,
+                                                                const type::definition::single_variant::constr &constr) {
   use_as_immediate = true;
   assert(!constr.is_immediate());
-  os << ir_asm_name() << " dq 0," << make_tag_size_d(constr.tag, 1, 0) << ", 0   ; " << name << " : "<<constr.name << " = " << constr.tag << "\n";
+  os << ir_asm_name() << " dq 0," << make_tag_size_d(constr.tag, 1, 0) << ", 0   ; " << name << " : " << constr.name
+     << " = " << constr.tag << "\n";
 }
 
 void matcher::universal_matcher::globally_allocate_constrblock(std::ostream &os,
@@ -651,10 +654,10 @@ void matcher::universal_matcher::globally_allocate_constrblock(std::ostream &os,
   os << asm_name() << " dq " << constr.tag << ", 0   ; `" << constr.name << "` = " << constr.tag << "\n";
 }
 void matcher::universal_matcher::ir_allocate_global_constrimm(std::ostream &os,
-                                                             const type::definition::single_variant::constr &constr) {
+                                                              const type::definition::single_variant::constr &constr) {
   use_as_immediate = false;
   assert(constr.is_immediate());
-  os << ir_asm_name() << " dq " << constr.tag << "; "  << name << " : "<<constr.name << " = " << constr.tag << "\n";
+  os << ir_asm_name() << " dq " << constr.tag << "; " << name << " : " << constr.name << " = " << constr.tag << "\n";
 }
 void matcher::universal_matcher::globally_allocate_constrimm(std::ostream &os,
                                                              const type::definition::single_variant::constr &constr) {
@@ -666,6 +669,14 @@ void matcher::universal_matcher::globally_allocate_constrimm(std::ostream &os,
 void matcher::universal_matcher::global_unroll(std::ostream &os) {
   os << "mov qword [" << asm_name() << "], rax" << std::endl;
 }
+
+void matcher::universal_matcher::ir_global_unroll(ir::scope &s, ir::lang::var what) {
+  assert(!use_as_immediate);
+  using namespace ir::lang;
+  var where = s.declare_global(ir_asm_name());
+  s.push_back(instruction::write_uninitialized_mem{.base = where, .block_offset = 0, .src = what});
+}
+
 size_t matcher::universal_matcher::locally_unroll(std::ostream &os, size_t stack_pos) {
   ++stack_pos;
   stack_relative_pos = stack_pos;
@@ -719,6 +730,15 @@ void matcher::constructor_matcher::global_unroll(std::ostream &os) {
     arg->global_unroll(os);
   }
 }
+void matcher::constructor_matcher::ir_global_unroll(ir::scope &s, ir::lang::var block) {
+  assert(definition_point);
+  assert(definition_point->is_immediate() == (arg == nullptr));
+  using namespace ir::lang;
+  if (arg) {
+    arg->ir_global_unroll(s, s.declare_assign(block[2]));
+  }
+}
+
 size_t matcher::constructor_matcher::locally_unroll(std::ostream &os, size_t stack_pos) {
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
@@ -758,6 +778,9 @@ void matcher::tuple_matcher::bind(const constr_map &cm) {
 void matcher::tuple_matcher::globally_allocate(std::ostream &os) {
   for (auto &p : args)p->globally_allocate(os);
 }
+void matcher::tuple_matcher::ir_allocate_global_value(std::ostream &os) {
+  for (auto &p : args)p->ir_allocate_global_value(os);
+}
 void matcher::tuple_matcher::globally_register(global_map &m) {
   for (auto &p : args)p->globally_register(m);
 }
@@ -773,6 +796,14 @@ void matcher::tuple_matcher::global_unroll(std::ostream &os) {
   }
   os << "pop r12\n";
 }
+void matcher::tuple_matcher::ir_global_unroll(ir::scope &s, ir::lang::var block) {
+  using namespace ir::lang;
+  for (size_t i = 0; i < args.size(); ++i) {
+    var content = s.declare_assign(block[i + 2]);
+    args.at(i)->ir_global_unroll(s, content);
+  }
+}
+
 size_t matcher::tuple_matcher::locally_unroll(std::ostream &os, size_t stack_pos) {
   size_t rax_pos = stack_pos + stack_unrolling_dimension(); // The first free position in stack
   os << "mov qword [rsp-" << 8 * (rax_pos - stack_pos) << "], rax ; save rax\n";

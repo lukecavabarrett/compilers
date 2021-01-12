@@ -501,4 +501,11 @@ ir::lang::var scope::declare_global(std::string_view value) {
   return v;
 }
 
+ir::lang::var scope::declare_assign(rhs_expr::t&& rhs) {
+  ir::lang::var v;
+  scope::push_back(instruction::assign{.dst = v, .src = std::move(rhs)});
+  return v;
+}
+
+
 }
