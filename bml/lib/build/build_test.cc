@@ -51,6 +51,14 @@ TEST(Build, EmptyProgram){
   test_build("","",ir_build::COMPILE_AND_RUN);
 }
 
+TEST(Build, SomeAllocations) {
+  test_build("type int_option = | None | Some of int ;;\n"
+             "let tuple = (1,2,3)\n"
+             "and some_int = Some 3\n"
+             "and none = None"
+             ";;","",ir_build::COMPILE_AND_RUN);
+}
+
 TEST(Build, Expression0) {
   constexpr std::string_view source = "let answer = 42;;"
                                       "let () = int_print 42;;\n"

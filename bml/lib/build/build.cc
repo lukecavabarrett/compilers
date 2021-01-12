@@ -6,11 +6,12 @@ ast::global_map make_ir_data_section(std::ostream& target){
   target << "section .data\n";
 
   static ast::matcher::universal_matcher int_sum("int_sum");
+  int_sum.ir_globally_register(globals);
   int_sum.use_as_immediate = int_sum.top_level = true;
   globals.try_emplace("int_sum", &int_sum);
   globals.try_emplace("+", &int_sum);
 
-  static ast::matcher::universal_matcher int_sub("int_sub");
+  /*static ast::matcher::universal_matcher int_sub("int_sub");
   int_sub.use_as_immediate = int_sub.top_level = true;
   globals.try_emplace("int_sub", &int_sub);
   globals.try_emplace("-", &int_sub);
@@ -30,7 +31,7 @@ ast::global_map make_ir_data_section(std::ostream& target){
 
   static ast::matcher::universal_matcher int_le("int_le");
   int_le.use_as_immediate = int_le.top_level = true;
-  globals.try_emplace("int_le", &int_le);
+  globals.try_emplace("int_le", &int_le);*/
 
   return globals;
 }
@@ -57,7 +58,7 @@ void build_ir(std::string_view s, std::ostream &target) {
         def->bind(constr_map);
         ast::free_vars_t fv = def->free_vars();
         resolve_global_free_vars(std::move(fv), globals);
-        for (auto &def : def->defs)def.name->globally_register(globals);
+        for (auto &def : def->defs)def.name->ir_globally_register(globals);
         auto cg = def->capture_group();
         assert(cg.empty());
         def->ir_compile_global(ir_sections_t(target, std::back_inserter(functions), main));
@@ -94,9 +95,7 @@ void build_ir(std::string_view s, std::ostream &target) {
     }
   }
   target << "global main\n" "section .text\n";
-  ir::lang::var zero;
-  main.push_back(ir::lang::instruction::assign{.dst = zero, .src = ir::lang::rhs_expr::constant(0)});
-  main.ret = zero;
+  main.ret = main.declare_constant(0);
   functions.push_back(std::move(main));
   for(auto& f : functions)f.compile(target);
 }

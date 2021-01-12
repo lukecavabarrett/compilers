@@ -186,7 +186,7 @@ struct t : public locable, public texp_of_t {
   virtual free_vars_t free_vars() = 0; // computes the free variable of an expression
   virtual capture_set capture_group() = 0; // computes the set of non-global universal_macthers free in e
   virtual void compile(direct_sections_t s, size_t stack_pos) = 0; // generate code putting the result on rax
-  virtual void ir_compile(ir::lang::scope &) = 0; // generate ir code, putting result on ret
+  virtual ir::lang::var ir_compile(ir_sections_t) = 0; // generate ir code, returning the var containing the result
   virtual void bind(const constr_map &) = 0;
 };
 
@@ -197,7 +197,7 @@ struct literal : public t {
   free_vars_t free_vars() final;;
   capture_set capture_group() final;;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final {}
  TO_TEXP(value);
 };
@@ -209,7 +209,7 @@ struct identifier : public t {
   capture_set capture_group() final;
   std::string_view name;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final;
  TO_TEXP(name);
 };
@@ -222,7 +222,7 @@ struct constructor : public t {
   ptr arg;
   type::definition::single_variant::constr *definition_point;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(name, arg);
 };
@@ -233,7 +233,7 @@ struct if_then_else : public t {
   free_vars_t free_vars() final;
   capture_set capture_group() final;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(condition, true_branch, false_branch);
 };
@@ -245,7 +245,7 @@ struct build_tuple : public t {
   free_vars_t free_vars() final;
   capture_set capture_group() final;;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(args);
 };
@@ -256,7 +256,7 @@ struct fun_app : public t {
   free_vars_t free_vars() final;
   capture_set capture_group() final;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(f, x);
 };
@@ -267,7 +267,7 @@ struct seq : public t {
   free_vars_t free_vars() final;;
   capture_set capture_group() final;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(a, b);
 };
@@ -286,7 +286,7 @@ struct match_with : public t {
 
   capture_set capture_group() final;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(what, branches);
 };
@@ -298,7 +298,7 @@ struct let_in : public t {
   free_vars_t free_vars() final;;
   capture_set capture_group() final;;
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
  TO_TEXP(d, e);
 };
@@ -313,7 +313,7 @@ struct fun : public t {
   static std::string text_name_gen(std::string_view name_hint);
   std::string compile_global(direct_sections_t s, std::string_view name_hint = ""); // compile the body of the function, and return the text_ptr
   void compile(direct_sections_t s, size_t stack_pos) final;
-  void ir_compile(ir::lang::scope &) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
   bool is_capturing(const matcher::universal_matcher *m) const;
   size_t capture_index(const matcher::universal_matcher *m) const;
@@ -328,6 +328,7 @@ struct t : public locable, texp_of_t {
   virtual void bind(capture_set &) = 0;
   virtual void bind(const constr_map &) = 0;
   virtual void globally_register(global_map &) = 0;
+  virtual void ir_globally_register(global_map &) = 0;
   virtual void globally_allocate(std::ostream &os) = 0;
   virtual size_t unrolled_size() const = 0; // number of universal_matchers contained
   virtual size_t stack_unrolling_dimension() const = 0; // how much stack is going to be used for unrolling
@@ -354,12 +355,20 @@ struct universal_matcher : public t {
   void bind(const constr_map &cm) final;
 
   std::string asm_name() const;
+  std::string ir_asm_name() const;
+
+
   void globally_register(global_map &m) final;
+  void ir_globally_register(global_map &m) final;
   void globally_allocate(std::ostream &os) final;
   void globally_allocate_funblock(size_t n_args, std::ostream &os, std::string_view text_ptr);
   void globally_allocate_tupleblock(std::ostream &os, size_t tuple_size);
+  void ir_allocate_global_tuple(std::ostream &os, size_t tuple_size);
+
+  void ir_allocate_global_constrblock(std::ostream &os, const type::definition::single_variant::constr &constr);
   void globally_allocate_constrblock(std::ostream &os, const type::definition::single_variant::constr &constr);
   void globally_allocate_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
+  void ir_allocate_global_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
   void global_unroll(std::ostream &os) final;
   size_t unrolled_size() const final { return 1; }
   size_t stack_unrolling_dimension() const final { return 1; }
@@ -378,6 +387,7 @@ struct anonymous_universal_matcher : public t {
   void bind(const constr_map &cm) final {}
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
+  void ir_globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
   size_t unrolled_size() const final { return 0; }
   size_t stack_unrolling_dimension() const final { return 0; }
@@ -397,6 +407,7 @@ struct constructor_matcher : public t {
   void bind(free_vars_t &fv) final;
   void bind(capture_set &cs) final;
   void globally_register(global_map &m) final;
+  void ir_globally_register(global_map &m) final;
   void bind(const constr_map &cm) final;
   void globally_allocate(std::ostream &os) final { if (arg)arg->globally_allocate(os); }
   void global_unroll(std::ostream &os) final;
@@ -416,6 +427,7 @@ struct literal_matcher : public t {
   void bind(const constr_map &cm) final {}
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
+  void ir_globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
   size_t unrolled_size() const final { return 0; }
   size_t stack_unrolling_dimension() const final { return 0; }
@@ -436,6 +448,7 @@ struct tuple_matcher : public t {
   size_t unrolled_size() const final;
   size_t stack_unrolling_dimension() const final;
   void globally_register(global_map &m) final;
+  void ir_globally_register(global_map &m) final;
   void global_unroll(std::ostream &os) final;
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;

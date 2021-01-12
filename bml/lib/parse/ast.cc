@@ -62,7 +62,7 @@ void identifier::compile(direct_sections_t s, size_t stack_pos) {
 }
 identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
 void identifier::bind(const constr_map &) {}
-void identifier::ir_compile(ir::lang::scope &) {
+ir::lang::var identifier::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 
@@ -72,8 +72,8 @@ capture_set literal::capture_group() { return {}; }
 void literal::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
 }
-void literal::ir_compile(ir::lang::scope &) {
-  THROW_UNIMPLEMENTED
+ir::lang::var literal::ir_compile(ir_sections_t s) {
+  return s.main.declare_constant(this->value->to_value());
 }
 free_vars_t constructor::free_vars() {
   if (arg)return arg->free_vars();
@@ -110,7 +110,7 @@ void constructor::bind(const constr_map &cm) {
   }
   if (arg)arg->bind(cm);
 }
-void constructor::ir_compile(ir::lang::scope &) {
+ir::lang::var constructor::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
@@ -143,7 +143,7 @@ void if_then_else::bind(const constr_map &cm) {
   true_branch->bind(cm);
   false_branch->bind(cm);
 }
-void if_then_else::ir_compile(ir::lang::scope &) {
+ir::lang::var if_then_else::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 build_tuple::build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
@@ -173,7 +173,7 @@ void build_tuple::compile(direct_sections_t s, size_t stack_pos) {
 void build_tuple::bind(const constr_map &cm) {
   for (auto &p : args)p->bind(cm);
 }
-void build_tuple::ir_compile(ir::lang::scope &) {
+ir::lang::var build_tuple::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
@@ -195,7 +195,7 @@ void fun_app::bind(const constr_map &cm) {
   f->bind(cm);
   x->bind(cm);
 }
-void fun_app::ir_compile(ir::lang::scope &) {
+ir::lang::var fun_app::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
@@ -209,7 +209,7 @@ void seq::bind(const constr_map &cm) {
   a->bind(cm);
   b->bind(cm);
 }
-void seq::ir_compile(ir::lang::scope &) {
+ir::lang::var seq::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 
@@ -269,7 +269,7 @@ void match_with::bind(const constr_map &cm) {
   }
   what->bind(cm);
 }
-void match_with::ir_compile(ir::lang::scope &) {
+ir::lang::var match_with::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 free_vars_t let_in::free_vars() {
@@ -288,7 +288,7 @@ void let_in::compile(direct_sections_t s, size_t stack_pos) {
   if (new_stack_pos > stack_pos)
     s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
 }
-void let_in::ir_compile(ir::lang::scope &) {
+ir::lang::var let_in::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 fun::fun(std::vector<matcher::ptr> &&args, ptr &&body) : args(std::move(args)), body(std::move(body)) {}
@@ -398,7 +398,7 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   s.text << this_fun.str() << std::endl;
   return text_ptr;
 }
-void fun::ir_compile(ir::lang::scope &) {
+ir::lang::var fun::ir_compile(ir_sections_t) {
   THROW_UNIMPLEMENTED
 }
 
@@ -433,6 +433,9 @@ capture_set t::capture_group(capture_set &&cs) {
 }
 
 void t::ir_compile_global(ir_sections_t s) {
+
+  using namespace ir::lang;
+
   if (rec) {
     //check that all values are construcive w.r.t each other
     // 1. check no name clashes
@@ -453,33 +456,31 @@ void t::ir_compile_global(ir_sections_t s) {
       std::string text_ptr = f->compile_global(s, name->name);
       name->globally_allocate_funblock(f->args.size(), s.data, text_ptr);*/
     } else if (name && def.is_tuple()) {
-      THROW_UNIMPLEMENTED
-      /*
+
       expression::build_tuple *e = dynamic_cast<expression::build_tuple *>(def.e.get());
-      name->globally_allocate_tupleblock(s.data, e->args.size());
+      name->ir_allocate_global_tuple(s.data, e->args.size());
+      var tuple_addr = s.main.declare_global(name->ir_asm_name());
       assert(name->use_as_immediate);
       size_t i = 0;
       for (auto &e : e->args) {
-        e->compile(s, 0);
-        s.main << "mov qword[" << name->asm_name();
-        if (i)s.main << "+" << (8 * i);
-        s.main << "], rax\n";
+        auto v = e->ir_compile(s);
+        s.main.push_back(instruction::write_uninitialized_mem{.base = tuple_addr, .block_offset = i + 2, .src = v});
         ++i;
-      }*/
+      }
     } else if (name && def.is_constr()) {
-      THROW_UNIMPLEMENTED
-      /*
+
       expression::constructor *e = dynamic_cast<expression::constructor *>(def.e.get());
       if (e->arg) {
-        name->globally_allocate_constrblock(s.data, *e->definition_point);
+        name->ir_allocate_global_constrblock(s.data, *e->definition_point);
         assert(name->use_as_immediate);
-        e->arg->compile(s, 0);
-        s.main << "mov qword[" << name->asm_name() << "+8], rax\n";
+        auto v = e->arg->ir_compile(s);
+        var constr_addr = s.main.declare_global(name->ir_asm_name());
+        s.main.push_back(instruction::write_uninitialized_mem{.base = constr_addr, .block_offset = 2, .src = v});
       } else {
-        name->globally_allocate_constrimm(s.data, *e->definition_point);
+        name->ir_allocate_global_constrimm(s.data, *e->definition_point);
         assert(!name->use_as_immediate);
       }
-       */
+
     } else {
       THROW_UNIMPLEMENTED
       /*
@@ -577,6 +578,16 @@ std::string matcher::universal_matcher::asm_name() const {
   return name_resolution_id ? std::string(name).append("_").append(std::to_string(name_resolution_id)) : std::string(
       name);
 }
+
+std::string matcher::universal_matcher::ir_asm_name() const {
+  return std::string("__global_value_").append(std::to_string(name_resolution_id)).append("__");
+}
+void matcher::universal_matcher::ir_globally_register(global_map &m) {
+  static size_t start_id = 1;
+  top_level = true;
+  m[name] = this;
+  name_resolution_id = ++start_id;
+}
 void matcher::universal_matcher::globally_register(global_map &m) {
   top_level = true;
   if (auto[it, b] = m.try_emplace(name, this); !b) {
@@ -605,13 +616,40 @@ void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, 
   };
   os << "\n";
 }
+
+#define Tag_Tuple  0
+#define Tag_Fun 1
+#define Tag_Arg 2
+
+uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
+  return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
+}
+
+void matcher::universal_matcher::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
+  use_as_immediate = true;
+  os << ir_asm_name() << " dq 0," << make_tag_size_d(Tag_Tuple, tuple_size, 0);
+  for(int i=0;i<tuple_size;++i)os << ", 0";
+  os << "; " << name << " : tuple[" << tuple_size << "]\n";
+}
+
+void matcher::universal_matcher::ir_allocate_global_constrblock(std::ostream &os,  const type::definition::single_variant::constr &constr) {
+  use_as_immediate = true;
+  assert(!constr.is_immediate());
+  os << ir_asm_name() << " dq 0," << make_tag_size_d(constr.tag, 1, 0) << ", 0   ; " << name << " : "<<constr.name << " = " << constr.tag << "\n";
+}
+
 void matcher::universal_matcher::globally_allocate_constrblock(std::ostream &os,
                                                                const type::definition::single_variant::constr &constr) {
   use_as_immediate = true;
   assert(!constr.is_immediate());
   os << asm_name() << " dq " << constr.tag << ", 0   ; `" << constr.name << "` = " << constr.tag << "\n";
 }
-
+void matcher::universal_matcher::ir_allocate_global_constrimm(std::ostream &os,
+                                                             const type::definition::single_variant::constr &constr) {
+  use_as_immediate = false;
+  assert(constr.is_immediate());
+  os << ir_asm_name() << " dq " << constr.tag << "; "  << name << " : "<<constr.name << " = " << constr.tag << "\n";
+}
 void matcher::universal_matcher::globally_allocate_constrimm(std::ostream &os,
                                                              const type::definition::single_variant::constr &constr) {
   use_as_immediate = false;
@@ -655,6 +693,9 @@ void matcher::constructor_matcher::bind(capture_set &cs) {
 }
 void matcher::constructor_matcher::globally_register(global_map &m) {
   if (arg)arg->globally_register(m);
+}
+void matcher::constructor_matcher::ir_globally_register(global_map &m) {
+  if (arg)arg->ir_globally_register(m);
 }
 void matcher::constructor_matcher::bind(const constr_map &cm) {
   if (auto it = cm.find(cons); it == cm.end()) {
@@ -713,6 +754,9 @@ void matcher::tuple_matcher::globally_allocate(std::ostream &os) {
 }
 void matcher::tuple_matcher::globally_register(global_map &m) {
   for (auto &p : args)p->globally_register(m);
+}
+void matcher::tuple_matcher::ir_globally_register(global_map &m) {
+  for (auto &p : args)p->ir_globally_register(m);
 }
 void matcher::tuple_matcher::global_unroll(std::ostream &os) {
   os << "push r12\n"

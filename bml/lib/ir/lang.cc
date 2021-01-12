@@ -25,25 +25,24 @@ std::string_view destroy_class_to_string(destroy_class_t dc) {
   }
 }
 
-destroy_class_t operator|(const destroy_class_t a, const destroy_class_t b){
-  return destroy_class_t(uint8_t(a)|uint8_t(b));
+destroy_class_t operator|(const destroy_class_t a, const destroy_class_t b) {
+  return destroy_class_t(uint8_t(a) | uint8_t(b));
 };
-destroy_class_t operator&(const destroy_class_t a, const destroy_class_t b){
-  return destroy_class_t(uint8_t(a)&uint8_t(b));
+destroy_class_t operator&(const destroy_class_t a, const destroy_class_t b) {
+  return destroy_class_t(uint8_t(a) & uint8_t(b));
 };
-bool operator<=(const destroy_class_t a, const destroy_class_t b){
-  return ((uint8_t(a)|uint8_t(b)) == uint8_t(b));
+bool operator<=(const destroy_class_t a, const destroy_class_t b) {
+  return ((uint8_t(a) | uint8_t(b)) == uint8_t(b));
 };
-bool operator>=(const destroy_class_t a, const destroy_class_t b){
-  return b<=a;
+bool operator>=(const destroy_class_t a, const destroy_class_t b) {
+  return b <= a;
 };
-bool operator<(const destroy_class_t a,const destroy_class_t b){
-  return a<=b && a!=b;
+bool operator<(const destroy_class_t a, const destroy_class_t b) {
+  return a <= b && a != b;
 }
-bool operator>(const destroy_class_t a,const destroy_class_t b){
-  return b<a;
+bool operator>(const destroy_class_t a, const destroy_class_t b) {
+  return b < a;
 }
-
 
 namespace parse {
 
@@ -155,7 +154,7 @@ std::string_view tokenizer::get_source() const {
 }
 
 std::unordered_map<uint64_t, std::string> var::maybe_names;
-std::unordered_map<std::string_view,size_t> var::name_size;
+std::unordered_map<std::string_view, size_t> var::name_size;
 std::vector<destroy_class_t> var::destroy_classes;
 
 rhs_expr::memory_access var::operator*() const {
@@ -181,30 +180,30 @@ void scope::push_back(instruction::t &&i) {
 }
 void scope::print(std::ostream &os, size_t offset) const {
   using namespace util;
-  auto print_destroy = [&](size_t i,size_t offset,bool newline=false){
-    assert(i<=destroys.size());
-    if(destroys.at(i).empty())return;
-    while(offset--)os << "  ";
+  auto print_destroy = [&](size_t i, size_t offset, bool newline = false) {
+    assert(i <= destroys.size());
+    if (destroys.at(i).empty())return;
+    while (offset--)os << "  ";
     os << "//destroying ";
     bool comma = false;
-    for(var v : destroys.at(i)){
-      if(comma)os<<", ";
-      comma=true;
-      if(v.destroy_class()<=trivial)os<<"(";
-      os<<v;
-      if(v.destroy_class()<=trivial)os<<")";
+    for (var v : destroys.at(i)) {
+      if (comma)os << ", ";
+      comma = true;
+      if (v.destroy_class() <= trivial)os << "(";
+      os << v;
+      if (v.destroy_class() <= trivial)os << ")";
     }
-    if(newline)os<<"\n";
+    if (newline)os << "\n";
   };
-  print_destroy(0,offset,true);
+  print_destroy(0, offset, true);
   size_t idx = 0;
   for (auto &it : body) {
     for (int i = offset; i--;)os << "  ";
     std::visit(overloaded{
         [&](const instruction::assign &a) {
-          os << a.dst ;
-          if(a.dst.destroy_class()!=value)
-            os<<" : "<<destroy_class_to_string(a.dst.destroy_class());
+          os << a.dst;
+          if (a.dst.destroy_class() != value)
+            os << " : " << destroy_class_to_string(a.dst.destroy_class());
           os << " = ";
           std::visit(overloaded{
               [&](const rhs_expr::constant &ce) { os << ce.v; },
@@ -242,7 +241,7 @@ void scope::print(std::ostream &os, size_t offset) const {
     }, it);
     os << "; ";
     ++idx;
-    print_destroy(idx,1);
+    print_destroy(idx, 1);
     os << "\n";
   }
   for (int i = offset; i--;)os << "  ";
@@ -278,7 +277,7 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
       // vardef
       assert(!names.contains(i));
       var v(i);
-      if(dc.has_value())v.destroy_class() = dc.value();
+      if (dc.has_value())v.destroy_class() = dc.value();
       names.try_emplace(i, v);
       inserted_names.push_back(i);
       tk.expect_pop(EQUAL);
@@ -322,7 +321,7 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
             var vx = names.at(tk.peek_sv());
             tk.expect_pop(IDENTIFIER);
             tk.expect_pop(PARENS_CLOSE);
-            push_back(instruction::assign{.dst = v, .src=rhs_expr::apply_fn{.f = vf ,.x = vx}});
+            push_back(instruction::assign{.dst = v, .src=rhs_expr::apply_fn{.f = vf, .x = vx}});
           } else if (tk.peek() == PARENS_OPEN) {
             //operation
             tk.expect_pop(PARENS_OPEN);
@@ -458,7 +457,7 @@ void function::parse(parse::tokenizer &tk) {
       if (tk.peek() == COMMA)tk.pop();
       assert(!names.contains(param_name));
       var v(param_name);
-      if(dc.has_value())v.destroy_class() = dc.value();
+      if (dc.has_value())v.destroy_class() = dc.value();
       names.try_emplace(param_name, v);
       args.emplace_back(v);
     }
@@ -489,6 +488,17 @@ std::string scope::to_string() {
   std::stringstream s;
   print(s);
   return std::move(s.str());
+}
+ir::lang::var scope::declare_constant(uint64_t value) {
+  ir::lang::var v;
+  scope::push_back(instruction::assign{.dst = v, .src = rhs_expr::constant(value)});
+  return v;
+}
+
+ir::lang::var scope::declare_global(std::string_view value) {
+  ir::lang::var v;
+  scope::push_back(instruction::assign{.dst = v, .src = rhs_expr::global{.name = std::string(value)}});
+  return v;
 }
 
 }

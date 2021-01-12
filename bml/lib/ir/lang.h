@@ -244,6 +244,8 @@ struct scope {
   void print(std::ostream &os, size_t offset = 0) const;
   std::string to_string();
   void parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
+  ir::lang::var declare_constant(uint64_t);
+  ir::lang::var declare_global(std::string_view);
 };
 
 struct function : public scope {
