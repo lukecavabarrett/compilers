@@ -3,6 +3,20 @@
 
 #include <ir/lang.h>
 #include <list>
+#include <iterator>
+#include <vector>
+#include <unordered_set>
+
+struct ir_sections_t {
+  std::ostream &data;
+  std::back_insert_iterator<std::vector<ir::lang::function>> text;
+  ir::lang::function &main;
+  ir_sections_t(const ir_sections_t&) = default;
+  ir_sections_t(std::ostream& d, std::back_insert_iterator<std::vector<ir::lang::function>> t, ir::lang::function &m) : data(d), text(t), main(m) {}
+  ir_sections_t with_main(ir::lang::function &m)  {
+    return ir_sections_t(data, text, m);
+  }
+};
 
 namespace ir {
 

@@ -4,6 +4,7 @@
 #include <map>
 #include <list>
 #include <charconv>
+#include <iostream>
 
 namespace ir::lang {
 std::ostream &operator<<(std::ostream &os, const var &v) {

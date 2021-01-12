@@ -14,18 +14,20 @@ struct fun;
 namespace util {
 
 
-struct sections_t {
+struct direct_sections_t {
   std::ostream &data, &text, &main;
   ast::expression::fun* def_fun;
-  sections_t(const sections_t&) = default;
-  sections_t(std::ostream& d,std::ostream& t, std::ostream& m, ast::expression::fun* df = nullptr) : data(d), text(t), main(m), def_fun(df) {}
-  sections_t with_main(std::ostream& os,ast::expression::fun* df)  {
-    return sections_t(data,text,os, df);
+  direct_sections_t(const direct_sections_t&) = default;
+  direct_sections_t(std::ostream& d, std::ostream& t, std::ostream& m, ast::expression::fun* df = nullptr) : data(d), text(t), main(m), def_fun(df) {}
+  direct_sections_t with_main(std::ostream& os, ast::expression::fun* df)  {
+    return direct_sections_t(data, text, os, df);
   }
-  sections_t with_main(std::ostream& os)  {
-    return sections_t(data,text,os, def_fun);
+  direct_sections_t with_main(std::ostream& os)  {
+    return direct_sections_t(data, text, os, def_fun);
   }
 };
+
+
 
 
 std::string load_file(std::string_view path);

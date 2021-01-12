@@ -48,7 +48,7 @@ void test_build(std::string_view source, std::string_view expected_stdout,ir_bui
 }
 
 TEST(Build, EmptyProgram){
-  test_build("","",ir_build::COMPILE);
+  test_build("","",ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Expression0) {

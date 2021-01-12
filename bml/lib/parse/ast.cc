@@ -39,17 +39,18 @@ capture_set identifier::capture_group() {
   if (!definition_point) {
     std::string_view n = name;
   }
-  if(!definition_point)THROW_INTERNAL_ERROR;
+  if (!definition_point)THROW_INTERNAL_ERROR;
   if (definition_point->top_level) return {};
   return {definition_point};
 }
-void identifier::compile(sections_t s, size_t stack_pos) {
+void identifier::compile(direct_sections_t s, size_t stack_pos) {
   std::string_view n = name;
   if (definition_point->top_level) {
     definition_point->globally_evaluate(s.main);
   } else if (s.def_fun && s.def_fun->is_capturing(definition_point)) {
     std::size_t idx = s.def_fun->capture_index(definition_point);
-    s.main << "mov rax, qword [r12+" << 8 * (idx + 4) << "]; retrieving " << name << ", #capture " << (idx + 1) << " of " << s.def_fun->captures.size() << "\n";
+    s.main << "mov rax, qword [r12+" << 8 * (idx + 4) << "]; retrieving " << name << ", #capture " << (idx + 1)
+           << " of " << s.def_fun->captures.size() << "\n";
   } else {
 
     s.main << "mov rax, qword [rsp";
@@ -68,7 +69,7 @@ void identifier::ir_compile(ir::lang::scope &) {
 literal::literal(ast::literal::ptr &&v) : value(std::move(v)) {}
 free_vars_t literal::free_vars() { return {}; }
 capture_set literal::capture_group() { return {}; }
-void literal::compile(sections_t s, size_t stack_pos) {
+void literal::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
 }
 void literal::ir_compile(ir::lang::scope &) {
@@ -83,10 +84,11 @@ capture_set constructor::capture_group() {
   return {};
 }
 constructor::constructor(std::string_view n) : name(n) {}
-void constructor::compile(sections_t s, size_t stack_pos) {
+void constructor::compile(direct_sections_t s, size_t stack_pos) {
   assert(definition_point);
   if (definition_point->is_immediate() != (arg == nullptr)) {
-    (definition_point->is_immediate() ? throw constructor_shouldnt_take_arg(arg->loc) : throw constructor_should_take_arg(name));
+    (definition_point->is_immediate() ? throw constructor_shouldnt_take_arg(arg->loc)
+                                      : throw constructor_should_take_arg(name));
   }
   assert(definition_point->is_immediate() == (arg == nullptr)); // this would be clearly a type-system break
   if (definition_point->is_immediate()) {
@@ -113,9 +115,17 @@ void constructor::ir_compile(ir::lang::scope &) {
 }
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
     : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
-free_vars_t if_then_else::free_vars() { return join_free_vars(join_free_vars(condition->free_vars(), true_branch->free_vars()), false_branch->free_vars()); }
-capture_set if_then_else::capture_group() { return join_capture_set(join_capture_set(condition->capture_group(), true_branch->capture_group()), false_branch->capture_group()); }
-void if_then_else::compile(sections_t s, size_t stack_pos) {
+free_vars_t if_then_else::free_vars() {
+  return join_free_vars(join_free_vars(condition->free_vars(),
+                                       true_branch->free_vars()),
+                        false_branch->free_vars());
+}
+capture_set if_then_else::capture_group() {
+  return join_capture_set(join_capture_set(condition->capture_group(),
+                                           true_branch->capture_group()),
+                          false_branch->capture_group());
+}
+void if_then_else::compile(direct_sections_t s, size_t stack_pos) {
   static size_t if_id = 0;
   ++if_id;
   condition->compile(s, stack_pos);
@@ -147,7 +157,7 @@ capture_set build_tuple::capture_group() {
   for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
   return fv;
 }
-void build_tuple::compile(sections_t s, size_t stack_pos) {
+void build_tuple::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "push r12\n";
   ++stack_pos;
   s.main << "mov edi, " << std::to_string(args.size() * 8) << "\n"
@@ -171,7 +181,7 @@ fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
 }
 free_vars_t fun_app::free_vars() { return join_free_vars(f->free_vars(), x->free_vars()); }
 capture_set fun_app::capture_group() { return join_capture_set(f->capture_group(), x->capture_group()); }
-void fun_app::compile(sections_t s, size_t stack_pos) {
+void fun_app::compile(direct_sections_t s, size_t stack_pos) {
   f->compile(s, stack_pos);
   s.main << "push rax\n";
   ++stack_pos;
@@ -191,7 +201,7 @@ void fun_app::ir_compile(ir::lang::scope &) {
 seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
 free_vars_t seq::free_vars() { return join_free_vars(a->free_vars(), b->free_vars()); }
 capture_set seq::capture_group() { return join_capture_set(a->capture_group(), b->capture_group()); }
-void seq::compile(sections_t s, size_t stack_pos) {
+void seq::compile(direct_sections_t s, size_t stack_pos) {
   a->compile(s, stack_pos);
   b->compile(s, stack_pos);
 }
@@ -222,7 +232,7 @@ capture_set match_with::capture_group() {
   }
   return cs;
 }
-void match_with::compile(sections_t s, size_t stack_pos) {
+void match_with::compile(direct_sections_t s, size_t stack_pos) {
   static size_t match_id = 0;
   ++match_id;
   what->compile(s, stack_pos);
@@ -234,12 +244,16 @@ void match_with::compile(sections_t s, size_t stack_pos) {
       s.main << ".MATCH_WITH_" << match_id << "_" << branch_id << "\n";
       s.main << "mov rax, qword [rsp]\n";
     }
-    std::string on_fail = (branch_id < branches.size() - 1) ? std::string(".MATCH_WITH_").append(std::to_string(match_id)).append("_").append(std::to_string(branch_id + 1)) : "fail_match";
+    std::string on_fail = (branch_id < branches.size() - 1)
+                          ? std::string(".MATCH_WITH_").append(std::to_string(match_id)).append("_").append(std::to_string(
+            branch_id + 1)) : "fail_match";
     s.main << "; case " << p->to_texp()->to_string() << "\n";
     size_t successful_stack_pos = p->test_locally_unroll(s.main, stack_pos, stack_pos, on_fail);
-    if (successful_stack_pos > stack_pos) s.main << "sub rsp, " << 8 * (successful_stack_pos - stack_pos) << "; confirming space for accepted pattern\n";
+    if (successful_stack_pos > stack_pos)
+      s.main << "sub rsp, " << 8 * (successful_stack_pos - stack_pos) << "; confirming space for accepted pattern\n";
     r->compile(s, successful_stack_pos);
-    if (successful_stack_pos > stack_pos) s.main << "add rsp, " << 8 * (successful_stack_pos - stack_pos) << "; reclaiming pattern space\n";
+    if (successful_stack_pos > stack_pos)
+      s.main << "add rsp, " << 8 * (successful_stack_pos - stack_pos) << "; reclaiming pattern space\n";
     s.main << "jmp .MATCH_WITH_" << match_id << "_END\n";
 
     ++branch_id;
@@ -268,10 +282,11 @@ void let_in::bind(const constr_map &cm) {
   d->bind(cm);
   e->bind(cm);
 }
-void let_in::compile(sections_t s, size_t stack_pos) {
+void let_in::compile(direct_sections_t s, size_t stack_pos) {
   size_t new_stack_pos = d->compile_locally(s, stack_pos);
   e->compile(s, new_stack_pos);
-  if (new_stack_pos > stack_pos)s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
+  if (new_stack_pos > stack_pos)
+    s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
 }
 void let_in::ir_compile(ir::lang::scope &) {
   THROW_UNIMPLEMENTED
@@ -292,10 +307,11 @@ capture_set fun::capture_group() {
   std::sort(captures.begin(), captures.end());
   return std::move(cs);
 }
-void fun::compile(sections_t s, size_t stack_pos) {
+void fun::compile(direct_sections_t s, size_t stack_pos) {
   std::string name = compile_global(s);
   if (captures.empty()) {
-    s.data << name << "__pure_fun_block" << " dq 1," << args.size() << "," << name << "; FN_BASE_PURE, n_args, text_ptr  \n" << std::endl;
+    s.data << name << "__pure_fun_block" << " dq 1," << args.size() << "," << name
+           << "; FN_BASE_PURE, n_args, text_ptr  \n" << std::endl;
     s.main << "mov rax, " << name << "__pure_fun_block\n";
   } else {
     s.main << "mov rdi, " << (4 + captures.size()) * 8 << "\n";
@@ -345,7 +361,7 @@ std::string fun::text_name_gen(std::string_view name_hint) {
     return s;
   }
 }
-std::string fun::compile_global(sections_t s, std::string_view name_hint) {
+std::string fun::compile_global(direct_sections_t s, std::string_view name_hint) {
   const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
 
   std::string text_ptr = text_name_gen(name_hint);
@@ -366,7 +382,8 @@ std::string fun::compile_global(sections_t s, std::string_view name_hint) {
   }
   if (has_captures)
     this_fun << "mov r12, qword [r12+16]\n"
-             << "; assert qword[r12+24] == " << captures.size() << "; i.e. the right number of captures has been saved\n";
+             << "; assert qword[r12+24] == " << captures.size()
+             << "; i.e. the right number of captures has been saved\n";
 
   body->compile(s.with_main(this_fun, this), this_stack_pos);
 
@@ -414,7 +431,66 @@ capture_set t::capture_group(capture_set &&cs) {
   }
   return cs;
 }
-void t::compile_global(sections_t s) {
+
+void t::ir_compile_global(ir_sections_t s) {
+  if (rec) {
+    //check that all values are construcive w.r.t each other
+    // 1. check no name clashes
+    // 2. check that if one contains another
+    THROW_UNIMPLEMENTED
+
+  }
+  for (auto &def : defs)
+    if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
+      dynamic_cast<matcher::universal_matcher *>(def.name.get())->use_as_immediate = true;
+    }
+  for (auto &def : defs) {
+    matcher::universal_matcher *name = dynamic_cast<matcher::universal_matcher *>(def.name.get());
+    if (name && def.is_fun()) {
+      THROW_UNIMPLEMENTED
+      /*expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
+      assert(f->captures.empty());
+      std::string text_ptr = f->compile_global(s, name->name);
+      name->globally_allocate_funblock(f->args.size(), s.data, text_ptr);*/
+    } else if (name && def.is_tuple()) {
+      THROW_UNIMPLEMENTED
+      /*
+      expression::build_tuple *e = dynamic_cast<expression::build_tuple *>(def.e.get());
+      name->globally_allocate_tupleblock(s.data, e->args.size());
+      assert(name->use_as_immediate);
+      size_t i = 0;
+      for (auto &e : e->args) {
+        e->compile(s, 0);
+        s.main << "mov qword[" << name->asm_name();
+        if (i)s.main << "+" << (8 * i);
+        s.main << "], rax\n";
+        ++i;
+      }*/
+    } else if (name && def.is_constr()) {
+      THROW_UNIMPLEMENTED
+      /*
+      expression::constructor *e = dynamic_cast<expression::constructor *>(def.e.get());
+      if (e->arg) {
+        name->globally_allocate_constrblock(s.data, *e->definition_point);
+        assert(name->use_as_immediate);
+        e->arg->compile(s, 0);
+        s.main << "mov qword[" << name->asm_name() << "+8], rax\n";
+      } else {
+        name->globally_allocate_constrimm(s.data, *e->definition_point);
+        assert(!name->use_as_immediate);
+      }
+       */
+    } else {
+      THROW_UNIMPLEMENTED
+      /*
+      def.name->globally_allocate(s.data);
+      def.e->compile(s, 0); // the value is left on rax
+      def.name->global_unroll(s.main); // take rax, unroll it onto globals.
+      */
+    }
+  }
+}
+void t::compile_global(direct_sections_t s) {
   if (rec) {
     //check that all values are construcive w.r.t each other
     // 1. check no name clashes
@@ -464,7 +540,7 @@ void t::compile_global(sections_t s) {
   }
 
 }
-size_t t::compile_locally(sections_t s, size_t stack_pos) {
+size_t t::compile_locally(direct_sections_t s, size_t stack_pos) {
   if (rec) {
     THROW_UNIMPLEMENTED
   } else {
@@ -498,7 +574,8 @@ void matcher::universal_matcher::bind(capture_set &cs) {
 }
 void matcher::universal_matcher::bind(const constr_map &cm) {}
 std::string matcher::universal_matcher::asm_name() const {
-  return name_resolution_id ? std::string(name).append("_").append(std::to_string(name_resolution_id)) : std::string(name);
+  return name_resolution_id ? std::string(name).append("_").append(std::to_string(name_resolution_id)) : std::string(
+      name);
 }
 void matcher::universal_matcher::globally_register(global_map &m) {
   top_level = true;
@@ -511,7 +588,9 @@ void matcher::universal_matcher::globally_allocate(std::ostream &os) {
   os << asm_name() << " dq 0" << std::endl;
 
 }
-void matcher::universal_matcher::globally_allocate_funblock(size_t n_args, std::ostream &os, std::string_view text_ptr) {
+void matcher::universal_matcher::globally_allocate_funblock(size_t n_args,
+                                                            std::ostream &os,
+                                                            std::string_view text_ptr) {
   use_as_immediate = true;
   os << asm_name() << " dq 1," << n_args << "," << text_ptr << "\n" << std::endl;
 }
@@ -526,13 +605,15 @@ void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, 
   };
   os << "\n";
 }
-void matcher::universal_matcher::globally_allocate_constrblock(std::ostream &os, const type::definition::single_variant::constr &constr) {
+void matcher::universal_matcher::globally_allocate_constrblock(std::ostream &os,
+                                                               const type::definition::single_variant::constr &constr) {
   use_as_immediate = true;
   assert(!constr.is_immediate());
   os << asm_name() << " dq " << constr.tag << ", 0   ; `" << constr.name << "` = " << constr.tag << "\n";
 }
 
-void matcher::universal_matcher::globally_allocate_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr) {
+void matcher::universal_matcher::globally_allocate_constrimm(std::ostream &os,
+                                                             const type::definition::single_variant::constr &constr) {
   use_as_immediate = false;
   assert(constr.is_immediate());
   os << asm_name() << " dq " << constr.tag << "; `" << constr.name << "` = " << constr.tag << "\n";
@@ -547,10 +628,14 @@ size_t matcher::universal_matcher::locally_unroll(std::ostream &os, size_t stack
   os << "push rax  ; " << name << " is on position " << stack_relative_pos << " on the stack\n";
   return stack_pos;
 }
-size_t matcher::universal_matcher::test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) {
+size_t matcher::universal_matcher::test_locally_unroll(std::ostream &os,
+                                                       size_t stack_pos,
+                                                       size_t caller_stack_pos,
+                                                       std::string_view on_fail) {
   ++stack_pos;
   stack_relative_pos = stack_pos;
-  os << "mov qword[rsp-" << 8 * (stack_pos - caller_stack_pos) << "], rax ; " << name << " is on position " << stack_relative_pos << " on the stack\n";
+  os << "mov qword[rsp-" << 8 * (stack_pos - caller_stack_pos) << "], rax ; " << name << " is on position "
+     << stack_relative_pos << " on the stack\n";
   return stack_pos;
 }
 void matcher::universal_matcher::globally_evaluate(std::ostream &os) const {
@@ -595,7 +680,10 @@ size_t matcher::constructor_matcher::locally_unroll(std::ostream &os, size_t sta
     return arg->locally_unroll(os, stack_pos);
   } else return stack_pos;
 }
-size_t matcher::constructor_matcher::test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) {
+size_t matcher::constructor_matcher::test_locally_unroll(std::ostream &os,
+                                                         size_t stack_pos,
+                                                         size_t caller_stack_pos,
+                                                         std::string_view on_fail) {
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
   if (arg) {
@@ -640,19 +728,24 @@ size_t matcher::tuple_matcher::locally_unroll(std::ostream &os, size_t stack_pos
   os << "mov qword [rsp-" << 8 * (rax_pos - stack_pos) << "], rax ; save rax\n";
   for (int i = 0; i < args.size(); ++i) {
     if (i)os << "mov rax, qword [rsp-" << 8 * (rax_pos - stack_pos) << "] ; restore rax\n";
-    os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] " << "; tuple_matcher " << loc << " " << (i + 1) << " of " << args.size() << " \n";
+    os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] "
+       << "; tuple_matcher " << loc << " " << (i + 1) << " of " << args.size() << " \n";
     stack_pos = args.at(i)->locally_unroll(os, stack_pos);
 
   }
   return stack_pos;
 }
-size_t matcher::tuple_matcher::test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) {
+size_t matcher::tuple_matcher::test_locally_unroll(std::ostream &os,
+                                                   size_t stack_pos,
+                                                   size_t caller_stack_pos,
+                                                   std::string_view on_fail) {
 
   size_t rax_pos = stack_pos + stack_unrolling_dimension(); // The first free position in stack
   os << "mov qword [rsp-" << 8 * (rax_pos - caller_stack_pos) << "], rax ; save rax\n";
   for (int i = 0; i < args.size(); ++i) {
     if (i)os << "mov rax, qword [rsp-" << 8 * (rax_pos - caller_stack_pos) << "] ; restore rax\n";
-    os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] " << "; tuple_matcher " << (i + 1) << " of " << args.size() << " \n";
+    os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] "
+       << "; tuple_matcher " << (i + 1) << " of " << args.size() << " \n";
     stack_pos = args.at(i)->test_locally_unroll(os, stack_pos, caller_stack_pos, on_fail);
 
   }
@@ -679,7 +772,10 @@ uint64_t integer::to_value() const {
 uint64_t boolean::to_value() const { return value ? 3 : 1; }
 uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
 }
-size_t matcher::literal_matcher::test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) {
+size_t matcher::literal_matcher::test_locally_unroll(std::ostream &os,
+                                                     size_t stack_pos,
+                                                     size_t caller_stack_pos,
+                                                     std::string_view on_fail) {
   os << "cmp rax, " << value->to_value() << " ; literal " << loc << "\n";
   os << "jne " << on_fail << " \n";
   return stack_pos;

@@ -410,7 +410,7 @@ retcode_format db  10,"%llu", 0
   oasm << R"(
 section .text
 global main
-extern printf, malloc, exit, print_debug, sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value, println_int, println_int_err,println_int_err_skim
+extern printf, malloc, exit, print_debug, int_sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value, println_int, println_int_err,println_int_err_skim
 
 )";
 
@@ -789,7 +789,7 @@ return y2;
 }
 )";
   test_ir_build(source,
-                {fun("sum_fun", 2), 100, 10},
+                {fun("int_sum_fun", 2), 100, 10},
                 {.test_function="apply2", .expected_return=110});
 }
 

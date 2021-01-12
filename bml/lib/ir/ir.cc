@@ -1,5 +1,6 @@
 #include <ir.h>
 #include <lang.h>
+#include <iostream>
 
 namespace ir {
 using namespace util;

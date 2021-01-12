@@ -2,13 +2,13 @@
 #define COMPILERS_BML_LIB_IR_LANG_H_
 
 #include <util/util.h>
+#include <cassert>
 #include <cstdint>
 #include <variant>
 #include <vector>
 #include <string>
 #include <optional>
 #include <memory>
-#include <util/texp.h>
 #include <util/message.h>
 
 namespace ir::lang {
