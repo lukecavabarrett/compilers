@@ -12,7 +12,7 @@ target_compile_features(parse PRIVATE cxx_std_17)
 
 
 add_executable(parse_test parse_test.cc)
-target_link_libraries(parse_test gtest gtest_main util parse)
+target_link_libraries(parse_test gtest gtest_main util parse ir)
 
 add_executable(bind_test bind_test.cc)
-target_link_libraries(bind_test gtest gtest_main util parse)
+target_link_libraries(bind_test gtest gtest_main util parse ir)
