@@ -152,7 +152,7 @@ TEST(Build, Expression3) {
 TEST(Build, Expression4) {
   test_build("let f x () = int_print x ;;\n"
              "let g = f 42;;\n"
-             "let () = g ();;", "42 ");
+             "let () = g ();;", "42 ", ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, BoollLiterals) {

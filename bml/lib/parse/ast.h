@@ -495,7 +495,7 @@ struct boolean : public t {
 };
 struct unit : public t {
   unit() {}
-  uint64_t to_value() const final { return 0; }
+  uint64_t to_value() const final { return 1; }
  TO_TEXP_EMPTY()
 };
 struct string : public t {
@@ -507,125 +507,6 @@ struct string : public t {
 }
 
 namespace definition {
-
-/*
-
-struct single : public locable, texp_of_t {
-  typedef std::unique_ptr<single> ptr;
-  expression::ptr body;
-  single(expression::ptr &&b) : body(std::move(b)) {}
-  virtual matcher::t &binder() const = 0;
-  virtual free_vars_t free_vars() = 0;
-  virtual capture_set capture_group() = 0;
-  virtual void compile_global(direct_sections_t s, size_t stack_pos) = 0;
-  virtual void bind(const constr_map &) = 0;
-  virtual ~single() = default;
-};
-
-struct function : single {
-  typedef std::unique_ptr<function> ptr;
-  std::string html_description() const final { return "Function definition"; }
-  void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {
-    name->make_html(out, it);
-    for (const auto &p : args)p->make_html(out, it);
-    body->make_html(out, it);
-  };
-  matcher::universal_matcher::ptr name;
-  matcher::t &binder() const final { return *name.get(); }
-  void bind(const constr_map &cm) final {
-    name->bind(cm);
-    for (const auto &p : args)p->bind(cm);
-    body->bind(cm);
-  }
-  std::vector<matcher::ptr> args;
-  std::vector<const matcher::universal_matcher *> captures;
-  using single::single;
-  function() : single(expression::ptr()) {}
-  free_vars_t free_vars() final {
-    free_vars_t fv = body->free_vars();
-    for (auto &m : args)m->bind(fv);
-    return fv;
-  };
-  bool is_capturing(const matcher::universal_matcher *m) const {
-    return std::binary_search(captures.begin(), captures.end(), m);
-  }
-  capture_set capture_group() final {
-    capture_set cs = body->capture_group();
-    for (auto &m : args)m->bind(cs);
-
-    captures.assign(cs.begin(), cs.end());
-    std::sort(captures.begin(), captures.end());
-
-    if (captures.size() == 1 && captures.front() == name.get()) {
-      //TODO-somdeday: the function can be made pure
-      // captures.clear();
-      // NOTE: the function can be made pure
-    }
-    return cs;
-  }
-  void compile_global(direct_sections_t s, size_t stack_pos) final {
-    assert(captures.empty());
-    name->globally_allocate_funblock(s.data, args.size());
-    std::stringstream this_fun;
-    size_t this_stack_pos = 0;
-    this_fun << name->asm_name() << "__fn:\n";
-    this_fun << "push r12\n";
-    ++this_stack_pos;
-    this_fun << "mov r12, rdi\n";
-    bool should_skip = false;
-    // iterate the args in reverse order
-    for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
-      if (should_skip)this_fun << "mov r12, qword [r12+16]\n";
-      should_skip = true;
-      this_fun << "mov rax, qword [r12+24]\n";
-      this_stack_pos = (*arg_it)->locally_unroll(this_fun, this_stack_pos);
-    }
-
-    body->compile(s.with_main(this_fun, this), this_stack_pos);
-
-    if (this_stack_pos > 1) {
-      this_fun << "add rsp, " << (8 * (this_stack_pos - 1)) << " ; popping fun args \n";
-      this_stack_pos = 1;
-    }
-
-    this_fun << "pop r12\n";
-    --this_stack_pos;
-    this_fun << "ret\n";
-    s.text << this_fun.str() << std::endl;
-
-  }
-
- TO_TEXP(name, args, body)
-};
-
-struct value : single {
-  typedef std::unique_ptr<value> ptr;
-  std::string html_description() const final { return "Value binding"; }
-  void _make_html_childcall(std::string &out, std::string_view::iterator &it) const final {
-    binded->make_html(out, it);
-    body->make_html(out, it);
-  };
-  matcher::ptr binded;
-  matcher::t &binder() const final { return *binded.get(); }
-  void bind(const constr_map &cm) final {
-    binded->bind(cm);
-    body->bind(cm);
-  }
-  value(matcher::ptr &&bi, expression::ptr &&bo) : single(std::move(bo)), binded(std::move(bi)) {}
-  free_vars_t free_vars() final {
-    return body->free_vars();
-  };
-  capture_set capture_group() final {
-    return body->capture_group();
-  }
-  void compile_global(direct_sections_t s, size_t stack_pos) final {
-    binded->globally_allocate(s.data);
-    body->compile(s, stack_pos); // the value is left on rax
-    binded->global_unroll(s.main); // take rax, unroll it onto globals.
-  }
- TO_TEXP(binded, body)
-};
-*/
 
 struct def : public texp_of_t {
   matcher::ptr name;
