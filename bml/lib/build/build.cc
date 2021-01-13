@@ -6,26 +6,40 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   target << "section .data\n";
   target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value\n";
 
-  target << "extern int_sum_fun \n";
-  static ast::matcher::universal_matcher int_sum("int_sum");
-  int_sum.ir_globally_register(globals);
-  int_sum.ir_allocate_globally_funblock(target, 2, "int_sum_fun");
-  int_sum.use_as_immediate = int_sum.top_level = true;
-  globals.try_emplace("+", &int_sum); // + maps to the same
+  {
+    target << "extern int_sum_fun \n";
+    static ast::matcher::universal_matcher int_sum("int_sum");
+    int_sum.ir_globally_register(globals);
+    int_sum.ir_allocate_globally_funblock(target, 2, "int_sum_fun");
+    int_sum.use_as_immediate = int_sum.top_level = true;
+    globals.try_emplace("+", &int_sum); // + maps to the same
+  }
 
-  target << "extern print_int \n";
-  static ast::matcher::universal_matcher int_print("int_print");
-  int_print.ir_globally_register(globals);
-  int_print.ir_allocate_globally_funblock(target, 1, "print_int");
-  int_print.use_as_immediate = int_print.top_level = true;
+  {
+    target << "extern int_sub_fun \n";
+    static ast::matcher::universal_matcher int_sub("int_sub");
+    int_sub.ir_globally_register(globals);
+    int_sub.ir_allocate_globally_funblock(target, 2, "int_sub_fun");
+    int_sub.use_as_immediate = int_sub.top_level = true;
+    globals.try_emplace("-", &int_sub); // - maps to the same
+  }
 
-  target << "extern int_eq_fun \n";
-  static ast::matcher::universal_matcher int_eq("int_eq");
-  int_eq.ir_globally_register(globals);
-  int_eq.ir_allocate_globally_funblock(target, 2, "int_eq_fun");
-  int_eq.use_as_immediate = int_print.top_level = true;
-  globals.try_emplace("=", &int_eq);
+  {
+    target << "extern print_int \n";
+    static ast::matcher::universal_matcher int_print("int_print");
+    int_print.ir_globally_register(globals);
+    int_print.ir_allocate_globally_funblock(target, 1, "print_int");
+    int_print.use_as_immediate = int_print.top_level = true;
+  }
 
+  {
+    target << "extern int_eq_fun \n";
+    static ast::matcher::universal_matcher int_eq("int_eq");
+    int_eq.ir_globally_register(globals);
+    int_eq.ir_allocate_globally_funblock(target, 2, "int_eq_fun");
+    int_eq.use_as_immediate = int_eq.top_level = true;
+    globals.try_emplace("=", &int_eq);
+  }
 
   /*static ast::matcher::universal_matcher int_sub("int_sub");
   int_sub.use_as_immediate = int_sub.top_level = true;
@@ -114,7 +128,6 @@ void build_ir(std::string_view s, std::ostream &target) {
   functions.push_back(std::move(main));
   for (auto &f : functions) {
     f.compile(target);
-    f.print(std::cout);
   }
 }
 void build_direct(std::string_view s, std::ostream &target) {

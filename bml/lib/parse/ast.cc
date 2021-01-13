@@ -66,7 +66,7 @@ ir::lang::var identifier::ir_compile(ir_sections_t s) {
   if (definition_point->top_level) {
     return definition_point->ir_evaluate_global(s.main);
   } else {
-    THROW_UNIMPLEMENTED;
+    return definition_point->ir_var;
   }
 }
 
@@ -375,6 +375,31 @@ std::string fun::text_name_gen(std::string_view name_hint) {
     return s;
   }
 }
+
+std::string fun::ir_compile_global(ir_sections_t s) {
+  assert(this->captures.empty());
+  static size_t fun_id_gen = 1;
+  const size_t fun_id = fun_id_gen++;
+  std::string name = std::string("__fun_").append(std::to_string(fun_id)).append("__");
+  using namespace ir::lang;
+  function f;
+  var arg_block;
+  f.args = {arg_block};
+  f.name = name;
+  //read unroll args onto variables
+  bool should_skip = false;
+  // iterate the args in reverse order
+  for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
+    if (should_skip)arg_block = f.declare_assign(arg_block[2]);
+    should_skip = true;
+    (*arg_it)->ir_locally_unroll(f, f.declare_assign(arg_block[4]));
+  }
+  //compute value
+  f.ret = body->ir_compile(s.with_main(f));
+  *(s.text++) = std::move(f);
+  return name;
+}
+
 std::string fun::compile_global(direct_sections_t s, std::string_view name_hint) {
   const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
 
@@ -464,11 +489,10 @@ void t::ir_compile_global(ir_sections_t s) {
   for (auto &def : defs) {
     matcher::universal_matcher *name = dynamic_cast<matcher::universal_matcher *>(def.name.get());
     if (name && def.is_fun()) {
-      THROW_UNIMPLEMENTED
-      /*expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
+      expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
       assert(f->captures.empty());
-      std::string text_ptr = f->compile_global(s, name->name);
-      name->globally_allocate_funblock(f->args.size(), s.data, text_ptr);*/
+      std::string text_ptr = f->ir_compile_global(s);
+      name->ir_allocate_globally_funblock(s.data,f->args.size(),text_ptr);
     } else if (name && def.is_tuple()) {
 
       expression::build_tuple *e = dynamic_cast<expression::build_tuple *>(def.e.get());
@@ -728,6 +752,11 @@ ir::lang::var matcher::universal_matcher::ir_evaluate_global(ir::lang::scope &s)
     return s.declare_assign(gl[0]);
   }
 }
+void matcher::universal_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var v) {
+  assert(!top_level);
+  using namespace ir::lang;
+  s.push_back(instruction::assign{.dst = ir_var, .src = v});
+}
 
 void matcher::constructor_matcher::bind(free_vars_t &fv) {
   if (arg)arg->bind(fv);
@@ -774,6 +803,15 @@ size_t matcher::constructor_matcher::locally_unroll(std::ostream &os, size_t sta
     return arg->locally_unroll(os, stack_pos);
   } else return stack_pos;
 }
+
+void matcher::constructor_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
+  assert(definition_point);
+  assert(definition_point->is_immediate() == (arg == nullptr));
+  if (arg) {
+    return arg->ir_locally_unroll(s,s.declare_assign(block[2]));
+  }
+}
+
 size_t matcher::constructor_matcher::test_locally_unroll(std::ostream &os,
                                                          size_t stack_pos,
                                                          size_t caller_stack_pos,
@@ -793,6 +831,7 @@ size_t matcher::constructor_matcher::test_locally_unroll(std::ostream &os,
     return stack_pos;
   }
 }
+
 void matcher::tuple_matcher::bind(free_vars_t &fv) {
   for (auto &p : args)p->bind(fv);
 }
@@ -828,6 +867,14 @@ void matcher::tuple_matcher::ir_global_unroll(ir::scope &s, ir::lang::var block)
   for (size_t i = 0; i < args.size(); ++i) {
     var content = s.declare_assign(block[i + 2]);
     args.at(i)->ir_global_unroll(s, content);
+  }
+}
+
+void matcher::tuple_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
+  using namespace ir::lang;
+  for (size_t i = 0; i < args.size(); ++i) {
+    var content = s.declare_assign(block[i + 2]);
+    args.at(i)->ir_locally_unroll(s, content);
   }
 }
 
@@ -873,6 +920,7 @@ size_t matcher::tuple_matcher::stack_unrolling_dimension() const {
   ++d;
   return d;
 }
+
 namespace literal {
 uint64_t integer::to_value() const {
   return uint64_t((value << 1) | 1);

@@ -23,6 +23,7 @@ std::string_view destroy_class_to_string(destroy_class_t dc) {
     case non_global:return "non_global";
     case unvalid_destroy_class:return "unvalid_destroy_class";
   }
+  THROW_INTERNAL_ERROR
 }
 
 destroy_class_t operator|(const destroy_class_t a, const destroy_class_t b) {

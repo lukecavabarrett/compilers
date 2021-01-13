@@ -251,7 +251,7 @@ struct scope {
 
 struct function : public scope {
   std::vector<var> args;
-  std::string_view name;
+  std::string name;
   static function parse(std::string_view source);
   void setup_destruction();
   void parse(parse::tokenizer &);

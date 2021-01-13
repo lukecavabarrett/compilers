@@ -139,14 +139,14 @@ TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
                                       "let y = g int_sum 10;;\n"
                                       "let () = int_print y;;";
-  test_build(source, "11 ");
+  test_build(source, "11 ",ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Expression3) {
   constexpr std::string_view source = "let twice x = x + x ;;\n"
                                       "let ans = 45 + 25 - 93 + twice (97 + 21);;\n"
                                       "let () = int_print ans;;";
-  test_build(source, "213 ");
+  test_build(source, "213 ",ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Expression4) {
