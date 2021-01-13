@@ -271,6 +271,7 @@ struct context_t {
 
   void destroy(var v, std::ostream &);
   void destroy(const std::vector<var> &, std::ostream &);
+  void avoid_destruction(var v);
   void increment_refcount(var v, std::ostream &);
   void declare_const(var v, uint64_t value);
   std::optional<uint64_t> is_constant(var v) const;

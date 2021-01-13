@@ -312,8 +312,11 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                     assert(c.contains((b.x2)));
                     c.make_non_both_mem(b.x1, b.x2, os);
                     os << rhs_expr::binary_op::ops_to_string(b.op) << " " << c.at(b.x1) << ", " << c.at(b.x2) << "\n";
+
+                    //the following to instructions delete b.x1 from the context and communicate to it the new location
                     c.declare_move(a.dst, b.x1);
                     destroys.erase(std::find(destroys.begin(), destroys.end(), b.x1));
+
                   } else {
                     c.declare_copy(a.dst, b.x1, os);
                     c.make_non_both_mem(a.dst, b.x2, os);
@@ -326,14 +329,13 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
         },
         [&](instruction::write_uninitialized_mem &m) {
           c.make_both_non_mem(m.src, m.base, os);
-          //TODO: ensure survival
-          c.increment_refcount(m.src,os);
-//          if(contains(destroys, m.src)){
-//            destroys.erase(std::find(destroys.begin(), destroys.end(), m.src));
-//          } else {
-//            c.increment_refcount(m.src,os);
-//          }
           os << "mov qword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << c.at(m.src) << "\n";
+          if(contains(destroys, m.src)){
+            destroys.erase(std::find(destroys.begin(), destroys.end(), m.src));
+            c.avoid_destruction(m.src);
+          } else {
+            c.increment_refcount(m.src,os);
+          }
         },
         [&](instruction::cmp_vars &cmp) {
           c.make_non_both_mem(cmp.v1, cmp.v2, os);
@@ -617,6 +619,22 @@ void context_t::destroy(const std::vector<var> &vs, std::ostream &os) {
   for (var v : vs) {
     destroy(v, os);
   }
+}
+void context_t::avoid_destruction(var v) {
+  assert_consistency();
+  assert(vars.contains(v));
+  std::visit(overloaded{
+      ignore<constant, global>(),
+      [&](on_stack p) {
+        stack[p] = free{};
+      },
+      [&](on_reg r) {
+        regs[r] = free{};
+        lru.bring_front(r);
+      },
+  }, vars.at(v));
+  vars.erase(v);
+  assert_consistency();
 }
 void context_t::destroy(var v, std::ostream &os) {
   assert_consistency();
