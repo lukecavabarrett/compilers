@@ -33,6 +33,14 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   }
 
   {
+    target << "extern println_int \n";
+    static ast::matcher::universal_matcher int_println("int_println");
+    int_println.ir_globally_register(globals);
+    int_println.ir_allocate_globally_funblock(target, 1, "println_int");
+    int_println.use_as_immediate = int_println.top_level = true;
+  }
+
+  {
     target << "extern int_eq_fun \n";
     static ast::matcher::universal_matcher int_eq("int_eq");
     int_eq.ir_globally_register(globals);
@@ -128,6 +136,7 @@ void build_ir(std::string_view s, std::ostream &target) {
   functions.push_back(std::move(main));
   for (auto &f : functions) {
     f.compile(target);
+    f.print(std::cout);
   }
 }
 void build_direct(std::string_view s, std::ostream &target) {

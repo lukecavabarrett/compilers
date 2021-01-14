@@ -170,6 +170,10 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
 
   bool need_to_return = last_call; //whether we'll return the final value
   c.destroy(s.destroys.at(0), os);
+
+  size_t last_skipped_cmp_vars_simplified = s.body.size()+2;
+  bool last_skipped_will_jump;
+
   for (size_t i = 0; i < s.body.size(); ++i) {
     //os<<"; ";c.debug_vars(os);os<<"\n"; // print state infos
     std::vector<var> &destroys = s.destroys.at(i + 1);
@@ -199,6 +203,12 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   os << "jmp apply_fn\n"; //TODO avoid 2 jumps, go directly to function
                 },
                 [&](rhs_expr::branch &b) {
+                  if (last_skipped_cmp_vars_simplified + 1 == i) {
+                    os << "; optimized out branch\n";
+                    auto& branch = last_skipped_will_jump ? b->jmp_branch : b->nojmp_branch;
+                    c = scope_compile_rec(branch, os, c, true);
+                    return;
+                  }
                   size_t this_branch = ++branch_id_factory;
                   os << b->ops_to_string() << " .L" << this_branch << "\n";
                   scope_compile_rec(b->nojmp_branch, os, c, true);
@@ -260,6 +270,14 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   c.declare_in(a.dst, rax);
                 },
                 [&](rhs_expr::branch &b) {
+                  if (last_skipped_cmp_vars_simplified + 1 == i) {
+                    os << "; optimized out branch\n";
+                    auto& branch = last_skipped_will_jump ? b->jmp_branch : b->nojmp_branch;
+                    c = scope_compile_rec(branch, os, c, false);
+                    c.declare_move(a.dst, branch.ret);
+                    return;
+                  }
+
                   size_t this_branch = ++branch_id_factory;
                   size_t this_branch_end = ++branch_id_factory;
                   os << b->ops_to_string() << " .L" << this_branch << "\n";
@@ -330,22 +348,47 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
         [&](instruction::write_uninitialized_mem &m) {
           c.make_both_non_mem(m.src, m.base, os);
           os << "mov qword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << c.at(m.src) << "\n";
-          if(contains(destroys, m.src)){
+          if (contains(destroys, m.src)) {
             destroys.erase(std::find(destroys.begin(), destroys.end(), m.src));
             c.avoid_destruction(m.src);
           } else {
-            c.increment_refcount(m.src,os);
+            c.increment_refcount(m.src, os);
           }
         },
         [&](instruction::cmp_vars &cmp) {
+
+          if (c.is_constant(cmp.v1) && c.is_constant(cmp.v2)) {
+            last_skipped_cmp_vars_simplified = i;
+            assert(i+1<s.body.size());
+
+            ternary::jmp_instr jinstr = std::get<rhs_expr::branch>( std::get< instruction::assign >(s.body.at(i+1)).src)->cond;
+
+            int64_t op1 = int64_t(c.is_constant(cmp.v1).value());
+            int64_t op2 = int64_t(c.is_constant(cmp.v2).value());
+            int64_t result;
+
+            switch (cmp.op) {
+              case instruction::cmp_vars::test:result = op1&op2;break;
+              case instruction::cmp_vars::cmp:result = op1-op2;break;
+            }
+
+            switch (jinstr) {
+              case ternary::jmp: last_skipped_will_jump = true; break;
+              case ternary::jne: last_skipped_will_jump = result!=0; break;
+              case ternary::jle: last_skipped_will_jump = result<=0;break;
+              case ternary::jz:  last_skipped_will_jump = result==0; break;
+            }
+            return;
+          }
           c.make_non_both_mem(cmp.v1, cmp.v2, os);
           os << instruction::cmp_vars::ops_to_string(cmp.op) << " " << c.at(cmp.v1) << ", " << c.at(cmp.v2) << "\n";
           //assert all trivially destructible
           assert(std::all_of(destroys.begin(),
                              destroys.end(),
                              [](var v) { return (v.destroy_class() & non_trivial) == 0; }));
+
         },
-    }, s.body[i]);
+    }, s.body.at(i));
     c.destroy(destroys, os);
   }
 

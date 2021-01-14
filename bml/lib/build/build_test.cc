@@ -159,7 +159,7 @@ TEST(Build, BoollLiterals) {
   test_build(R"(
     let () = int_println (if true then 42 else 55);;
     let () = int_println (if false then 42 else 55);;
-  )", "42\n55\n");
+  )", "42\n55\n",ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Constructor) {
