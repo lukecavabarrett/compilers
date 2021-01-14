@@ -136,7 +136,7 @@ void build_ir(std::string_view s, std::ostream &target) {
   functions.push_back(std::move(main));
   for (auto &f : functions) {
     f.compile(target);
-    f.print(std::cout);
+    //f.print(std::cout);
   }
 }
 void build_direct(std::string_view s, std::ostream &target) {

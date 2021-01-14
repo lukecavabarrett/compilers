@@ -117,8 +117,8 @@ TEST(Build, Expression0_5) {
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = int_sum 100 ;;\n"
                                       "let () = int_print (sum_100 54);;"
-                                      //"let () = int_print (int_sum 100 (if (int_eq 107 106) then x else y));;\n"
-                                      ;
+  //"let () = int_print (int_sum 100 (if (int_eq 107 106) then x else y));;\n"
+  ;
   test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
 }
 
@@ -131,7 +131,7 @@ TEST(Build, Expression1) {
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = int_sum 100 ;;\n"
                                       "let () = int_print (sum_100 (if (int_eq 107 106) then x else y)) ;;\n";
-  test_build(source, "154 ",ir_build::COMPILE_AND_RUN);
+  test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
 
 }
 
@@ -139,14 +139,14 @@ TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
                                       "let y = g int_sum 10;;\n"
                                       "let () = int_print y;;";
-  test_build(source, "11 ",ir_build::COMPILE_AND_RUN);
+  test_build(source, "11 ", ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Expression3) {
   constexpr std::string_view source = "let twice x = x + x ;;\n"
                                       "let ans = 45 + 25 - 93 + twice (97 + 21);;\n"
                                       "let () = int_print ans;;";
-  test_build(source, "213 ",ir_build::COMPILE_AND_RUN);
+  test_build(source, "213 ", ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Expression4) {
@@ -159,7 +159,7 @@ TEST(Build, BoollLiterals) {
   test_build(R"(
     let () = int_println (if true then 42 else 55);;
     let () = int_println (if false then 42 else 55);;
-  )", "42\n55\n",ir_build::COMPILE_AND_RUN);
+  )", "42\n55\n", ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, Constructor) {
@@ -167,7 +167,7 @@ TEST(Build, Constructor) {
              "let some13 = Some 13 and none = None;;\n"
              "let Some 13 = some13;;\n"
              "let Some x = some13;;\n"
-             "let () = int_print x;;\n", "13 ");
+             "let () = int_print x;;\n", "13 ", ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, SomeAddition) {
