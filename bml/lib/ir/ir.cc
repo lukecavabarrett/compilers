@@ -246,7 +246,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 },
                 [&](rhs_expr::malloc &m) {
                   c.call_clean({}, os);
-                  os << "mov rsi, " << m.size * 8 << " \n";
+                  os << "mov rdi, " << m.size * 8 << " \n";
                   os << "call malloc\n";
                   c.declare_in(a.dst, rax);
                 },
@@ -347,7 +347,16 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
         },
         [&](instruction::write_uninitialized_mem &m) {
           c.make_both_non_mem(m.src, m.base, os);
-          os << "mov qword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << c.at(m.src) << "\n";
+          if(c.is_constant(m.src) && c.is_constant(m.src).value() > uint64_t(std::numeric_limits<uint32_t>::max())){
+            //we need two ops
+            uint32_t lo = c.is_constant(m.src).value();
+            uint32_t hi = c.is_constant(m.src).value() >> 32;
+            os << "mov dword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << lo << " ; loading 64-bit constant "<<c.is_constant(m.src).value()<<" in two steps \n";
+            os << "mov dword [" << c.at(m.base) << offset(m.block_offset * 8 + 4) << "], " << hi << "\n";
+
+          } else {
+            os << "mov qword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << c.at(m.src) << "\n";
+          }
           if (contains(destroys, m.src)) {
             destroys.erase(std::find(destroys.begin(), destroys.end(), m.src));
             c.avoid_destruction(m.src);
@@ -956,7 +965,7 @@ void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args
           }
           lru.bring_back(r);
           if (use_pops)os << "pop " << reg::to_string(r) << "\n";
-          else os << "mov " << reg::to_string(r) << ", qword [rsp" << offset(stack_size() - 1 - i) << "]\n";
+          else os << "mov " << reg::to_string(r) << ", qword [rsp" << offset((stack_size() - 1 - i)*8) << "]\n";
           stack[i] = free{};
           regs[r] = v;
           vars[v] = r;
@@ -1137,13 +1146,13 @@ void context_t::call_clean(const std::vector<std::pair<var, register_t>> &args, 
                 os << "pop " << reg::to_string(r) << "\n";
                 stack.pop_back();
               } else {
-                os << "mov " << reg::to_string(r) << ", qword [rsp" << offset(stack.size() - 1 - p) << "]\n";
+                os << "mov " << reg::to_string(r) << ", qword [rsp" << offset((stack.size() - 1 - p)*8) << "]\n";
               }
             } else {
               var v2 = std::get<var>(regs[r]);
               std::swap(vars[v2], vars[v]);
               std::swap(regs[r], stack[p]);
-              os << "xchg " << reg::to_string(r) << ", qword [rsp" << offset(stack.size() - 1 - p) << "]\n";
+              os << "xchg " << reg::to_string(r) << ", qword [rsp" << offset((stack.size() - 1 - p)*8) << "]\n";
             }
           }
       }, vars[v]);
@@ -1266,7 +1275,7 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
             },
             [&](on_stack p_src) {
               os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", qword [rsp"
-                 << offset(stack.size() - 1 - p_src) << "]\n";
+                 << offset((stack.size() - 1 - p_src)*8) << "]\n";
               std::swap(stack[p_src], regs[r_dst]);
               reassign(src);
               reassign(dst);
@@ -1276,7 +1285,7 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
       [&](on_stack p_dst) {
         std::visit(overloaded{
             [&](on_reg r_src) {
-              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp" << offset(stack.size() - 1 - p_dst)
+              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp" << offset((stack.size() - 1 - p_dst)*8)
                  << "], " << reg::to_string(r_src) << "\n";
               std::swap(regs[r_src], stack[p_dst]);
               reassign(src);
@@ -1284,9 +1293,9 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
             },
             [&](on_stack p_src) {
               if (p_src == p_dst)return;
-              os << "xchg rax, qword [rsp" << offset(stack.size() - 1 - p_dst) << "]\n";
-              os << "xchg rax, qword [rsp" << offset(stack.size() - 1 - p_src) << "]\n";
-              os << "xchg rax, qword [rsp" << offset(stack.size() - 1 - p_dst) << "]\n";
+              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_dst)*8) << "]\n";
+              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_src)*8) << "]\n";
+              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_dst)*8) << "]\n";
               std::swap(stack[p_src], stack[p_dst]);
               reassign(src);
               reassign(dst);

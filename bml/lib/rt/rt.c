@@ -4,7 +4,6 @@
 #include <assert.h>
 #include <inttypes.h>
 
-
 #define Tag_Tuple  0
 #define Tag_Fun 1
 #define Tag_Arg 2
@@ -216,13 +215,13 @@ uintptr_t int_eq_fun(uintptr_t argv) {
   decrement_value((uintptr_t) argv_b);
   uint64_t a = v_to_uint(argv_a[4]);
   decrement_value((uintptr_t) argv_a);
-  return uint_to_v(a==b ? 1 : 0);
+  return uint_to_v(a == b ? 1 : 0);
 }
 
 uintptr_t println_int(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
-  printf("%ld\n",b);
+  printf("%ld\n", b);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
@@ -230,7 +229,7 @@ uintptr_t println_int(uintptr_t argv) {
 uintptr_t print_int(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
-  printf("%ld ",b);
+  printf("%ld ", b);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
@@ -238,13 +237,13 @@ uintptr_t print_int(uintptr_t argv) {
 uintptr_t println_int_err(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
-  fprintf(stderr,"%ld\n",b);
+  fprintf(stderr, "%ld\n", b);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
 
 uintptr_t println_int_err_skim(uintptr_t x) {
-  fprintf(stderr,"%lu\n",x);
+  fprintf(stderr, "%lu\n", x);
   return x;
 }
 

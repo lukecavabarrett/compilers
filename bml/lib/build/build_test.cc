@@ -174,7 +174,7 @@ TEST(Build, SomeAddition) {
   test_build("type int_option = | Some of int ;;\n"
              "let some_add (Some x) (Some y) (Some z) = Some (x+y+z);;\n"
              "let Some ans = some_add (Some 10) (Some 100) (Some 1);;\n"
-             "let () = int_print ans;;\n", "111 ");
+             "let () = int_print ans;;\n", "111 ", ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, OptionMapSome) {

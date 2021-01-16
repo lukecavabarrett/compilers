@@ -25,6 +25,17 @@ capture_set join_capture_set(capture_set &&c1, capture_set &&c2) {
   return c1;
 }
 
+#define Tag_Tuple  0
+#define Tag_Fun 1
+#define Tag_Arg 2
+uintptr_t uint_to_v(uint64_t x) {
+  return (uintptr_t) ((x << 1) | 1);
+}
+uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
+  return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
+}
+
+
 }
 
 namespace expression {
@@ -114,8 +125,20 @@ void constructor::bind(const constr_map &cm) {
   }
   if (arg)arg->bind(cm);
 }
-ir::lang::var constructor::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var constructor::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  assert(definition_point->tag>=5);
+  assert(definition_point->tag&1);
+  if(arg){
+    var content = arg->ir_compile(s);
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=3});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(3)});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(make_tag_size_d(definition_point->tag,1,0))});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
+    return block;
+  } else {
+    return s.main.declare_constant(make_tag_size_d(definition_point->tag,1,0));
+  }
 }
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
     : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
@@ -656,15 +679,6 @@ void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, 
   os << "\n";
 }
 
-#define Tag_Tuple  0
-#define Tag_Fun 1
-#define Tag_Arg 2
-uintptr_t uint_to_v(uint64_t x) {
-  return (uintptr_t) ((x << 1) | 1);
-}
-uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
-  return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
-}
 
 void matcher::universal_matcher::ir_allocate_globally_funblock(std::ostream &os, size_t n_args,
                                                                std::string_view text_ptr) {

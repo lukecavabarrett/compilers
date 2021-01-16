@@ -4,7 +4,7 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   //prepare all the standard data
   ast::global_map globals;
   target << "section .data\n";
-  target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value\n";
+  target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value, malloc\n";
 
   {
     target << "extern int_sum_fun \n";
@@ -114,7 +114,7 @@ void build_ir(std::string_view s, std::ostream &target) {
         tk.expect_pop(parse::EOC);
         for (auto &td : tp->defs)
           if (auto *sv = dynamic_cast<ast::type::definition::single_variant *>(td.get())) {
-            uint64_t tag_id = 1;
+            uint64_t tag_id = 5;
             for (auto &v : sv->variants) {
               v.tag = tag_id;
               tag_id += 2;
