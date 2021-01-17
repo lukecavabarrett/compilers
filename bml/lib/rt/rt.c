@@ -187,7 +187,7 @@ void destroy_nontrivial(uintptr_t x_v) {
 }
 
 uintptr_t match_failed_fun(uintptr_t unit) {
-  fputs("match failed: terminating.\n",stderr);
+  fputs("match failed\n",stderr);
   exit(1);
   return uint_to_v(0);
 }

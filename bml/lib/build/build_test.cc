@@ -193,7 +193,7 @@ TEST(Build, OptionMapNone) {
 TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print Another;;\n", "", ir_build::NONE, 1, "match failed\n");
+             "let _ = option_map int_print Another;;\n", "", ir_build::COMPILE_AND_RUN, 1, "match failed\n");
 }
 
 TEST(Build, ApplyTwice) {
