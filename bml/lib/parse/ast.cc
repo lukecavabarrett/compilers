@@ -138,7 +138,8 @@ ir::lang::var constructor::ir_compile(ir_sections_t s) {
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
     return block;
   } else {
-    return s.main.declare_constant(make_tag_size_d(definition_point->tag, 1, 0));
+    assert(definition_point->tag&1);
+    return s.main.declare_constant(definition_point->tag);
   }
 }
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)

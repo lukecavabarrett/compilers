@@ -187,7 +187,7 @@ TEST(Build, OptionMapSome) {
 TEST(Build, OptionMapNone) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print None;;\n", "");
+             "let _ = option_map int_print None;;\n", "",ir_build::COMPILE_AND_RUN);
 }
 
 TEST(Build, OptionMapError) {
