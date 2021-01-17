@@ -98,6 +98,10 @@ struct var {
   static std::vector<destroy_class_t> destroy_classes;
   destroy_class_t &destroy_class() { return destroy_classes.at(id); };
   const destroy_class_t &destroy_class() const { return destroy_classes.at(id); };
+  var& mark(destroy_class_t d) {
+    destroy_class() = d;
+    return *this;
+  }
 };
 std::ostream &operator<<(std::ostream &os, const var &v);
 namespace instruction {
@@ -237,6 +241,7 @@ struct cmp_vars {
 struct scope {
   std::vector<instruction::t> body;
   std::vector<std::vector<var> > destroys; // destroys[i] must be destroyed before instruction i
+  std::vector<std::pair<size_t,std::stringstream>> comments;
   void push_back(instruction::t &&i);
   scope &operator<<(instruction::t &&i);
   var ret;
@@ -247,6 +252,7 @@ struct scope {
   ir::lang::var declare_constant(uint64_t);
   ir::lang::var declare_global(std::string_view);
   ir::lang::var declare_assign(rhs_expr::t&&);
+  std::ostream& comment() { return comments.emplace_back(body.size(),std::stringstream{}).second; }
 };
 
 struct function : public scope {
@@ -257,10 +263,11 @@ struct function : public scope {
   void parse(parse::tokenizer &);
   void print(std::ostream &os, size_t offset = 0) const;
   void compile(std::ostream &os);
+  void pre_compile();
 };
 
 struct ternary {
-  enum jmp_instr { jmp, jne, jle, jz }; //TODO: add others
+  enum jmp_instr { jmp, jne, jle, jz, jnz }; //TODO: add others
   jmp_instr cond;
   scope nojmp_branch, jmp_branch;
   static jmp_instr parse_jinstr(std::string_view s) {
@@ -268,6 +275,7 @@ struct ternary {
     if (s == "jne")return jne;
     if (s == "jle")return jle;
     if (s == "jz")return jz;
+    if (s == "jnz")return jnz;
     THROW_INTERNAL_ERROR
   }
   std::string_view ops_to_string() {
@@ -278,6 +286,7 @@ struct ternary {
 
       case jle:return "jle";
       case jz:return "jz";
+      case jnz:return "jnz";
       default:THROW_UNIMPLEMENTED
     }
   }

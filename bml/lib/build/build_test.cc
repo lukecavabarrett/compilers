@@ -180,7 +180,7 @@ TEST(Build, SomeAddition) {
 TEST(Build, OptionMapSome) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print (Some 42);;\n", "42 ");
+             "let _ = option_map int_print (Some 42);;\n", "42 ", ir_build::COMPILE_AND_RUN);
 
 }
 

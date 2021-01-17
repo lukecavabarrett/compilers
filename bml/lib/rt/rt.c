@@ -7,6 +7,7 @@
 #define Tag_Tuple  0
 #define Tag_Fun 1
 #define Tag_Arg 2
+#define Make_Tag_Size_D(tag,size,d) ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
 
 uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
   return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
@@ -183,6 +184,12 @@ void destroy_nontrivial(uintptr_t x_v) {
     }
     free(x);
   }
+}
+
+uintptr_t match_failed_fun(uintptr_t unit) {
+  fputs("match failed: terminating.\n",stderr);
+  exit(1);
+  return uint_to_v(0);
 }
 
 uintptr_t int_sum_fun(uintptr_t argv) {

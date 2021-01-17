@@ -775,7 +775,7 @@ yp_v : trivial = int_to_v(yp);
 return yp_v;
 }
 )";
-  test_ir_build(source, {42, 66}, {.call_style = as_args, .expected_return=42+66+4});
+  test_ir_build(source, {42, 66}, {.call_style = as_args, .expected_return=42 + 66 + 4});
   //Note: this is using the fact that 3 additions are performed, so the result should be decremented by 1 each time
   // as 63bit addition is x+y-1
 }
@@ -1011,6 +1011,36 @@ ignore (x) {
       .expected_stdout = "",
       .expected_stderr = MatchesRegex("decrement block 0x................ to 0\n"
                                       "destroying block of size 4 at 0x................\n"),
+  });
+
+}
+
+TEST(Ir, UniversalMatcher) {
+  static constexpr std::string_view source = R"(
+test_function (x : trivial) {
+  cond = 3;
+  test_true = 2;
+  test(cond,test_true);
+  value = if (jz) then {
+    ans_p : trivial = add(x,x);
+    one : trivial = 1;
+    ans : trivial = sub(ans_p,one);
+    return ans;
+  } else {
+    throw_fun = __throw_unmatched__;
+    unit = 3;
+    y : trivial = apply_fn(throw_fun,unit);
+    return y;
+  };
+  return value;
+}
+)";
+  test_ir_build(source, {42}, {
+      .allocate_input_dynamically = true,
+      .call_style=as_args,
+      .expected_return = 84,
+      .debug_log=true,
+      .expected_stdout = "",
   });
 
 }

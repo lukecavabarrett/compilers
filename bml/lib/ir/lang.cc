@@ -196,7 +196,19 @@ void scope::print(std::ostream &os, size_t offset) const {
     }
     if (newline)os << "\n";
   };
+  assert(std::is_sorted(comments.begin(),
+                        comments.end(),
+                        [](const auto &a, const auto &b) { return a.first < b.first; }));
+  auto print_comments = [&](size_t i, size_t offset) {
+    auto it = std::partition_point(comments.begin(), comments.end(), [i](const auto &c) { return c.first < i; });
+    while (it != comments.end() && it->first == i) {
+      while (offset--)os << "  ";
+      os << "//" << it->second.str() << "\n";
+      ++it;
+    }
+  };
   print_destroy(0, offset, true);
+  print_comments(0, offset);
   size_t idx = 0;
   for (auto &it : body) {
     for (int i = offset; i--;)os << "  ";
@@ -244,6 +256,7 @@ void scope::print(std::ostream &os, size_t offset) const {
     ++idx;
     print_destroy(idx, 1);
     os << "\n";
+    print_comments(idx, offset);
   }
   for (int i = offset; i--;)os << "  ";
   os << "return ";
@@ -502,11 +515,10 @@ ir::lang::var scope::declare_global(std::string_view value) {
   return v;
 }
 
-ir::lang::var scope::declare_assign(rhs_expr::t&& rhs) {
+ir::lang::var scope::declare_assign(rhs_expr::t &&rhs) {
   ir::lang::var v;
   scope::push_back(instruction::assign{.dst = v, .src = std::move(rhs)});
   return v;
 }
-
 
 }

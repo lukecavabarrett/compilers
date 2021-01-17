@@ -333,6 +333,7 @@ struct t : public locable, texp_of_t {
   virtual void global_unroll(std::ostream &os) = 0; // match value in rax, unrolling on globals
   virtual void ir_global_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on globals
   virtual void ir_locally_unroll(ir::scope& s, ir::lang::var v) = 0; // match value in v, unrolling on locals
+  virtual ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) = 0;
   virtual size_t locally_unroll(std::ostream &os, size_t stack_pos) = 0;  // match value in rax, unrolling on stack; returns new stack_pos
   virtual size_t test_locally_unroll(std::ostream &os,
                                      size_t stack_pos,
@@ -374,6 +375,7 @@ struct universal_matcher : public t {
   void global_unroll(std::ostream &os) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var ) final;
   void ir_locally_unroll(ir::scope& s, ir::lang::var v) final;
+  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final {return s.declare_constant(3);}
   size_t unrolled_size() const final { return 1; }
   size_t stack_unrolling_dimension() const final { return 1; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
@@ -402,7 +404,7 @@ struct anonymous_universal_matcher : public t {
   size_t stack_unrolling_dimension() const final { return 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { return stack_pos; }
-
+  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final {return s.declare_constant(3);}
  TO_TEXP_EMPTY()
 };
 
@@ -427,6 +429,7 @@ struct constructor_matcher : public t {
   size_t stack_unrolling_dimension() const final { return arg ? arg->stack_unrolling_dimension() : 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
+  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final;
  TO_TEXP(cons, arg);
 };
 
@@ -448,7 +451,7 @@ struct literal_matcher : public t {
   size_t stack_unrolling_dimension() const final { return 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
-
+  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final  {THROW_UNIMPLEMENTED;}
  TO_TEXP(value);
 };
 
@@ -470,7 +473,7 @@ struct tuple_matcher : public t {
   void ir_locally_unroll(ir::scope& s, ir::lang::var v) final;
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
   size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
-
+  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final {THROW_UNIMPLEMENTED;}
  TO_TEXP(args);
 };
 

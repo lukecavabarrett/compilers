@@ -1,5 +1,6 @@
 #include <build.h>
 
+
 ast::global_map make_ir_data_section(std::ostream &target) {
   //prepare all the standard data
   ast::global_map globals;
@@ -47,6 +48,15 @@ ast::global_map make_ir_data_section(std::ostream &target) {
     int_eq.ir_allocate_globally_funblock(target, 2, "int_eq_fun");
     int_eq.use_as_immediate = int_eq.top_level = true;
     globals.try_emplace("=", &int_eq);
+  }
+
+  {
+    target << "extern match_failed_fun \n";
+    static ast::matcher::universal_matcher mf("__throw__unmatched__");
+    mf.ir_globally_register(globals);
+    mf.ir_allocate_globally_funblock(target, 1, "match_failed_fun");
+    mf.use_as_immediate = mf.top_level = true;
+    target << "__throw__unmatched__ equ " << mf.ir_asm_name() << "\n";
   }
 
   /*static ast::matcher::universal_matcher int_sub("int_sub");
@@ -135,8 +145,9 @@ void build_ir(std::string_view s, std::ostream &target) {
   main.ret = main.declare_constant(0);
   functions.push_back(std::move(main));
   for (auto &f : functions) {
+    f.pre_compile();
+    f.print(std::cout);
     f.compile(target);
-    //f.print(std::cout);
   }
 }
 void build_direct(std::string_view s, std::ostream &target) {

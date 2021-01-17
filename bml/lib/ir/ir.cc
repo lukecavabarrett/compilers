@@ -409,6 +409,12 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   return c;
 }
 
+void function::pre_compile() {
+  //TODO: destroyability analysis
+  setup_destruction();
+  scope::tight_inference();
+}
+
 void function::compile(std::ostream &os) {
   //TODO: destroyability analysis
   setup_destruction();
