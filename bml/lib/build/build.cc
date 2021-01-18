@@ -145,8 +145,8 @@ void build_ir(std::string_view s, std::ostream &target) {
   main.ret = main.declare_constant(0);
   functions.push_back(std::move(main));
   for (auto &f : functions) {
-    f.pre_compile();
-    f.print(std::cout);
+    //f.pre_compile();
+    //f.print(std::cout);
     f.compile(target);
   }
 }

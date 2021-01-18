@@ -210,7 +210,7 @@ TEST(Build, ApplyTwiceOnSteroids) {
 
 TEST(Build, FnCompose) {
   test_build("let fn_compose g f x = g (f x);;\n"
-             "let () = int_print (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26 ");
+             "let () = int_print (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26 ",ir_build::RUN);
 }
 
 TEST(Build, OptionMap) {
@@ -218,7 +218,7 @@ TEST(Build, OptionMap) {
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;"
              "let Some ans = maybe_add (Some 10) 1;;\n"
-             "let () = int_print ans;;\n", "11 ");
+             "let () = int_print ans;;\n", "11 ",ir_build::RUN);
 }
 
 TEST(Build, MaybeAdditionWrong) {
@@ -227,7 +227,7 @@ TEST(Build, MaybeAdditionWrong) {
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_map (maybe_add y) x;;\n"
              "let Some (Some ans) = maybe_sum (Some 10) (Some 100);;\n"
-             "let () = int_print ans;;\n", "110 ");
+             "let () = int_print ans;;\n", "110 ",ir_build::RUN);
 }
 
 TEST(Build, MaybeAdditionCorrect) {
