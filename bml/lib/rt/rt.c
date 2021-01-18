@@ -7,7 +7,7 @@
 #define Tag_Tuple  0
 #define Tag_Fun 1
 #define Tag_Arg 2
-#define Make_Tag_Size_D(tag,size,d) ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
+#define Make_Tag_Size_D(tag, size, d) ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
 
 uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
   return (((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1);
@@ -42,6 +42,93 @@ uint64_t v_to_int(uintptr_t x) {
 }
 
 #define debug_stream stderr
+#define MAX_DEPTH 5
+#define VISITED_MAX_SIZE 10000
+uintptr_t visited[VISITED_MAX_SIZE];
+void __json_debug(uintptr_t x, int depth) {
+  if (x & 1) {
+    //immediate
+    x >>= 1;
+    fprintf(debug_stream, "%lu", x);
+  } else {
+    //block
+    const uintptr_t *v = (const uintptr_t *) x;
+    for(size_t i = 0; i < depth; ++i)if(visited[i]==x){
+        fprintf(debug_stream,"\"<cycle> @ %p\"",v);
+        return;
+    }
+
+    if(depth>MAX_DEPTH){
+      fprintf(debug_stream,"\"OBJECT_EXCEEDED_MAX_DEPTH @ %p\"",v);
+      return;
+    }
+    visited[depth]=x;
+
+    {
+      fprintf(debug_stream, "{ \"address\" : \"%p\" , \"refcount\" : ", v);
+      uintptr_t refcount = v[0];
+      if (refcount & 1) {
+        refcount >>= 1;
+        fprintf(debug_stream, "%lu", refcount);
+      } else {
+        fputs(refcount ? "\"abstract\"" : "\"static\"", debug_stream);
+      }
+    }
+    uint32_t tag = get_tag(v[1]);
+    uint32_t size = get_size(v[1]);
+    uint8_t d = get_d(v[1]);
+    fprintf(debug_stream, ", \"tag\" : ");
+    switch (tag) {
+      case Tag_Fun: {
+        fputs("\"Fun\"", debug_stream);
+        assert(size == 2);
+        fprintf(debug_stream, ", \"text_ptr\" : \"%p\", \"n_args\" : %lu ", (const uintptr_t *) v[2], v_to_uint(v[3]));
+        v += 4;
+        size -= 2;
+      };
+        break;
+      case Tag_Arg: {
+        fputs("\"Arg\"", debug_stream);
+        assert(size == 3);
+        fprintf(debug_stream, ", \"n_args_left\" : %lu , \"x\" : ", v_to_uint(v[3]));
+        __json_debug(v[4], depth + 1);
+        fputs(", \"f\" : ", debug_stream);
+        __json_debug(v[2], depth + 1);
+        v += 5;
+        size -= 3;
+      };
+        break;
+      default: {
+        switch (tag) {
+          case Tag_Tuple:fputs("\"Tuple\"", debug_stream);
+            break;
+          default:fprintf(debug_stream, "%u", tag);
+            break;
+        }
+        fprintf(debug_stream, ", \"size\" : %u, \"content\" : [", size);
+        int comma = 0;
+        v += 2;
+        while (size--) {
+          if (comma)fputs(", ", debug_stream);
+          comma = 1;
+          __json_debug(*v, depth + 1);
+          ++v;
+        }
+        fputs("]", debug_stream);
+      }
+    }
+    assert(size == 0);
+    if (d) {
+      fputs(", \"destructor\" :", debug_stream);
+      __json_debug(*v, depth + 1);
+    }
+    fputs("}", debug_stream);
+    return;
+  }
+}
+void json_debug(uintptr_t x) {
+  return __json_debug(x,0);
+}
 void print_debug(uintptr_t x) {
   if (x & 1) {
     //immediate
@@ -100,6 +187,11 @@ uintptr_t apply_fn(uintptr_t f, uintptr_t x) {
   while (get_tag(fb[1]) != Tag_Fun) {
     fb = (uintptr_t *) fb[2];
   }
+#ifdef DEBUG_JSON
+  fputs("calling = ",debug_stream);
+  json_debug((uintptr_t) n);
+  fputs("\n",debug_stream);
+#endif
   return ((text_ptr) fb[2])((uintptr_t) n);
 
 }
@@ -136,6 +228,9 @@ void decrement_nontrivial(uintptr_t x) {
   uintptr_t *xb = (uintptr_t *) x;
   assert(*xb);
   (*xb) -= 2;
+#ifdef DEBUG_JSON
+  fprintf(debug_stream,"decrementing [%p] to %lu\n",xb,(*xb)>>1);
+#endif
 #ifdef DEBUG_LOG
   fprintf(stderr,"decrement block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb));
 #endif
@@ -148,6 +243,9 @@ uintptr_t increment_value(uintptr_t x) {
   uintptr_t *xb = (uintptr_t *) x;
   if (*xb == 0)return x;
   (*xb) += 2;
+#ifdef DEBUG_JSON
+  fprintf(debug_stream,"incrementing [%p] to %lu\n",xb,(*xb)>>1);
+#endif
 #ifdef DEBUG_LOG
   fprintf(stderr,"increment block 0x%016" PRIxPTR " to %lu\n", x, v_to_uint(*xb));
 #endif
@@ -156,6 +254,12 @@ uintptr_t increment_value(uintptr_t x) {
 
 void destroy_nontrivial(uintptr_t x_v) {
   uintptr_t *x = (uintptr_t *) x_v;
+#ifdef DEBUG_JSON
+  fprintf(debug_stream,"destroying [%p] = ",x);
+  json_debug(x_v);
+  fprintf(debug_stream,"\n");
+#endif
+
   //get size, tag, d.
   //assert(x[0] == 1);
   uint32_t tag = get_tag(x[1]);
@@ -187,7 +291,7 @@ void destroy_nontrivial(uintptr_t x_v) {
 }
 
 uintptr_t match_failed_fun(uintptr_t unit) {
-  fputs("match failed\n",stderr);
+  fputs("match failed\n", stderr);
   exit(1);
   return uint_to_v(0);
 }

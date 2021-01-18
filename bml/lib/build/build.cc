@@ -5,7 +5,7 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   //prepare all the standard data
   ast::global_map globals;
   target << "section .data\n";
-  target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value, malloc\n";
+  target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value, malloc, json_debug\n";
 
   {
     target << "extern int_sum_fun \n";

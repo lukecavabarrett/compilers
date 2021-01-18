@@ -262,6 +262,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                     moved.emplace_back(x, rsi);
                     destroys.erase(std::find(destroys.begin(), destroys.end(), x));
                   } else copied.emplace_back(x, rsi);
+                  for(const auto&[v,r] : copied)c.increment_refcount(v,os);
                   c.call_clean(moved, os);
                   c.call_copy(copied, os);
                   c.align_stack_16_precall(os);
@@ -1211,7 +1212,7 @@ void context_t::call_copy(const std::vector<std::pair<var, register_t>> &args, s
   for (const auto&[v, r] : args) {
     assert(is_reg_free(r));
     os << "mov " << reg::to_string(r) << ", " << at(v) << "\n";
-    //TODO: increase refcount if necessary
+    // WARNING: refcount it's not being increased here, but outside (DO increase refcount if necessary)
   }
 }
 

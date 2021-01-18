@@ -431,7 +431,7 @@ std::string fun::text_name_gen(std::string_view name_hint) {
 }
 
 std::string fun::ir_compile_global(ir_sections_t s) {
-  assert(this->captures.empty());
+  const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
   static size_t fun_id_gen = 1;
   const size_t fun_id = fun_id_gen++;
   std::string name = std::string("__fun_").append(std::to_string(fun_id)).append("__");
@@ -447,6 +447,14 @@ std::string fun::ir_compile_global(ir_sections_t s) {
     if (should_skip)arg_block = f.declare_assign(arg_block[2]);
     should_skip = true;
     (*arg_it)->ir_locally_unroll(f, f.declare_assign(arg_block[4]));
+  }
+  if(has_captures){
+    arg_block = f.declare_assign(arg_block[2]);
+    size_t id = 4;
+    for(auto& c : captures){
+      f.push_back(instruction::assign{.dst= c->ir_var,.src=arg_block[id]});
+      ++id;
+    }
   }
   //compute value
   f.ret = body->ir_compile(s.with_main(f));
@@ -491,7 +499,38 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   s.text << this_fun.str() << std::endl;
   return text_ptr;
 }
-ir::lang::var fun::ir_compile(ir_sections_t) {
+ir::lang::var fun::ir_compile(ir_sections_t s) {
+  std::string text_ptr = ir_compile_global(s);
+  if (captures.empty()) {
+    static size_t id = 1;
+    std::string name = "__pure_fun_block_";
+    name.append(std::to_string(id++)).append("__");
+    s.data << name << " dq 0,"<< make_tag_size_d(Tag_Fun,2,0)<<","<<text_ptr<<","<< uint_to_v( args.size()) <<"\n";
+    return s.main.declare_global(name);
+
+  } else {
+    THROW_UNIMPLEMENTED
+    /*
+    s.main << "mov rdi, " << (4 + captures.size()) * 8 << "\n";
+    s.main << "call malloc \n";
+    s.main << "push r13;\n";
+    ++stack_pos;
+    s.main << "mov r13, rax\n";
+    s.main << "mov qword [r13], 3; FN_BASE_CLOSURE \n";
+    s.main << "mov qword [r13+8], " << args.size() << "; n_args \n";
+    s.main << "mov qword [r13+16], " << name << "; text_ptr \n";
+    s.main << "mov qword [r13+24], " << captures.size() << "; captures_size \n";
+    for (size_t i = 0; i < captures.size(); ++i) {
+      identifier mock_id(captures[i]->name);
+      mock_id.definition_point = captures[i];
+      mock_id.compile(s, stack_pos);
+      s.main << "mov qword [r13+" << (i + 4) * 8 << "], rax ; captured " << captures[i]->name << "\n";
+    }
+    s.main << "mov rax, r13\n";
+    s.main << "pop r13;\n";
+    --stack_pos;
+     */
+  }
   THROW_UNIMPLEMENTED
 }
 

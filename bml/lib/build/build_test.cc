@@ -26,7 +26,7 @@ void test_build_direct(std::string_view source,
   EXPECT_EQ(exit_code, expected_exit_code);
 #undef target
 }
-enum class ir_build { NONE, COMPILE, COMPILE_AND_RUN };
+enum class ir_build { NONE, COMPILE, LINK, RUN };
 
 void test_build_ir(std::string_view source,
                    std::string_view expected_stdout,
@@ -46,6 +46,7 @@ void test_build_ir(std::string_view source,
             0);
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
+  if(mode == ir_build::LINK)return;
   int exit_code = WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout"));
   EXPECT_EQ(load_file(target ".stdout"), expected_stdout);
   EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
@@ -63,7 +64,7 @@ void test_build(std::string_view source,
 }
 
 TEST(Build, EmptyProgram) {
-  test_build("", "", ir_build::COMPILE_AND_RUN);
+  test_build("", "", ir_build::RUN);
 }
 
 TEST(Build, SomeAllocations) {
@@ -72,44 +73,44 @@ TEST(Build, SomeAllocations) {
              "and some_int = Some 3\n"
              "and none = None\n"
              "and three = 3\n"
-             ";;", "", ir_build::COMPILE_AND_RUN);
+             ";;", "", ir_build::RUN);
 }
 
 TEST(Build, Expression0) {
   constexpr std::string_view source = "let answer = 42;;"
                                       "let () = int_print 42;;\n"
                                       "let () = int_print answer;;\n";
-  test_build(source, "42 42 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "42 42 ", ir_build::RUN);
 
 }
 
 TEST(Build, Expression0_1) {
   constexpr std::string_view source = "let () = int_print (int_sum 10 20);;\n";
-  test_build(source, "30 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "30 ", ir_build::RUN);
 }
 
 TEST(Build, Expression0_2) {
   constexpr std::string_view source = "let cond = false;;\n"
                                       "let () = int_print (if cond then 42 else 1729);;\n";
-  test_build(source, "1729 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "1729 ", ir_build::RUN);
 }
 
 TEST(Build, Expression0_3) {
   constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
                                       "let () = int_print x; int_print y;;\n";
-  test_build(source, "92 54 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "92 54 ", ir_build::RUN);
 }
 
 TEST(Build, Expression0_4) {
   constexpr std::string_view source = "let () = int_print (if (int_eq 107 106) then 10 else 12);;\n";
-  test_build(source, "12 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "12 ", ir_build::RUN);
 }
 
 TEST(Build, PartialApplication) {
   constexpr std::string_view source = "let s100 = int_sum 100;;\n"
                                       "let () = int_print (s100 54);;\n";
-  test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "154 ", ir_build::RUN);
 }
 
 TEST(Build, Expression0_5) {
@@ -119,7 +120,7 @@ TEST(Build, Expression0_5) {
                                       "let () = int_print (sum_100 54);;"
   //"let () = int_print (int_sum 100 (if (int_eq 107 106) then x else y));;\n"
   ;
-  test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "154 ", ir_build::RUN);
 }
 
 TEST(Build, Expression1) {
@@ -131,7 +132,7 @@ TEST(Build, Expression1) {
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = int_sum 100 ;;\n"
                                       "let () = int_print (sum_100 (if (int_eq 107 106) then x else y)) ;;\n";
-  test_build(source, "154 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "154 ", ir_build::RUN);
 
 }
 
@@ -139,27 +140,27 @@ TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
                                       "let y = g int_sum 10;;\n"
                                       "let () = int_print y;;";
-  test_build(source, "11 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "11 ", ir_build::RUN);
 }
 
 TEST(Build, Expression3) {
   constexpr std::string_view source = "let twice x = x + x ;;\n"
                                       "let ans = 45 + 25 - 93 + twice (97 + 21);;\n"
                                       "let () = int_print ans;;";
-  test_build(source, "213 ", ir_build::COMPILE_AND_RUN);
+  test_build(source, "213 ", ir_build::RUN);
 }
 
 TEST(Build, Expression4) {
   test_build("let f x () = int_print x ;;\n"
              "let g = f 42;;\n"
-             "let () = g ();;", "42 ", ir_build::COMPILE_AND_RUN);
+             "let () = g ();;", "42 ", ir_build::RUN);
 }
 
 TEST(Build, BoollLiterals) {
   test_build(R"(
     let () = int_println (if true then 42 else 55);;
     let () = int_println (if false then 42 else 55);;
-  )", "42\n55\n", ir_build::COMPILE_AND_RUN);
+  )", "42\n55\n", ir_build::RUN);
 }
 
 TEST(Build, Constructor) {
@@ -167,44 +168,44 @@ TEST(Build, Constructor) {
              "let some13 = Some 13 and none = None;;\n"
              "let Some 13 = some13;;\n"
              "let Some x = some13;;\n"
-             "let () = int_print x;;\n", "13 ", ir_build::COMPILE_AND_RUN);
+             "let () = int_print x;;\n", "13 ", ir_build::RUN);
 }
 
 TEST(Build, SomeAddition) {
   test_build("type int_option = | Some of int ;;\n"
              "let some_add (Some x) (Some y) (Some z) = Some (x+y+z);;\n"
              "let Some ans = some_add (Some 10) (Some 100) (Some 1);;\n"
-             "let () = int_print ans;;\n", "111 ", ir_build::COMPILE_AND_RUN);
+             "let () = int_print ans;;\n", "111 ", ir_build::RUN);
 }
 
 TEST(Build, OptionMapSome) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print (Some 42);;\n", "42 ", ir_build::COMPILE_AND_RUN);
+             "let _ = option_map int_print (Some 42);;\n", "42 ", ir_build::RUN);
 
 }
 
 TEST(Build, OptionMapNone) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print None;;\n", "",ir_build::COMPILE_AND_RUN);
+             "let _ = option_map int_print None;;\n", "",ir_build::RUN);
 }
 
 TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print Another;;\n", "", ir_build::COMPILE_AND_RUN, 1, "match failed\n");
+             "let _ = option_map int_print Another;;\n", "", ir_build::RUN, 1, "match failed\n");
 }
 
 TEST(Build, ApplyTwice) {
   test_build("let apply_twice f x = f (f x);;\n"
              "let plus_two = apply_twice (fun x -> x + 1);;\n"
-             "let () = int_print (plus_two 40);;\n", "42 ");
+             "let () = int_print (plus_two 40);;\n", "42 ",ir_build::RUN);
 }
 
 TEST(Build, ApplyTwiceOnSteroids) {
   test_build("let apply_twice f x = f (f x);;\n"
-             "let () = int_print (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4 ");
+             "let () = int_print (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4 ",ir_build::RUN);
 }
 
 TEST(Build, FnCompose) {
