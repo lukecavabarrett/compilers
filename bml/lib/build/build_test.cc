@@ -243,6 +243,19 @@ TEST(Build, MaybeAdditionCorrect) {
              "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ", ir_build::RUN);
 }
 
+TEST(Build, MaybeAdditionWithCapture) {
+  test_build("type int_option = | None | Some of int ;;\n"
+             "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
+             "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
+             "let maybe_print x = match x with | None -> int_print (0-1) | Some x -> int_print x;;\n"
+             "let maybe_sum maybe_a maybe_b = option_bind (fun a -> option_map (fun b -> (a+b) ) maybe_b) maybe_a;;\n"
+             "let test_sum a b = maybe_print (maybe_sum a b);;\n"
+             "let _ = test_sum (Some 10) (Some 100);;\n"
+             "let _ = test_sum (None) (Some 100);;\n"
+             "let _ = test_sum (Some 10) (None);;\n"
+             "let _ = test_sum (None) (None);;\n", "110 -1 -1 -1 ", ir_build::RUN);
+}
+
 TEST(Build, NonGlobalFunction) {
   test_build("let play_with x = int_print x; (let y = x + x in y);;\n"
              "let ans = play_with 10;;"
