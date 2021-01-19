@@ -265,7 +265,7 @@ TEST(Build, LetExpression) {
 TEST(Build, Malloc) {
   test_build("type option = | Some of 'a;;\n"
              "let heap_big_tuple = Some (1,2,3,4,5,6,7);;\n"
-             "let stck_big_tuple = 1,2,3,4,5,6,7;;", "");
+             "let stck_big_tuple = 1,2,3,4,5,6,7;;", "",ir_build::RUN);
 }
 
 TEST(Build, CaptureX) {

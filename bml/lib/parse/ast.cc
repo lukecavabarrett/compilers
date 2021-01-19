@@ -209,8 +209,15 @@ void build_tuple::compile(direct_sections_t s, size_t stack_pos) {
 void build_tuple::bind(const constr_map &cm) {
   for (auto &p : args)p->bind(cm);
 }
-ir::lang::var build_tuple::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  var block = s.main.declare_assign(rhs_expr::malloc{.size=2+args.size()});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block,.block_offset=0,.src=s.main.declare_constant(3)});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block,.block_offset=1,.src=s.main.declare_constant(make_tag_size_d(Tag_Tuple,args.size(),0))});
+  for(size_t i = 0; i < args.size(); ++i){
+    s.main.push_back(instruction::write_uninitialized_mem{.base=block,.block_offset=2+i,.src=args.at(i)->ir_compile(s)});
+  }
+  return block;
 }
 fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
   loc = unite_sv(f, x);
