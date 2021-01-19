@@ -46,7 +46,7 @@ void test_build_ir(std::string_view source,
             0);
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
   ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
-  if(mode == ir_build::LINK)return;
+  if (mode == ir_build::LINK)return;
   int exit_code = WEXITSTATUS(system("timeout 1 " target " 2> " target ".stderr 1> " target ".stdout"));
   EXPECT_EQ(load_file(target ".stdout"), expected_stdout);
   EXPECT_EQ(load_file(target ".stderr"), expected_stderr);
@@ -188,7 +188,7 @@ TEST(Build, OptionMapSome) {
 TEST(Build, OptionMapNone) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print None;;\n", "",ir_build::RUN);
+             "let _ = option_map int_print None;;\n", "", ir_build::RUN);
 }
 
 TEST(Build, OptionMapError) {
@@ -200,17 +200,17 @@ TEST(Build, OptionMapError) {
 TEST(Build, ApplyTwice) {
   test_build("let apply_twice f x = f (f x);;\n"
              "let plus_two = apply_twice (fun x -> x + 1);;\n"
-             "let () = int_print (plus_two 40);;\n", "42 ",ir_build::RUN);
+             "let () = int_print (plus_two 40);;\n", "42 ", ir_build::RUN);
 }
 
 TEST(Build, ApplyTwiceOnSteroids) {
   test_build("let apply_twice f x = f (f x);;\n"
-             "let () = int_print (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4 ",ir_build::RUN);
+             "let () = int_print (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4 ", ir_build::RUN);
 }
 
 TEST(Build, FnCompose) {
   test_build("let fn_compose g f x = g (f x);;\n"
-             "let () = int_print (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26 ",ir_build::RUN);
+             "let () = int_print (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26 ", ir_build::RUN);
 }
 
 TEST(Build, OptionMap) {
@@ -218,16 +218,16 @@ TEST(Build, OptionMap) {
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;"
              "let Some ans = maybe_add (Some 10) 1;;\n"
-             "let () = int_print ans;;\n", "11 ",ir_build::RUN);
+             "let () = int_print ans;;\n", "11 ", ir_build::RUN);
 }
 
-TEST(Build, MaybeAdditionWrong) {
+TEST(Build, MaybeAdditionNested) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_map (maybe_add y) x;;\n"
              "let Some (Some ans) = maybe_sum (Some 10) (Some 100);;\n"
-             "let () = int_print ans;;\n", "110 ",ir_build::RUN);
+             "let () = int_print ans;;\n", "110 ", ir_build::RUN);
 }
 
 TEST(Build, MaybeAdditionCorrect) {
@@ -240,7 +240,7 @@ TEST(Build, MaybeAdditionCorrect) {
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
-             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ");
+             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ", ir_build::RUN);
 }
 
 TEST(Build, NonGlobalFunction) {

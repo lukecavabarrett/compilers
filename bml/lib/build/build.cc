@@ -1,6 +1,5 @@
 #include <build.h>
 
-
 ast::global_map make_ir_data_section(std::ostream &target) {
   //prepare all the standard data
   ast::global_map globals;
@@ -129,6 +128,7 @@ void build_ir(std::string_view s, std::ostream &target) {
               v.tag = tag_id;
               tag_id += 2;
               constr_map.try_emplace(v.name, &v);
+              main.comment() << " Tag \"" << v.name << "\" = " << v.tag;
               //data_section << "; " << v.name << " equ " << v.tag << "\n";
             }
           }

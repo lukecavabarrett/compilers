@@ -199,10 +199,10 @@ void scope::print(std::ostream &os, size_t offset) const {
   assert(std::is_sorted(comments.begin(),
                         comments.end(),
                         [](const auto &a, const auto &b) { return a.first < b.first; }));
-  auto print_comments = [&](size_t i, size_t offset) {
+  auto print_comments = [&](const size_t i,const size_t offset) {
     auto it = std::partition_point(comments.begin(), comments.end(), [i](const auto &c) { return c.first < i; });
     while (it != comments.end() && it->first == i) {
-      while (offset--)os << "  ";
+      for (size_t o = offset; o--;)os << "  ";
       os << "//" << it->second.str() << "\n";
       ++it;
     }
