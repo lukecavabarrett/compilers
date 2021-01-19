@@ -530,6 +530,7 @@ struct t : public locable, public texp_of_t {
   capture_set capture_group(capture_set &&cs = {});
 
   void ir_compile_global(ir_sections_t s);
+  void ir_compile_locally(ir_sections_t s);
   void compile_global(direct_sections_t s);
   size_t compile_locally(direct_sections_t s, size_t stack_pos);
 

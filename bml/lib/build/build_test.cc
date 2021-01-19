@@ -256,10 +256,10 @@ TEST(Build, MaybeAdditionWithCapture) {
              "let _ = test_sum (None) (None);;\n", "110 -1 -1 -1 ", ir_build::RUN);
 }
 
-TEST(Build, NonGlobalFunction) {
+TEST(Build, LetExpression) {
   test_build("let play_with x = int_print x; (let y = x + x in y);;\n"
              "let ans = play_with 10;;"
-             "let () = int_print ans;;", "10 20 ");
+             "let () = int_print ans;;", "10 20 ",ir_build::RUN);
 }
 
 TEST(Build, Malloc) {

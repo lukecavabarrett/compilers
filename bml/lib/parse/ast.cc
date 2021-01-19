@@ -356,8 +356,9 @@ void let_in::compile(direct_sections_t s, size_t stack_pos) {
   if (new_stack_pos > stack_pos)
     s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
 }
-ir::lang::var let_in::ir_compile(ir_sections_t) {
-  THROW_UNIMPLEMENTED
+ir::lang::var let_in::ir_compile(ir_sections_t s) {
+  d->ir_compile_locally(s);
+  return e->ir_compile(s);
 }
 fun::fun(std::vector<matcher::ptr> &&args, ptr &&body) : args(std::move(args)), body(std::move(body)) {}
 free_vars_t fun::free_vars() {
@@ -558,7 +559,16 @@ capture_set t::capture_group(capture_set &&cs) {
   }
   return cs;
 }
+void t::ir_compile_locally(ir_sections_t s) {
+  if (rec) {
+    //check that all values are construcive w.r.t each other
+    // 1. check no name clashes
+    // 2. check that if one contains another
+    THROW_UNIMPLEMENTED
+  }
+  for (auto &def : defs) def.name->ir_locally_unroll(s.main, def.e->ir_compile(s));
 
+}
 void t::ir_compile_global(ir_sections_t s) {
 
   using namespace ir::lang;
