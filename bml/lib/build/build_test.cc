@@ -271,7 +271,7 @@ TEST(Build, Malloc) {
 TEST(Build, CaptureX) {
   test_build("let plus_x x = (fun y -> x + y);;\n"
              "let plus_3 = plus_x 3;;\n"
-             "let () = int_print (plus_3 4);;", "7 ");
+             "let () = int_print (plus_3 4);;", "7 ",ir_build::RUN);
 }
 
 TEST(Build, CaptureMaybeSum) {
@@ -283,18 +283,18 @@ TEST(Build, CaptureMaybeSum) {
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
-             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ");
+             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ",ir_build::RUN);
 }
 
 TEST(Build, LongSum) {
   test_build("let long_sum a b c d e f g h i j k = a+b+c+d+e+f+g+h+i+j+k;;\n"
              "let ans = long_sum 1 2 3 4 5 6 7 8 9 10 11;;\n"
-             "let () = int_print ans ;;", "66 ");
+             "let () = int_print ans ;;", "66 ",ir_build::RUN);
 }
 
 TEST(Build, DeepCapture) {
   test_build("let deep_capture x = fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> x ;;"
-             "      let () = int_print (deep_capture 1729 () () () () () () ());;", "1729 ");
+             "      let () = int_print (deep_capture 1729 () () () () () () ());;", "1729 ",ir_build::RUN);
 }
 
 TEST(Build, ManyMatchers) {
