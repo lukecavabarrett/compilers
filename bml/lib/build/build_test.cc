@@ -441,7 +441,7 @@ TEST(Build, IntComparison) {
 
     let () = int_println (int_le (0-54) (0-53));;
 
-)", "1 0 0\n0 0 1\n0 0 1\n1\n", ir_build::NONE);
+)", "1 0 0\n0 0 1\n0 0 1\n1\n", ir_build::RUN);
 }
 
 TEST(Build, Stream) {
@@ -487,7 +487,7 @@ TEST(Build, Stream) {
              "42 43 44 45 46 47 48 49 50 51 52\n"
              "85 87 89 91 93 95 97 99 101 103 105\n"
              "51 52 53 54 55 56 57 58 59 60 61\n"
-             "1 3 6 10 15 21 28 36 45 55 66\n", ir_build::NONE);
+             "1 3 6 10 15 21 28 36 45 55 66\n", ir_build::RUN);
 }
 
 

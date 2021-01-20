@@ -359,6 +359,17 @@ uintptr_t int_eq_fun(uintptr_t argv) {
   return uint_to_v(a == b ? 1 : 0);
 }
 
+uintptr_t int_le_fun(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  return uint_to_v(a < b ? 1 : 0);
+}
+
 uintptr_t println_int(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
@@ -382,11 +393,6 @@ uintptr_t println_int_err(uintptr_t argv) {
   fprintf(stderr, "%ld\n", b);
   decrement_boxed(argv);
   return uint_to_v(0);
-}
-
-uintptr_t println_int_err_skim(uintptr_t x) {
-  fprintf(stderr, "%lu\n", x);
-  return x;
 }
 
 #define Make_Tag_Size_d(tag, size, d)  ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))

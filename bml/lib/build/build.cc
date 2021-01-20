@@ -25,6 +25,15 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   }
 
   {
+    target << "extern int_le_fun \n";
+    static ast::matcher::universal_matcher int_le("int_le");
+    int_le.ir_globally_register(globals);
+    int_le.ir_allocate_globally_funblock(target, 2, "int_le_fun");
+    int_le.use_as_immediate = int_le.top_level = true;
+    globals.try_emplace("<=", &int_le); // - maps to the same
+  }
+
+  {
     target << "extern print_int \n";
     static ast::matcher::universal_matcher int_print("int_print");
     int_print.ir_globally_register(globals);
