@@ -335,7 +335,7 @@ TEST(Build, MatchersTheRevenge) {
              "| Triple ((x,y),z) -> x + y + z;;\n"
              "let g x = int_print (f x);;\n"
              "let () = g Null;;\n"
-             "let () = g (Triple ((1,10),100));;\n", "0 111 ");
+             "let () = g (Triple ((1,10),100));;\n", "0 111 ",ir_build::RUN);
 }
 
 TEST(Build, ListUtils1) {
