@@ -211,11 +211,13 @@ void build_tuple::bind(const constr_map &cm) {
 }
 ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
-  var block = s.main.declare_assign(rhs_expr::malloc{.size=2+args.size()});
-  s.main.push_back(instruction::write_uninitialized_mem{.base=block,.block_offset=0,.src=s.main.declare_constant(3)});
-  s.main.push_back(instruction::write_uninitialized_mem{.base=block,.block_offset=1,.src=s.main.declare_constant(make_tag_size_d(Tag_Tuple,args.size(),0))});
-  for(size_t i = 0; i < args.size(); ++i){
-    s.main.push_back(instruction::write_uninitialized_mem{.base=block,.block_offset=2+i,.src=args.at(i)->ir_compile(s)});
+  var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + args.size()});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=0, .src=s.main.declare_constant(3)});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=1, .src=s.main.declare_constant(
+      make_tag_size_d(Tag_Tuple, args.size(), 0))});
+  for (size_t i = 0; i < args.size(); ++i) {
+    s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=2 + i, .src=args.at(i)->ir_compile(
+        s)});
   }
   return block;
 }
@@ -325,6 +327,7 @@ ir::lang::var match_with::ir_compile(ir_sections_t s) {
 
   std::optional<var> returned;
   for (const auto &branch : branches) {
+    branch.pattern->print(current->comment() << "matching ");
     var cond = branch.pattern->ir_test_unroll(*current, to_match).mark(trivial);
     current->push_back(instruction::cmp_vars{.v1 = cond, .v2 = current->declare_constant(2), .op=instruction::cmp_vars::test});
     auto if_applies = std::make_unique<ternary>();
@@ -935,8 +938,8 @@ ir::lang::var matcher::constructor_matcher::ir_test_unroll(ir::scope &s, ir::lan
   if (arg) {
     s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(1), .op=instruction::cmp_vars::test});
 
-    scope strue, sfalse;
-    strue.ret = strue.declare_assign(3);
+    scope matching_tag, sfalse;
+    matching_tag.ret = arg->ir_test_unroll(matching_tag, matching_tag.declare_assign(v[2]).mark(trivial));
     sfalse.ret = sfalse.declare_assign(1);
     using binary_op = rhs_expr::binary_op;
     scope sboxed, simmediate;
@@ -944,7 +947,8 @@ ir::lang::var matcher::constructor_matcher::ir_test_unroll(ir::scope &s, ir::lan
         v[1]).mark(trivial), .x2=sboxed.declare_constant(32)}).mark(trivial), .v2=sboxed.declare_constant(
         definition_point->tag), .op=instruction::cmp_vars::cmp});
     sboxed.ret =
-        sboxed.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(strue), .jmp_branch=std::move(
+        sboxed.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(
+            matching_tag), .jmp_branch=std::move(
             sfalse)}));
 
     simmediate.ret = simmediate.declare_assign(1);
@@ -1048,6 +1052,36 @@ size_t matcher::tuple_matcher::stack_unrolling_dimension() const {
   ++d;
   return d;
 }
+std::ostream &matcher::tuple_matcher::print(std::ostream &os) const {
+  os << "(";
+  bool comma = false;
+  for (const auto &arg : args) {
+    if (comma)os << ", ";
+    comma = true;
+    arg->print(os);
+  }
+  return os << ")";
+}
+ir::lang::var matcher::tuple_matcher::ir_test_unroll(ir::scope &main, ir::lang::var v) {
+  using namespace ir::lang;
+
+  scope *current = &main;
+  for (size_t i = 0; i < args.size(); ++i) {
+    var this_okay = args.at(i)->ir_test_unroll(*current, current->declare_assign(v[2 + i]).mark(trivial));
+    if (i + 1 == args.size()) {
+      current->ret = this_okay;
+    } else {
+      current->push_back(instruction::cmp_vars{.v1=this_okay, .v2=current->declare_constant(2), .op=instruction::cmp_vars::test});
+      rhs_expr::branch b = std::make_unique<ternary>();
+      b->cond = ternary::jz;
+      b->jmp_branch.ret = b->jmp_branch.declare_constant(1); //false
+      scope *next = &b->nojmp_branch;
+      current->ret = current->declare_assign(std::move(b));
+      current = next;
+    }
+  }
+  return main.ret;
+}
 
 namespace literal {
 uint64_t integer::to_value() const {
@@ -1063,5 +1097,14 @@ size_t matcher::literal_matcher::test_locally_unroll(std::ostream &os,
   os << "cmp rax, " << value->to_value() << " ; literal " << loc << "\n";
   os << "jne " << on_fail << " \n";
   return stack_pos;
+}
+ir::lang::var matcher::literal_matcher::ir_test_unroll(ir::scope &s, ir::lang::var v) {
+  using namespace ir::lang;
+  s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(value->to_value()), .op=instruction::cmp_vars::cmp});
+  scope strue, sfalse;
+  strue.ret = strue.declare_assign(3);
+  sfalse.ret = sfalse.declare_assign(1);
+  return s.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(strue), .jmp_branch=std::move(
+      sfalse)}));
 }
 }

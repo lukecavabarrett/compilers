@@ -28,23 +28,33 @@ std::string_view unite_sv(const P1 &p1, const P2 &p2) {
 namespace {
 
 class unbound_value : public std::runtime_error, public util::error::report_token_error {
- public:
-  unbound_value(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Unbound value ", value, "; maybe you forget a rec or you mispelt something.") {}
+public:
+  unbound_value(std::string_view value)
+      : std::runtime_error("name-resolving error"),
+        util::error::report_token_error("Error: Unbound value ",
+                                        value,
+                                        "; maybe you forget a rec or you mispelt something.") {}
 };
 
 class unbound_constructor : public std::runtime_error, public util::error::report_token_error {
- public:
-  unbound_constructor(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Unbound constructor ", value, "; maybe you mispelt something.") {}
+public:
+  unbound_constructor(std::string_view value)
+      : std::runtime_error("name-resolving error"),
+        util::error::report_token_error("Error: Unbound constructor ", value, "; maybe you mispelt something.") {}
 };
 
 class constructor_shouldnt_take_arg : public std::runtime_error, public util::error::report_token_error {
- public:
-  constructor_shouldnt_take_arg(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Constructor ", value, "; should not have an arg") {}
+public:
+  constructor_shouldnt_take_arg(std::string_view value)
+      : std::runtime_error("name-resolving error"),
+        util::error::report_token_error("Error: Constructor ", value, "; should not have an arg") {}
 };
 
 class constructor_should_take_arg : public std::runtime_error, public util::error::report_token_error {
- public:
-  constructor_should_take_arg(std::string_view value) : std::runtime_error("name-resolving error"), util::error::report_token_error("Error: Constructor ", value, "; should have an arg") {}
+public:
+  constructor_should_take_arg(std::string_view value)
+      : std::runtime_error("name-resolving error"),
+        util::error::report_token_error("Error: Constructor ", value, "; should have an arg") {}
 };
 
 }
@@ -68,19 +78,19 @@ struct identifier : public t {
   typedef std::unique_ptr<identifier> ptr;
   std::string_view name;
   identifier(std::string_view s) : name(s) {}
- TO_TEXP(name);
+TO_TEXP(name);
 }; //e.g. 'a or int
 struct function : public t {
   ptr from, to;
   function(ptr &&f, ptr &&x) : from(std::move(f)), to(std::move(x)) { loc = unite_sv(from, to); }
- TO_TEXP(from, to);
+TO_TEXP(from, to);
 };
 struct product : public t {
   typedef std::unique_ptr<product> ptr;
 
   std::vector<expression::ptr> ts; //size>=2
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
- TO_TEXP(ts);
+TO_TEXP(ts);
 };
 struct tuple : public t {
   typedef std::unique_ptr<tuple> ptr;
@@ -88,12 +98,12 @@ struct tuple : public t {
   std::vector<expression::ptr> ts; //size>=2
   tuple(expression::ptr &&x) { ts.push_back(std::move(x)); }
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
- TO_TEXP(ts);
+TO_TEXP(ts);
 };
 struct constr : public t {
   ptr x, f;
   constr(ptr &&xx, ptr &&ff) : x(std::move(xx)), f(std::move(ff)) { loc = itr_sv(x->loc.begin(), f->loc.end()); }
- TO_TEXP(x, f)
+TO_TEXP(x, f)
 };
 
 }
@@ -104,7 +114,7 @@ struct param : public locable, public texp_of_t {
   typedef std::unique_ptr<param> ptr;
   param(std::string_view s) : name(s) {}
   std::string_view name;
- TO_TEXP(name);
+TO_TEXP(name);
 };
 
 struct single : public locable, public texp_of_t {
@@ -116,7 +126,7 @@ struct single : public locable, public texp_of_t {
 struct t : public locable, public texp_of_t {
   bool nonrec = false;
   std::vector<single::ptr> defs;
- TO_TEXP(nonrec, defs);
+TO_TEXP(nonrec, defs);
 };
 typedef std::unique_ptr<t> ptr;
 
@@ -124,7 +134,7 @@ struct single_texpr : public single {
   typedef std::unique_ptr<single_texpr> ptr;
 
   expression::ptr type;
- TO_TEXP(name, type);
+TO_TEXP(name, type);
 };
 
 struct single_variant : public single {
@@ -135,11 +145,11 @@ struct single_variant : public single {
     uint64_t tag;
     std::string_view name;
     expression::ptr type;
-   TO_TEXP(name, type);
+  TO_TEXP(name, type);
   };
 
   std::vector<constr> variants;
- TO_TEXP(name, variants);
+TO_TEXP(name, variants);
 
 };
 
@@ -195,7 +205,7 @@ struct literal : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final {}
- TO_TEXP(value);
+TO_TEXP(value);
 };
 
 struct identifier : public t {
@@ -207,7 +217,7 @@ struct identifier : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final;
- TO_TEXP(name);
+TO_TEXP(name);
 };
 
 struct constructor : public t {
@@ -220,7 +230,7 @@ struct constructor : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(name, arg);
+TO_TEXP(name, arg);
 };
 
 struct if_then_else : public t {
@@ -231,7 +241,7 @@ struct if_then_else : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(condition, true_branch, false_branch);
+TO_TEXP(condition, true_branch, false_branch);
 };
 
 struct build_tuple : public t {
@@ -243,7 +253,7 @@ struct build_tuple : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(args);
+TO_TEXP(args);
 };
 
 struct fun_app : public t {
@@ -254,7 +264,7 @@ struct fun_app : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(f, x);
+TO_TEXP(f, x);
 };
 
 struct seq : public t {
@@ -265,7 +275,7 @@ struct seq : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(a, b);
+TO_TEXP(a, b);
 };
 
 struct match_with : public t {
@@ -273,7 +283,7 @@ struct match_with : public t {
   struct branch : public texp_of_t {
     matcher::ptr pattern;
     expression::ptr result;
-   TO_TEXP(pattern, result)
+  TO_TEXP(pattern, result)
   };
   expression::ptr what;
   std::vector<branch> branches;
@@ -284,7 +294,7 @@ struct match_with : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(what, branches);
+TO_TEXP(what, branches);
 };
 
 struct let_in : public t {
@@ -296,7 +306,7 @@ struct let_in : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
- TO_TEXP(d, e);
+TO_TEXP(d, e);
 };
 
 struct fun : public t {
@@ -307,13 +317,14 @@ struct fun : public t {
   free_vars_t free_vars() final;;
   capture_set capture_group() final;;
   static std::string text_name_gen(std::string_view name_hint);
-  std::string compile_global(direct_sections_t s, std::string_view name_hint = ""); // compile the body of the function, and return the text_ptr
+  std::string compile_global(direct_sections_t s,
+                             std::string_view name_hint = ""); // compile the body of the function, and return the text_ptr
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
   bool is_capturing(const matcher::universal_matcher *m) const;
   size_t capture_index(const matcher::universal_matcher *m) const;
- TO_TEXP(args, body);
+TO_TEXP(args, body);
   std::string ir_compile_global(ir_sections_t s);
 };
 
@@ -321,6 +332,7 @@ struct fun : public t {
 
 namespace matcher {
 struct t : public locable, texp_of_t {
+  virtual std::ostream &print(std::ostream &) const = 0;
   virtual void bind(free_vars_t &) = 0;
   virtual void bind(capture_set &) = 0;
   virtual void bind(const constr_map &) = 0;
@@ -332,9 +344,10 @@ struct t : public locable, texp_of_t {
   virtual size_t stack_unrolling_dimension() const = 0; // how much stack is going to be used for unrolling
   virtual void global_unroll(std::ostream &os) = 0; // match value in rax, unrolling on globals
   virtual void ir_global_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on globals
-  virtual void ir_locally_unroll(ir::scope& s, ir::lang::var v) = 0; // match value in v, unrolling on locals
-  virtual ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) = 0;
-  virtual size_t locally_unroll(std::ostream &os, size_t stack_pos) = 0;  // match value in rax, unrolling on stack; returns new stack_pos
+  virtual void ir_locally_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on locals
+  virtual ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) = 0;
+  virtual size_t locally_unroll(std::ostream &os,
+                                size_t stack_pos) = 0;  // match value in rax, unrolling on stack; returns new stack_pos
   virtual size_t test_locally_unroll(std::ostream &os,
                                      size_t stack_pos,
                                      size_t caller_stack_pos,
@@ -359,6 +372,7 @@ struct universal_matcher : public t {
   std::string asm_name() const;
   std::string ir_asm_name() const;
 
+  std::ostream &print(std::ostream &os) const final { return os << name; }
 
   void globally_register(global_map &m) final;
   void ir_globally_register(global_map &m) final;
@@ -373,23 +387,27 @@ struct universal_matcher : public t {
   void globally_allocate_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
   void ir_allocate_global_constrimm(std::ostream &os, const type::definition::single_variant::constr &constr);
   void global_unroll(std::ostream &os) final;
-  void ir_global_unroll(ir::scope &s, ir::lang::var ) final;
-  void ir_locally_unroll(ir::scope& s, ir::lang::var v) final;
-  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final {return s.declare_constant(3);}
+  void ir_global_unroll(ir::scope &s, ir::lang::var) final;
+  void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
+  ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final { return s.declare_constant(3); }
   size_t unrolled_size() const final { return 1; }
   size_t stack_unrolling_dimension() const final { return 1; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
+  size_t test_locally_unroll(std::ostream &os,
+                             size_t stack_pos,
+                             size_t caller_stack_pos,
+                             std::string_view on_fail) final;
   void globally_evaluate(std::ostream &os) const;
   std::string_view name;
   usage_list usages;
- TO_TEXP(name)
+TO_TEXP(name)
   void ir_allocate_globally_funblock(std::ostream &os, size_t n_args, std::string_view text_ptr);
   ir::var ir_evaluate_global(ir::scope &s) const;
 };
 
 struct anonymous_universal_matcher : public t {
   typedef std::unique_ptr<anonymous_universal_matcher> ptr;
+  std::ostream &print(std::ostream &os) const final { return os << "_"; }
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
   void bind(const constr_map &cm) final {}
@@ -398,14 +416,17 @@ struct anonymous_universal_matcher : public t {
   void globally_register(global_map &m) final {}
   void ir_globally_register(global_map &m) final {}
   void global_unroll(std::ostream &os) final {}
-  void ir_global_unroll(ir::scope &s, ir::lang::var ) final {}
-  void ir_locally_unroll(ir::scope& s, ir::lang::var v) final {}
+  void ir_global_unroll(ir::scope &s, ir::lang::var) final {}
+  void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
   size_t unrolled_size() const final { return 0; }
   size_t stack_unrolling_dimension() const final { return 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final { return stack_pos; }
-  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final {return s.declare_constant(3);}
- TO_TEXP_EMPTY()
+  size_t test_locally_unroll(std::ostream &os,
+                             size_t stack_pos,
+                             size_t caller_stack_pos,
+                             std::string_view on_fail) final { return stack_pos; }
+  ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final { return s.declare_constant(3); }
+TO_TEXP_EMPTY()
 };
 
 struct constructor_matcher : public t {
@@ -415,27 +436,37 @@ struct constructor_matcher : public t {
   type::definition::single_variant::constr *definition_point;
   constructor_matcher(matcher::ptr &&m, std::string_view c) : arg(std::move(m)), cons(c) {}
   constructor_matcher(std::string_view c) : arg(), cons(c) {}
+  std::ostream &print(std::ostream &os) const final {
+    return arg ? arg->print(os << definition_point->name << " ") : (os << definition_point->name);
+  }
   void bind(free_vars_t &fv) final;
   void bind(capture_set &cs) final;
   void globally_register(global_map &m) final;
   void ir_globally_register(global_map &m) final;
   void bind(const constr_map &cm) final;
-  void ir_allocate_global_value(std::ostream &os) final {if(arg)arg->ir_allocate_global_value(os);}
+  void ir_allocate_global_value(std::ostream &os) final { if (arg)arg->ir_allocate_global_value(os); }
   void globally_allocate(std::ostream &os) final { if (arg)arg->globally_allocate(os); }
   void global_unroll(std::ostream &os) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var) final;
-  void ir_locally_unroll(ir::scope& s, ir::lang::var v) final;
+  void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
   size_t unrolled_size() const final { return arg ? arg->unrolled_size() : 0; }
   size_t stack_unrolling_dimension() const final { return arg ? arg->stack_unrolling_dimension() : 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
-  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final;
- TO_TEXP(cons, arg);
+  size_t test_locally_unroll(std::ostream &os,
+                             size_t stack_pos,
+                             size_t caller_stack_pos,
+                             std::string_view on_fail) final;
+  ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
+TO_TEXP(cons, arg);
 };
 
 struct literal_matcher : public t {
   typedef std::unique_ptr<literal_matcher> ptr;
   ast::literal::ptr value;
+  std::ostream &print(std::ostream &os) const final {
+    assert(!loc.empty());
+    return os << loc;
+  }
   literal_matcher(ast::literal::ptr &&lit) : value(std::move(lit)) {}
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
@@ -446,13 +477,16 @@ struct literal_matcher : public t {
   void ir_allocate_global_value(std::ostream &os) final {}
   void global_unroll(std::ostream &os) final {}
   void ir_global_unroll(ir::scope &s, ir::lang::var) final {}
-  void ir_locally_unroll(ir::scope& s, ir::lang::var v) final {}
+  void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
   size_t unrolled_size() const final { return 0; }
   size_t stack_unrolling_dimension() const final { return 0; }
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final { return stack_pos; }
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
-  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final  {THROW_UNIMPLEMENTED;}
- TO_TEXP(value);
+  size_t test_locally_unroll(std::ostream &os,
+                             size_t stack_pos,
+                             size_t caller_stack_pos,
+                             std::string_view on_fail) final;
+  ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
+TO_TEXP(value);
 };
 
 struct tuple_matcher : public t {
@@ -461,6 +495,7 @@ struct tuple_matcher : public t {
   void bind(free_vars_t &fv) final;
   void bind(capture_set &cs) final;
   void bind(const constr_map &cm) final;
+  std::ostream &print(std::ostream &os) const final;
 
   void globally_allocate(std::ostream &os) final;
   void ir_allocate_global_value(std::ostream &os) final;
@@ -470,11 +505,14 @@ struct tuple_matcher : public t {
   void ir_globally_register(global_map &m) final;
   void global_unroll(std::ostream &os) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var) final;
-  void ir_locally_unroll(ir::scope& s, ir::lang::var v) final;
+  void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
   size_t locally_unroll(std::ostream &os, size_t stack_pos) final;
-  size_t test_locally_unroll(std::ostream &os, size_t stack_pos, size_t caller_stack_pos, std::string_view on_fail) final;
-  ir::lang::var ir_test_unroll(ir::scope& s, ir::lang::var v) final {THROW_UNIMPLEMENTED;}
- TO_TEXP(args);
+  size_t test_locally_unroll(std::ostream &os,
+                             size_t stack_pos,
+                             size_t caller_stack_pos,
+                             std::string_view on_fail) final;
+  ir::lang::var ir_test_unroll(ir::scope &main, ir::lang::var v) final ;
+TO_TEXP(args);
 };
 
 }
@@ -488,24 +526,24 @@ struct integer : public t {
   int64_t value;
   integer(int64_t value) : value(value) {}
   uint64_t to_value() const final;
- TO_TEXP(value)
+TO_TEXP(value)
 };
 struct boolean : public t {
   bool value;
   boolean(bool value) : value(value) {}
   uint64_t to_value() const final;
- TO_TEXP(value)
+TO_TEXP(value)
 };
 struct unit : public t {
   unit() {}
   uint64_t to_value() const final { return 1; }
- TO_TEXP_EMPTY()
+TO_TEXP_EMPTY()
 };
 struct string : public t {
   std::string value;
   string(std::string_view value) : value(value) {}
   uint64_t to_value() const final;
- TO_TEXP(value)
+TO_TEXP(value)
 };
 }
 
@@ -520,7 +558,7 @@ struct def : public texp_of_t {
   bool is_constr() const;
   bool is_tuple() const;
   bool is_single_name() const;
- TO_TEXP(name, e);
+TO_TEXP(name, e);
 };
 struct t : public locable, public texp_of_t {
   bool rec = false;
@@ -536,7 +574,7 @@ struct t : public locable, public texp_of_t {
 
   void bind(const constr_map &cm);
 
- TO_TEXP(rec, defs);
+TO_TEXP(rec, defs);
 };
 typedef std::unique_ptr<t> ptr;
 

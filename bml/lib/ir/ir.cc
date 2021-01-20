@@ -225,8 +225,13 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   c.declare_global(a.dst, g.name);
                 },
                 [&](rhs_expr::copy &r) {
+                  if(contains(destroys,a.dst)){
+                    //unused lhs, so we do nothing
+                    destroys.erase(std::find(destroys.begin(),destroys.end(),a.dst));
+                    return ;
+                  }
                   if (!destroys.empty()) {
-                    assert(destroys.size() == 1);//destroying the current rhs
+                    assert(destroys.size() == 1);//destroying the current rhs,
                     assert(destroys.front() == r.v);
                     destroys.clear();
                     c.declare_move(a.dst, r.v);

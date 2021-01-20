@@ -318,7 +318,7 @@ TEST(Build, ManyMatchers) {
              "let () = g (Tuple (1000,Void));;\n"
              "let () = g (Tuple (1000,Int 100));;\n"
              "let () = g (Tuple (1000,Tuple(10000, Tuple(100,Void))));;\n"
-             "let () = g (Tuple (1000,Void));;\n", "0 1 2 3 4 1005 1106 11107 1005 ");
+             "let () = g (Tuple (1000,Void));;\n", "0 1 2 3 4 1005 1106 11107 1005 ",ir_build::RUN);
 }
 
 TEST(Build, DeepMatchers) {
