@@ -325,7 +325,7 @@ TEST(Build, DeepMatchers) {
   test_build("let f ((x,y),z) = x + y + z;;\n"
              "let () = int_print (f ((1,10),100));;\n", "111 ");
   test_build("let f (((((a,b),c),d),e),f) = a+b+c+d+e+f ;;\n"
-             "let () = int_print (f  (((((1,2),4),8),16),32) );;\n", "63 ");
+             "let () = int_print (f  (((((1,2),4),8),16),32) );;\n", "63 ",ir_build::RUN);
 }
 
 TEST(Build, MatchersTheRevenge) {

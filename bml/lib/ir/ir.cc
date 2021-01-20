@@ -171,7 +171,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
   bool need_to_return = last_call; //whether we'll return the final value
   c.destroy(s.destroys.at(0), os);
 
-  size_t last_skipped_cmp_vars_simplified = s.body.size()+2;
+  size_t last_skipped_cmp_vars_simplified = s.body.size() + 2;
   bool last_skipped_will_jump;
 
   for (size_t i = 0; i < s.body.size(); ++i) {
@@ -205,7 +205,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 [&](rhs_expr::branch &b) {
                   if (last_skipped_cmp_vars_simplified + 1 == i) {
                     os << "; optimized out branch\n";
-                    auto& branch = last_skipped_will_jump ? b->jmp_branch : b->nojmp_branch;
+                    auto &branch = last_skipped_will_jump ? b->jmp_branch : b->nojmp_branch;
                     c = scope_compile_rec(branch, os, c, true);
                     return;
                   }
@@ -225,10 +225,10 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   c.declare_global(a.dst, g.name);
                 },
                 [&](rhs_expr::copy &r) {
-                  if(contains(destroys,a.dst)){
+                  if (contains(destroys, a.dst)) {
                     //unused lhs, so we do nothing
-                    destroys.erase(std::find(destroys.begin(),destroys.end(),a.dst));
-                    return ;
+                    destroys.erase(std::find(destroys.begin(), destroys.end(), a.dst));
+                    return;
                   }
                   if (!destroys.empty()) {
                     assert(destroys.size() == 1);//destroying the current rhs,
@@ -267,7 +267,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                     moved.emplace_back(x, rsi);
                     destroys.erase(std::find(destroys.begin(), destroys.end(), x));
                   } else copied.emplace_back(x, rsi);
-                  for(const auto&[v,r] : copied)c.increment_refcount(v,os);
+                  for (const auto&[v, r] : copied)c.increment_refcount(v, os);
                   c.call_clean(moved, os);
                   c.call_copy(copied, os);
                   c.align_stack_16_precall(os);
@@ -278,7 +278,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 [&](rhs_expr::branch &b) {
                   if (last_skipped_cmp_vars_simplified + 1 == i) {
                     os << "; optimized out branch\n";
-                    auto& branch = last_skipped_will_jump ? b->jmp_branch : b->nojmp_branch;
+                    auto &branch = last_skipped_will_jump ? b->jmp_branch : b->nojmp_branch;
                     c = scope_compile_rec(branch, os, c, false);
                     c.declare_move(a.dst, branch.ret);
                     return;
@@ -353,11 +353,12 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
         },
         [&](instruction::write_uninitialized_mem &m) {
           c.make_both_non_mem(m.src, m.base, os);
-          if(c.is_constant(m.src) && c.is_constant(m.src).value() > uint64_t(std::numeric_limits<uint32_t>::max())){
+          if (c.is_constant(m.src) && c.is_constant(m.src).value() > uint64_t(std::numeric_limits<uint32_t>::max())) {
             //we need two ops
             uint32_t lo = c.is_constant(m.src).value();
             uint32_t hi = c.is_constant(m.src).value() >> 32;
-            os << "mov dword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << lo << " ; loading 64-bit constant "<<c.is_constant(m.src).value()<<" in two steps \n";
+            os << "mov dword [" << c.at(m.base) << offset(m.block_offset * 8) << "], " << lo
+               << " ; loading 64-bit constant " << c.is_constant(m.src).value() << " in two steps \n";
             os << "mov dword [" << c.at(m.base) << offset(m.block_offset * 8 + 4) << "], " << hi << "\n";
 
           } else {
@@ -374,24 +375,34 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
 
           if (c.is_constant(cmp.v1) && c.is_constant(cmp.v2)) {
             last_skipped_cmp_vars_simplified = i;
-            assert(i+1<s.body.size());
+            assert(i + 1 < s.body.size());
 
-            ternary::jmp_instr jinstr = std::get<rhs_expr::branch>( std::get< instruction::assign >(s.body.at(i+1)).src)->cond;
+            ternary::jmp_instr
+                jinstr = std::get<rhs_expr::branch>(std::get<instruction::assign>(s.body.at(i + 1)).src)->cond;
 
             int64_t op1 = int64_t(c.is_constant(cmp.v1).value());
             int64_t op2 = int64_t(c.is_constant(cmp.v2).value());
             int64_t result;
 
             switch (cmp.op) {
-              case instruction::cmp_vars::test:result = op1&op2;break;
-              case instruction::cmp_vars::cmp:result = op1-op2;break;
+              case instruction::cmp_vars::test:
+                result = op1 & op2;
+                break;
+              case instruction::cmp_vars::cmp:
+                result = op1 - op2;
+                break;
             }
 
             switch (jinstr) {
-              case ternary::jmp: last_skipped_will_jump = true; break;
-              case ternary::jne: last_skipped_will_jump = result!=0; break;
-              case ternary::jle: last_skipped_will_jump = result<=0;break;
-              case ternary::jz:  last_skipped_will_jump = result==0; break;
+              case ternary::jmp: last_skipped_will_jump = true;
+                break;
+              case ternary::jne: last_skipped_will_jump = result != 0;
+                break;
+              case ternary::jle:
+                last_skipped_will_jump = result <= 0;
+                break;
+              case ternary::jz: last_skipped_will_jump = result == 0;
+                break;
             }
             return;
           }
@@ -894,7 +905,10 @@ void context_t::make_non_mem(var v, std::ostream &os) {
   assert_consistency();
   assert(vars.contains(v));
   std::visit(overloaded{
-      ignore<constant, global, on_reg>(),
+      ignore<constant, global>(),
+      [&](on_reg r) {
+        lru.bring_back(r);
+      },
       [&](on_stack p) {
         register_t r = free_reg(os);
         if (p == stack.size() - 1) {
@@ -932,7 +946,9 @@ bool context_t::is_reg_free(register_t r) const {
 void context_t::make_both_non_mem(var v1, var v2, std::ostream &os) {
   assert_consistency();
   make_non_mem(v1, os);
+  assert(!is_mem(v1));
   make_non_mem(v2, os);
+  assert(!is_mem(v2));
   assert_consistency();
   assert(!is_mem(v1) && !is_mem(v2));
 }
@@ -977,7 +993,7 @@ void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args
           }
           lru.bring_back(r);
           if (use_pops)os << "pop " << reg::to_string(r) << "\n";
-          else os << "mov " << reg::to_string(r) << ", qword [rsp" << offset((stack_size() - 1 - i)*8) << "]\n";
+          else os << "mov " << reg::to_string(r) << ", qword [rsp" << offset((stack_size() - 1 - i) * 8) << "]\n";
           stack[i] = free{};
           regs[r] = v;
           vars[v] = r;
@@ -1158,13 +1174,13 @@ void context_t::call_clean(const std::vector<std::pair<var, register_t>> &args, 
                 os << "pop " << reg::to_string(r) << "\n";
                 stack.pop_back();
               } else {
-                os << "mov " << reg::to_string(r) << ", qword [rsp" << offset((stack.size() - 1 - p)*8) << "]\n";
+                os << "mov " << reg::to_string(r) << ", qword [rsp" << offset((stack.size() - 1 - p) * 8) << "]\n";
               }
             } else {
               var v2 = std::get<var>(regs[r]);
               std::swap(vars[v2], vars[v]);
               std::swap(regs[r], stack[p]);
-              os << "xchg " << reg::to_string(r) << ", qword [rsp" << offset((stack.size() - 1 - p)*8) << "]\n";
+              os << "xchg " << reg::to_string(r) << ", qword [rsp" << offset((stack.size() - 1 - p) * 8) << "]\n";
             }
           }
       }, vars[v]);
@@ -1287,7 +1303,7 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
             },
             [&](on_stack p_src) {
               os << (is_reg_free(r_dst) ? "mov " : "xchg ") << reg::to_string(r_dst) << ", qword [rsp"
-                 << offset((stack.size() - 1 - p_src)*8) << "]\n";
+                 << offset((stack.size() - 1 - p_src) * 8) << "]\n";
               std::swap(stack[p_src], regs[r_dst]);
               reassign(src);
               reassign(dst);
@@ -1297,7 +1313,8 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
       [&](on_stack p_dst) {
         std::visit(overloaded{
             [&](on_reg r_src) {
-              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp" << offset((stack.size() - 1 - p_dst)*8)
+              os << (is_free(stack[p_dst]) ? "mov " : "xchg ") << " qword [rsp"
+                 << offset((stack.size() - 1 - p_dst) * 8)
                  << "], " << reg::to_string(r_src) << "\n";
               std::swap(regs[r_src], stack[p_dst]);
               reassign(src);
@@ -1305,9 +1322,9 @@ void context_t::move(strict_location_t dst, strict_location_t src, std::ostream 
             },
             [&](on_stack p_src) {
               if (p_src == p_dst)return;
-              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_dst)*8) << "]\n";
-              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_src)*8) << "]\n";
-              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_dst)*8) << "]\n";
+              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_dst) * 8) << "]\n";
+              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_src) * 8) << "]\n";
+              os << "xchg rax, qword [rsp" << offset((stack.size() - 1 - p_dst) * 8) << "]\n";
               std::swap(stack[p_src], stack[p_dst]);
               reassign(src);
               reassign(dst);
