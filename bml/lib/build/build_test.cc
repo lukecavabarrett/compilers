@@ -343,7 +343,7 @@ TEST(Build, ListUtils1) {
              "let rec length l = match l with\n"
              "| Null -> 0\n"
              "| Cons (_,xs) -> (length xs) + 1;;\n"
-             "let () = int_print (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3 ");
+             "let () = int_print (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3 ",ir_build::RUN);
 }
 
 TEST(Build, ListUtils2) {
@@ -351,7 +351,7 @@ TEST(Build, ListUtils2) {
              "let rec print_list l = match l with\n"
              "| Null -> ()\n"
              "| Cons (x,xs) -> int_print x; print_list xs;;\n"
-             "let () = print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", "1 2 3 ");
+             "let () = print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", "1 2 3 ",ir_build::RUN);
 }
 
 TEST(Build, InfiniteList) {
@@ -362,7 +362,7 @@ TEST(Build, InfiniteList) {
              "let rec a = Cons(1,a);;\n"
              "let () = int_print (length a) ;;",
              "",
-             ir_build::NONE,
+             ir_build::RUN,
              139,
              "timeout: the monitored command dumped core\nSegmentation fault\n");
 }
@@ -408,7 +408,7 @@ TEST(Build, TortoiseAndHare_Numbers) {
       floyd_algo
 
       "let (lam,mu) = floyd (fun x -> match x with | 10 -> 5 | x -> x+1) 0;;\n"
-      "let () = int_print lam; int_print mu;;\n", "6 5 ");
+      "let () = int_print lam; int_print mu;;\n", "6 5 ",ir_build::RUN);
 }
 
 TEST(Build, TortoiseAndHare_Simple) {
@@ -422,7 +422,7 @@ TEST(Build, TortoiseAndHare_Simple) {
 
       "let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;\n"
 
-      "let () = list_examine_cycle c;;", "2 4 ");
+      "let () = list_examine_cycle c;;", "2 4 ",ir_build::RUN);
 }
 
 TEST(Build, IntComparison) {
@@ -441,7 +441,7 @@ TEST(Build, IntComparison) {
 
     let () = int_println (int_le (0-54) (0-53));;
 
-)", "1 0 0\n0 0 1\n0 0 1\n1\n");
+)", "1 0 0\n0 0 1\n0 0 1\n1\n",ir_build::NONE);
 }
 
 TEST(Build, Stream) {
@@ -487,7 +487,7 @@ TEST(Build, Stream) {
              "42 43 44 45 46 47 48 49 50 51 52\n"
              "85 87 89 91 93 95 97 99 101 103 105\n"
              "51 52 53 54 55 56 57 58 59 60 61\n"
-             "1 3 6 10 15 21 28 36 45 55 66\n");
+             "1 3 6 10 15 21 28 36 45 55 66\n",ir_build::NONE);
 }
 
 

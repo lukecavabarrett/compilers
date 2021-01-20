@@ -584,11 +584,10 @@ void t::ir_compile_global(ir_sections_t s) {
   using namespace ir::lang;
 
   if (rec) {
-    //check that all values are construcive w.r.t each other
-    // 1. check no name clashes
-    // 2. check that if one contains another
-    THROW_UNIMPLEMENTED
-
+  //TODO:
+  // - check that all values are construcive w.r.t each other
+  //     1. check no name clashes
+  //     2. check that if one contains another
   }
   for (auto &def : defs)
     if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
