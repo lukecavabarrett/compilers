@@ -259,19 +259,19 @@ TEST(Build, MaybeAdditionWithCapture) {
 TEST(Build, LetExpression) {
   test_build("let play_with x = int_print x; (let y = x + x in y);;\n"
              "let ans = play_with 10;;"
-             "let () = int_print ans;;", "10 20 ",ir_build::RUN);
+             "let () = int_print ans;;", "10 20 ", ir_build::RUN);
 }
 
 TEST(Build, Malloc) {
   test_build("type option = | Some of 'a;;\n"
              "let heap_big_tuple = Some (1,2,3,4,5,6,7);;\n"
-             "let stck_big_tuple = 1,2,3,4,5,6,7;;", "",ir_build::RUN);
+             "let stck_big_tuple = 1,2,3,4,5,6,7;;", "", ir_build::RUN);
 }
 
 TEST(Build, CaptureX) {
   test_build("let plus_x x = (fun y -> x + y);;\n"
              "let plus_3 = plus_x 3;;\n"
-             "let () = int_print (plus_3 4);;", "7 ",ir_build::RUN);
+             "let () = int_print (plus_3 4);;", "7 ", ir_build::RUN);
 }
 
 TEST(Build, CaptureMaybeSum) {
@@ -283,18 +283,18 @@ TEST(Build, CaptureMaybeSum) {
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
-             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ",ir_build::RUN);
+             "let _ = maybe_print (maybe_sum (None) (None));;\n", "110 -1 -1 -1 ", ir_build::RUN);
 }
 
 TEST(Build, LongSum) {
   test_build("let long_sum a b c d e f g h i j k = a+b+c+d+e+f+g+h+i+j+k;;\n"
              "let ans = long_sum 1 2 3 4 5 6 7 8 9 10 11;;\n"
-             "let () = int_print ans ;;", "66 ",ir_build::RUN);
+             "let () = int_print ans ;;", "66 ", ir_build::RUN);
 }
 
 TEST(Build, DeepCapture) {
   test_build("let deep_capture x = fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> x ;;"
-             "      let () = int_print (deep_capture 1729 () () () () () () ());;", "1729 ",ir_build::RUN);
+             "      let () = int_print (deep_capture 1729 () () () () () () ());;", "1729 ", ir_build::RUN);
 }
 
 TEST(Build, ManyMatchers) {
@@ -318,14 +318,14 @@ TEST(Build, ManyMatchers) {
              "let () = g (Tuple (1000,Void));;\n"
              "let () = g (Tuple (1000,Int 100));;\n"
              "let () = g (Tuple (1000,Tuple(10000, Tuple(100,Void))));;\n"
-             "let () = g (Tuple (1000,Void));;\n", "0 1 2 3 4 1005 1106 11107 1005 ",ir_build::RUN);
+             "let () = g (Tuple (1000,Void));;\n", "0 1 2 3 4 1005 1106 11107 1005 ", ir_build::RUN);
 }
 
 TEST(Build, DeepMatchers) {
   test_build("let f ((x,y),z) = x + y + z;;\n"
              "let () = int_print (f ((1,10),100));;\n", "111 ");
   test_build("let f (((((a,b),c),d),e),f) = a+b+c+d+e+f ;;\n"
-             "let () = int_print (f  (((((1,2),4),8),16),32) );;\n", "63 ",ir_build::RUN);
+             "let () = int_print (f  (((((1,2),4),8),16),32) );;\n", "63 ", ir_build::RUN);
 }
 
 TEST(Build, MatchersTheRevenge) {
@@ -335,7 +335,7 @@ TEST(Build, MatchersTheRevenge) {
              "| Triple ((x,y),z) -> x + y + z;;\n"
              "let g x = int_print (f x);;\n"
              "let () = g Null;;\n"
-             "let () = g (Triple ((1,10),100));;\n", "0 111 ",ir_build::RUN);
+             "let () = g (Triple ((1,10),100));;\n", "0 111 ", ir_build::RUN);
 }
 
 TEST(Build, ListUtils1) {
@@ -343,7 +343,7 @@ TEST(Build, ListUtils1) {
              "let rec length l = match l with\n"
              "| Null -> 0\n"
              "| Cons (_,xs) -> (length xs) + 1;;\n"
-             "let () = int_print (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3 ",ir_build::RUN);
+             "let () = int_print (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3 ", ir_build::RUN);
 }
 
 TEST(Build, ListUtils2) {
@@ -351,7 +351,7 @@ TEST(Build, ListUtils2) {
              "let rec print_list l = match l with\n"
              "| Null -> ()\n"
              "| Cons (x,xs) -> int_print x; print_list xs;;\n"
-             "let () = print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", "1 2 3 ",ir_build::RUN);
+             "let () = print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", "1 2 3 ", ir_build::RUN);
 }
 
 TEST(Build, InfiniteList) {
@@ -378,7 +378,7 @@ TEST(Build, TakeFromInfiniteList) {
              "let rec a = Cons(1,a);;\n"
              "let () =  print_list (take a 4) ;;\n"
              "let rec b = Cons(2,c) and c = Cons(3,b);;\n"
-             "let () =  print_list (take b 8) ;;", "1 1 1 1 2 3 2 3 2 3 2 3 ");
+             "let () =  print_list (take b 8) ;;", "1 1 1 1 2 3 2 3 2 3 2 3 ",ir_build::RUN);
 
 }
 
@@ -408,7 +408,7 @@ TEST(Build, TortoiseAndHare_Numbers) {
       floyd_algo
 
       "let (lam,mu) = floyd (fun x -> match x with | 10 -> 5 | x -> x+1) 0;;\n"
-      "let () = int_print lam; int_print mu;;\n", "6 5 ",ir_build::RUN);
+      "let () = int_print lam; int_print mu;;\n", "6 5 ", ir_build::RUN);
 }
 
 TEST(Build, TortoiseAndHare_Simple) {
@@ -422,7 +422,7 @@ TEST(Build, TortoiseAndHare_Simple) {
 
       "let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;\n"
 
-      "let () = list_examine_cycle c;;", "2 4 ",ir_build::RUN);
+      "let () = list_examine_cycle c;;", "2 4 ", ir_build::RUN);
 }
 
 TEST(Build, IntComparison) {
@@ -441,7 +441,7 @@ TEST(Build, IntComparison) {
 
     let () = int_println (int_le (0-54) (0-53));;
 
-)", "1 0 0\n0 0 1\n0 0 1\n1\n",ir_build::NONE);
+)", "1 0 0\n0 0 1\n0 0 1\n1\n", ir_build::NONE);
 }
 
 TEST(Build, Stream) {
@@ -487,7 +487,7 @@ TEST(Build, Stream) {
              "42 43 44 45 46 47 48 49 50 51 52\n"
              "85 87 89 91 93 95 97 99 101 103 105\n"
              "51 52 53 54 55 56 57 58 59 60 61\n"
-             "1 3 6 10 15 21 28 36 45 55 66\n",ir_build::NONE);
+             "1 3 6 10 15 21 28 36 45 55 66\n", ir_build::NONE);
 }
 
 

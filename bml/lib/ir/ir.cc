@@ -385,11 +385,9 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
             int64_t result;
 
             switch (cmp.op) {
-              case instruction::cmp_vars::test:
-                result = op1 & op2;
+              case instruction::cmp_vars::test:result = op1 & op2;
                 break;
-              case instruction::cmp_vars::cmp:
-                result = op1 - op2;
+              case instruction::cmp_vars::cmp:result = op1 - op2;
                 break;
             }
 
@@ -398,8 +396,7 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                 break;
               case ternary::jne: last_skipped_will_jump = result != 0;
                 break;
-              case ternary::jle:
-                last_skipped_will_jump = result <= 0;
+              case ternary::jle:last_skipped_will_jump = result <= 0;
                 break;
               case ternary::jz: last_skipped_will_jump = result == 0;
                 break;
@@ -1103,11 +1100,21 @@ context_t context_t::merge(context_t c1, std::ostream &os1, context_t c2, std::o
 
   //strategy: make c1 equal to c2
   //1. stack
-  if (c1.stack != c2.stack) {
-    THROW_UNIMPLEMENTED
+  {
+    if (c1.stack_size() < c2.stack_size()) {
+      os1 << "sub rsp, " << 8 * (c2.stack_size() - c1.stack_size()) << "\n";
+      c1.stack.resize(c2.stack_size(), free{});
+    }
+    for (size_t i = 0; i < c2.stack_size(); ++i) {
+      while (!is_free(c1.stack[i]) && c1.stack[i] != c2.stack[i]) {
+        c1.move(c2.location(c1.stack[i]), on_stack{i}, os1);
+      }
+      if (!is_free(c2.stack[i]))c1.move(on_stack{i}, c1.location(c2.stack[i]), os1);
+    }
+
   }
 
-  assert(c1.stack == c2.stack);
+  assert(std::equal(c2.stack.begin(), c2.stack.end(), c1.stack.begin()));//note that c1.stack might be longer
 
   //2. regs
   if (c1.regs != c2.regs) {
@@ -1119,6 +1126,12 @@ context_t context_t::merge(context_t c1, std::ostream &os1, context_t c2, std::o
   }
 
   assert(c1.regs == c2.regs);
+  assert(c1.stack == c2.stack);
+  if (c1.stack_size() > c2.stack_size()) {
+    assert(std::all_of(c1.stack.begin() + c2.stack_size(), c1.stack.end(), is_free));
+    os1 << "add rsp, " << 8 * (c2.stack_size() - c1.stack_size()) << "\n";
+    c1.stack.resize(c2.stack_size(), free{});
+  }
 
 
 
