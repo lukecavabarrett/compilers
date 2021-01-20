@@ -347,8 +347,6 @@ ir::lang::var match_with::ir_compile(ir_sections_t s) {
       current->declare_assign(rhs_expr::apply_fn{.f=current->declare_global("__throw__unmatched__"), .x=current->declare_constant(
           3)});
   return returned.value();
-
-  THROW_WORK_IN_PROGRESS
 }
 free_vars_t let_in::free_vars() {
   return d->free_vars(e->free_vars());
