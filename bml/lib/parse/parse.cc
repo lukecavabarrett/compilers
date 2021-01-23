@@ -52,7 +52,7 @@ struct peek_sep {
   static sep_t consume_sep(tokenizer &tk) { return true; }
 };
 
-template<typename vec_type, auto vec_ptr, auto sub_method, typename sep>
+template<typename vec_type, auto vec_ptr, typename sep, auto sub_method>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_vec(tokenizer &tk) {
   auto p = sub_method(tk);
   if (!sep::has_sep(tk))return p;
@@ -66,7 +66,7 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_vec(tokenizer &tk)
   return pv;
 }
 
-template<auto make_lr_type, auto sub_method, typename sep>
+template<auto make_lr_type, typename sep, auto sub_method>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_r(tokenizer &tk) {
   /*
    Parse something of the form
@@ -80,7 +80,7 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_r(tokenizer &
   }
   return l;
 }
-template<auto make_r_type, auto sub_method, typename sep>
+template<auto make_r_type, typename sep, auto sub_method>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_unary_l(tokenizer &tk) {
   /*
    Parse something of the form
@@ -89,10 +89,10 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_unary_l(token
    */
   if (!sep::has_sep(tk))return sub_method(tk);
   auto sepr = sep::consume_sep(tk);
-  return make_r_type(parse_fold_unary_l<make_r_type, sub_method, sep>(tk), std::move(sepr));
+  return make_r_type(parse_fold_unary_l<make_r_type, sep, sub_method>(tk), std::move(sepr));
 }
 
-template<auto make_lr_type, auto sub_method, typename sep>
+template<auto make_lr_type, typename sep, auto sub_method>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &tk) {
   /*
    Parse something of the form
@@ -102,7 +102,7 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
   sep::consume_sep(tk);
-  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sub_method, sep>(tk));
+  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sep, sub_method>(tk));
 }
 
 }
@@ -219,19 +219,19 @@ namespace {
 ptr parse_e_s(tokenizer &tk);
 ptr parse_e_t(tokenizer &tk);
 ptr parse_e_a(tokenizer &tk);
-ptr parse_e_f(tokenizer &tk);
+// ptr parse_e_f(tokenizer &tk);
 ptr parse_e_p(tokenizer &tk);
 bool parse_e_p_first(token_type);
 
 ptr make_seq(ptr &&a, ptr &&b, token) { return std::make_unique<seq>(std::move(a), std::move(b)); }
 ptr parse_e_s(tokenizer &tk) {
   using namespace patterns;
-  return parse_fold_r<make_seq, parse_e_t, tk_sep<SEMICOLON>>(tk);
+  return parse_fold_r<make_seq, tk_sep<SEMICOLON>, parse_e_t>(tk);
 }
 
 ptr parse_e_t(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<build_tuple, &build_tuple::args, parse_e_a, tk_sep<COMMA>>(tk);
+  return parse_vec<build_tuple, &build_tuple::args, tk_sep<COMMA>, parse_e_a>(tk);
 }
 
 std::string_view make_unary_op(token t) {
@@ -280,21 +280,6 @@ ptr make_prefix_app(ptr &&arg, token t) {
   return std::make_unique<fun_app>(std::make_unique<identifier>(make_unary_op(t), t.sv), std::move(arg));
 }
 
-ptr parse_e_a(tokenizer &tk) {
-
-  using namespace patterns;
-  return parse_fold_r<make_infix_app,parse_fold_r<make_infix_app,
-                      parse_fold_r<make_infix_app,
-                                   parse_fold_r<make_infix_app,
-                                                parse_fold_unary_l<make_prefix_app,
-                                                                   parse_e_f,
-                                                                   tk_sep<PLUS, MINUS>
-                                                >, tk_sep<STAR, SLASH>>,
-                                   tk_sep<PLUS, MINUS>>,
-                      tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN> >,tk_sep<EQUAL,NOT_EQUAL> >(tk);
-  //TODO: create better syntax to express them as a list
-}
-
 ptr make_fun_app(ptr &&f, ptr &&x, bool) {
   if (constructor *c = dynamic_cast<constructor *>(f.get()); c) {
     if (c->arg)throw parse::error::report_token(x->loc, "unexpected ", " too many argument for the constructor");
@@ -302,9 +287,19 @@ ptr make_fun_app(ptr &&f, ptr &&x, bool) {
     return std::move(f);
   } else return std::make_unique<fun_app>(std::move(f), std::move(x));
 }
-ptr parse_e_f(tokenizer &tk) {
+
+ptr parse_e_a(tokenizer &tk) {
+
   using namespace patterns;
-  return parse_fold_r<make_fun_app, parse_e_p, peek_sep<parse_e_p_first>>(tk);
+  return parse_fold_r<make_infix_app, tk_sep<EQUAL, NOT_EQUAL>,
+         parse_fold_r<make_infix_app, tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN>,
+         parse_fold_r<make_infix_app, tk_sep<PLUS, MINUS>,
+         parse_fold_r<make_infix_app, tk_sep<STAR, SLASH>,
+         parse_fold_unary_l<make_prefix_app, tk_sep<PLUS, MINUS>,
+         parse_fold_r<make_fun_app,peek_sep<parse_e_p_first>,
+         parse_e_p
+         >>>>>>(tk);
+  //TODO: create better syntax to express them as a list
 }
 
 bool parse_e_p_first(token_type t) {
@@ -426,7 +421,7 @@ bool parse_m_3_first(const token &t);
 
 ptr parse_m_1(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<tuple_matcher, &tuple_matcher::args, parse_m_2, tk_sep<COMMA>>(tk);
+  return parse_vec<tuple_matcher, &tuple_matcher::args, tk_sep<COMMA>, parse_m_2>(tk);
 }
 
 ptr parse_m_2(tokenizer &tk) {
@@ -590,10 +585,11 @@ ptr parse_c(tokenizer &tk) {
 
 ptr parse_p(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<product, &product::ts, parse_c, tk_sep<STAR>>(tk);
+  return parse_vec<product, &product::ts, tk_sep<STAR>,parse_c >(tk);
 }
 ptr parse_f(tokenizer &tk) {
-  return patterns::parse_fold_l<std::make_unique<function, ptr &&, ptr &&>, parse_p, patterns::tk_sep<ARROW>>(tk);
+  using namespace patterns;
+  return parse_fold_l<std::make_unique<function, ptr &&, ptr &&>, tk_sep<ARROW>,parse_p>(tk);
 }
 
 ptr parse_t(tokenizer &tk) {
