@@ -84,7 +84,7 @@ TEST(Build, Expression0) {
 }
 
 TEST(Build, Expression0_1) {
-  constexpr std::string_view source = "let () = int_print (int_sum 10 20);;\n";
+  constexpr std::string_view source = "let () = int_print (10+20);;\n";
   test_build(source, "30 ", ir_build::RUN);
 }
 
@@ -107,7 +107,7 @@ TEST(Build, Expression0_4) {
 }
 
 TEST(Build, PartialApplication) {
-  constexpr std::string_view source = "let s100 = int_sum 100;;\n"
+  constexpr std::string_view source = "let s100 = (+) 100;;\n"
                                       "let () = int_print (s100 54);;\n";
   test_build(source, "154 ", ir_build::RUN);
 }
@@ -115,7 +115,7 @@ TEST(Build, PartialApplication) {
 TEST(Build, Expression0_5) {
   constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
-                                      "let sum_100 = int_sum 100 ;;\n"
+                                      "let sum_100 = (+) 100 ;;\n"
                                       "let () = int_print (sum_100 54);;";
   test_build(source, "154 ", ir_build::RUN);
 }
@@ -127,7 +127,7 @@ TEST(Build, Expression1) {
                                       "and yet_another_answer = answer;;\n"
                                       "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
-                                      "let sum_100 = int_sum 100 ;;\n"
+                                      "let sum_100 = (+) 100 ;;\n"
                                       "let () = int_print (sum_100 (if 107=106 then x else y)) ;;\n";
   test_build(source, "154 ", ir_build::RUN);
 
@@ -135,7 +135,7 @@ TEST(Build, Expression1) {
 
 TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
-                                      "let y = g int_sum 10;;\n"
+                                      "let y = g (+) 10;;\n"
                                       "let () = int_print y;;";
   test_build(source, "11 ", ir_build::RUN);
 }
@@ -483,7 +483,7 @@ TEST(Build, Stream) {
     in
     Item(init, (fun () -> partial_sum f init (xf())));;
 
-  let () = print_int_stream 10 (partial_sum int_sum 0 (iota 1)) ;;
+  let () = print_int_stream 10 (partial_sum (+) 0 (iota 1)) ;;
 
   (* let not_divisibly_by d n = not ((n mod d) = 0) ;; *)
 
