@@ -254,10 +254,9 @@ ir::lang::var fun_app::ir_compile(ir_sections_t s) {
     THROW_INTERNAL_ERROR // no other unary operators
   }
 
-
-
+  //TODO: support all arithmetic
   if (auto *fa = dynamic_cast<fun_app *>(f.get()); fa)
-    if (auto *binary_f = dynamic_cast<identifier *>(fa->f.get()); binary_f && util::is_in<std::string_view>(binary_f->name,{"__binary_op__PLUS__","__binary_op__MINUS__","__binary_op__STAR__","__binary_op__SLASH__"})){
+    if (auto *binary_f = dynamic_cast<identifier *>(fa->f.get()); binary_f && util::is_in<std::string_view>(binary_f->name,{"__binary_op__PLUS__","__binary_op__MINUS__","__binary_op__STAR__"})){
       //binary op
       //TODO-someday: addition and subtraction might require a single rather than three ops
       var a_v = fa->x->ir_compile(s).mark(trivial);
@@ -274,7 +273,6 @@ ir::lang::var fun_app::ir_compile(ir_sections_t s) {
       if (binary_f->name == "__binary_op__PLUS__")return with_unary(rhs_expr::binary_op::add);
       if (binary_f->name == "__binary_op__MINUS__")return with_unary(rhs_expr::binary_op::sub);
       if (binary_f->name == "__binary_op__STAR__")return with_unary(rhs_expr::binary_op::imul);
-      if (binary_f->name == "__binary_op__SLASH__")return with_unary(rhs_expr::binary_op::idiv);
       //TODO: add others
       THROW_INTERNAL_ERROR
 

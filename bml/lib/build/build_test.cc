@@ -498,6 +498,16 @@ TEST(Build, Stream) {
 TEST(Build, ArithmeticExpression) {
   test_build("int_println (4*5+27/34*32-27*34/32+5*(6+23)/45);;", "-5\n");
 }
+
+TEST(Build, InverseDigits) {
+  test_build("let big_inverse x = 1000000 / x;;"
+             "int_println (big_inverse 7);;", "142857\n");
+}
+
+TEST(Build, Multiplied) {
+  test_build("let big_mul x =  1234567890 * x;;"
+             "int_println (big_mul 7);;", "8641975230\n");
+}
 /*
 
 */
