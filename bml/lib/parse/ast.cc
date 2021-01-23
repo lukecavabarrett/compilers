@@ -71,7 +71,7 @@ void identifier::compile(direct_sections_t s, size_t stack_pos) {
   }
 }
 identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
-identifier::identifier(std::string_view n,std::string_view loc) : t(loc), name(n), definition_point(nullptr) {}
+identifier::identifier(std::string_view n, std::string_view loc) : t(loc), name(n), definition_point(nullptr) {}
 void identifier::bind(const constr_map &) {}
 ir::lang::var identifier::ir_compile(ir_sections_t s) {
   if (definition_point->top_level) {
@@ -243,6 +243,44 @@ void fun_app::bind(const constr_map &cm) {
 }
 ir::lang::var fun_app::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
+
+  //optimize for arithmetic
+  if (auto *unary_f = dynamic_cast<identifier *>(this->f.get()); unary_f && unary_f->name.starts_with("__unary_op__")) {
+    //unary
+    if (unary_f->name == "__unary_op__PLUS__")return x->ir_compile(s).mark(trivial);
+    if (unary_f->name == "__unary_op__MINUS__")
+      return s.main.declare_assign(rhs_expr::unary_op{
+          .op=rhs_expr::unary_op::neg, .x =  x->ir_compile(s).mark(trivial)}).mark(trivial);
+    THROW_INTERNAL_ERROR // no other unary operators
+  }
+
+
+
+  if (auto *fa = dynamic_cast<fun_app *>(f.get()); fa)
+    if (auto *binary_f = dynamic_cast<identifier *>(fa->f.get()); binary_f && util::is_in<std::string_view>(binary_f->name,{"__binary_op__PLUS__","__binary_op__MINUS__","__binary_op__STAR__","__binary_op__SLASH__"})){
+      //binary op
+      //TODO-someday: addition and subtraction might require a single rather than three ops
+      var a_v = fa->x->ir_compile(s).mark(trivial);
+      var a = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::v_to_int, .x = a_v}).mark(trivial);
+
+      var b_v = x->ir_compile(s).mark(trivial);
+      var b = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::v_to_int, .x = b_v}).mark(trivial);
+
+      auto with_unary = [&](rhs_expr::binary_op::ops o){
+        var a_op_b = s.main.declare_assign(rhs_expr::binary_op{.op = o, .x1 = a,.x2 = b }).mark(trivial);
+        var a_op_b_v = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::int_to_v, .x = a_op_b}).mark(trivial);
+        return a_op_b_v;
+      };
+      if (binary_f->name == "__binary_op__PLUS__")return with_unary(rhs_expr::binary_op::add);
+      if (binary_f->name == "__binary_op__MINUS__")return with_unary(rhs_expr::binary_op::sub);
+      if (binary_f->name == "__binary_op__STAR__")return with_unary(rhs_expr::binary_op::imul);
+      if (binary_f->name == "__binary_op__SLASH__")return with_unary(rhs_expr::binary_op::idiv);
+      //TODO: add others
+      THROW_INTERNAL_ERROR
+
+    }
+
+  //trivial case, a normal function
   var vf = f->ir_compile(s);
   var vx = x->ir_compile(s);
   return s.main.declare_assign(rhs_expr::apply_fn{.f = vf, .x = vx});
@@ -583,10 +621,10 @@ void t::ir_compile_global(ir_sections_t s) {
   using namespace ir::lang;
 
   if (rec) {
-  //TODO:
-  // - check that all values are construcive w.r.t each other
-  //     1. check no name clashes
-  //     2. check that if one contains another
+    //TODO:
+    // - check that all values are construcive w.r.t each other
+    //     1. check no name clashes
+    //     2. check that if one contains another
   }
   for (auto &def : defs)
     if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {

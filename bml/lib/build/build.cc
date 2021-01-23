@@ -27,17 +27,19 @@ ast::global_map make_ir_data_section(std::ostream &target) {
 
 #define register ir_registerer.add<__COUNTER__>
 
-  register("int_sum_fun",2,"int_sum",{"__binary_op__PLUS__"});
-  register("int_sub_fun",2,"int_sub",{"__binary_op__MINUS__"});
-  register("int_mul_fun",2,"int_mul",{"__binary_op__STAR__"});
-  register("int_div_fun",2,"int_div",{"__binary_op__SLAH__"});
-  register("int_negated",1,"__unary_op__MINUS__");
-  register("int_le_fun",2,"__binary_op__LESS_THAN__");
-  register("int_leq_fun",2,"__binary_op__LESS_EQUAL_THAN__");
-  register("print_int",1,"int_print");
-  register("scan_int",1,"int_scan");
-  register("println_int",1,"int_println");
-  register("int_eq_fun",2,"int_eq",{"__binary_op__EQUAL__"});
+  register("_mllib_fn__int_add",2,"__binary_op__PLUS__");
+  register("_mllib_fn__int_sub",2,"__binary_op__MINUS__");
+  register("_mllib_fn__int_mul",2,"__binary_op__STAR__");
+  register("_mllib_fn__int_div",2,"__binary_op__SLASH__");
+  register("_mllib_fn__int_neg",1,"__unary_op__MINUS__");
+  register("_mllib_fn__int_eq",2,"__binary_op__EQUAL__");
+  register("_mllib_fn__int_lt",2,"__binary_op__LESS_THAN__");
+  register("_mllib_fn__int_leq",2,"__binary_op__LESS_EQUAL_THAN__");
+  register("_mllib_fn__int_gt",2,"__binary_op__GREATER_THAN__");
+  register("_mllib_fn__int_geq",2,"__binary_op__GREATER_EQUAL_THAN__");
+  register("_mllib_fn__int_print",1,"int_print");
+  register("_mllib_fn__int_println",1,"int_println");
+  register("_mllib_fn__int_scan",1,"int_scan");
 
 #undef register
 

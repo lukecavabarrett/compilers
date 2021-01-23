@@ -252,7 +252,7 @@ struct context_t {
   void move_to_register(register_t dst, register_t src, std::ostream &os);
   bool is_mem(var v) const;
   bool is_reg_free(register_t r) const;
-  void devirtualize(var v, std::ostream &os);
+
  public:
 
   context_t();
@@ -269,6 +269,7 @@ struct context_t {
   }
   void debug_vars(std::ostream &os) const;
 
+  void devirtualize(var v, std::ostream &os);
   void destroy(var v, std::ostream &);
   void destroy(const std::vector<var> &, std::ostream &);
   void avoid_destruction(var v);

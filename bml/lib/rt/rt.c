@@ -327,7 +327,9 @@ uintptr_t match_failed_fun(uintptr_t unit) {
   return uint_to_v(0);
 }
 
-uintptr_t int_sum_fun(uintptr_t argv) {
+//LIBRARY FUNCTIONS have signature _mllib_fn__...
+
+uintptr_t _mllib_fn__int_add(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -338,7 +340,7 @@ uintptr_t int_sum_fun(uintptr_t argv) {
   return int_to_v(a + b);
 }
 
-uintptr_t int_sub_fun(uintptr_t argv) {
+uintptr_t _mllib_fn__int_sub(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -349,7 +351,7 @@ uintptr_t int_sub_fun(uintptr_t argv) {
   return int_to_v(a - b);
 }
 
-uintptr_t int_mul_fun(uintptr_t argv) {
+uintptr_t _mllib_fn__int_mul(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -360,7 +362,7 @@ uintptr_t int_mul_fun(uintptr_t argv) {
   return int_to_v(a * b);
 }
 
-uintptr_t int_div_fun(uintptr_t argv) {
+uintptr_t _mllib_fn__int_div(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -368,10 +370,17 @@ uintptr_t int_div_fun(uintptr_t argv) {
   decrement_value((uintptr_t) argv_b);
   int64_t a = v_to_int(argv_a[4]);
   decrement_value((uintptr_t) argv_a);
-  return int_to_v(a * b);
+  return int_to_v(a / b);
 }
 
-uintptr_t int_eq_fun(uintptr_t argv) {
+uintptr_t _mllib_fn__int_neg(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  decrement_boxed(argv);
+  return int_to_v(-b);
+}
+
+uintptr_t _mllib_fn__int_eq(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -382,7 +391,7 @@ uintptr_t int_eq_fun(uintptr_t argv) {
   return uint_to_v(a == b ? 1 : 0);
 }
 
-uintptr_t int_le_fun(uintptr_t argv) {
+uintptr_t _mllib_fn__int_lt(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -393,7 +402,7 @@ uintptr_t int_le_fun(uintptr_t argv) {
   return uint_to_v(a < b ? 1 : 0);
 }
 
-uintptr_t int_leq_fun(uintptr_t argv) {
+uintptr_t _mllib_fn__int_leq(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
@@ -404,22 +413,51 @@ uintptr_t int_leq_fun(uintptr_t argv) {
   return uint_to_v(a <= b ? 1 : 0);
 }
 
-uintptr_t int_negated(uintptr_t argv) {
+uintptr_t _mllib_fn__int_gt(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
-  decrement_boxed(argv);
-  return int_to_v(-b);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  return uint_to_v(a > b ? 1 : 0);
 }
 
-uintptr_t println_int(uintptr_t argv) {
+uintptr_t _mllib_fn__int_geq(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
-  uint64_t b = v_to_uint(argv_b[4]);
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  return uint_to_v(a >= b ? 1 : 0);
+}
+
+
+
+uintptr_t _mllib_fn__int_println(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
   printf("%ld\n", b);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
 
-uintptr_t print_int(uintptr_t argv) {
+uintptr_t _mllib_fn__int_fprintln(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  dprintf(a,"%ld\n", b);
+  return uint_to_v(0);
+}
+
+uintptr_t _mllib_fn__int_print(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
   printf("%ld ", b);
@@ -428,21 +466,9 @@ uintptr_t print_int(uintptr_t argv) {
   return uint_to_v(0);
 }
 
-uintptr_t scan_int(uintptr_t argv) {
+uintptr_t _mllib_fn__int_scan(uintptr_t argv) {
   decrement_boxed(argv);
   int64_t x;
   scanf("%ld", &x);
   return int_to_v(x);
 }
-
-uintptr_t println_int_err(uintptr_t argv) {
-  uintptr_t *argv_b = (uintptr_t *) argv;
-  int64_t b = v_to_int(argv_b[4]);
-  fprintf(stderr, "%ld\n", b);
-  decrement_boxed(argv);
-  return uint_to_v(0);
-}
-
-#define Make_Tag_Size_d(tag, size, d)  ((((uint64_t) tag) << 32) | (((uint64_t) size) << 1) | (d & 1))
-#define Uint_to_v(x) ((uintptr_t)((x<<1)|1))
-#define V_to_uint(x) ((uint64_t)(x>>1))

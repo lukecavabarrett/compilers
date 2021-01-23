@@ -64,8 +64,8 @@ destroy_class_t operator|(const destroy_class_t a, const destroy_class_t b);
 destroy_class_t operator&(const destroy_class_t a, const destroy_class_t b);
 bool operator<=(const destroy_class_t a, const destroy_class_t b);
 bool operator>=(const destroy_class_t a, const destroy_class_t b);
-bool operator<(const destroy_class_t a,const destroy_class_t b);
-bool operator>(const destroy_class_t a,const destroy_class_t b);
+bool operator<(const destroy_class_t a, const destroy_class_t b);
+bool operator>(const destroy_class_t a, const destroy_class_t b);
 struct var {
 
   uint64_t id;
@@ -75,7 +75,10 @@ struct var {
     destroy_classes.push_back(value);
     assert(destroy_classes.size() == id + 1);
   }
-  explicit var(std::string_view name) : var() { maybe_names.try_emplace(id, name); ++(name_size[name]); }
+  explicit var(std::string_view name) : var() {
+    maybe_names.try_emplace(id, name);
+    ++(name_size[name]);
+  }
   var(const var &) = default;
   var(var &&) = default;
   var &operator=(const var &) = default;
@@ -94,11 +97,11 @@ struct var {
     return maybe_names.contains(id) ? std::string_view(maybe_names.at(id)) : "_nan_";
   }
   static std::unordered_map<uint64_t, std::string> maybe_names;
-  static std::unordered_map<std::string_view,size_t> name_size;
+  static std::unordered_map<std::string_view, size_t> name_size;
   static std::vector<destroy_class_t> destroy_classes;
   destroy_class_t &destroy_class() { return destroy_classes.at(id); };
   const destroy_class_t &destroy_class() const { return destroy_classes.at(id); };
-  var& mark(destroy_class_t d) {
+  var &mark(destroy_class_t d) {
     destroy_class() = d;
     return *this;
   }
@@ -120,13 +123,17 @@ struct memory_access { //TODO: mark destruction_class
 struct malloc { size_t size; }; //TODO: mark destruction class
 struct apply_fn { var f, x; }; //TODO: mark destruction class (might be maybe_non_trivial)
 struct binary_op { //Assert inputs are trivial; result should be trivial
-  enum ops { add, sub, sal, sar };
+  enum ops { add, sub, sal, sar, mul, div, imul, idiv };
   static std::string_view ops_to_string(ops op) {
     switch (op) {
       case add:return "add";
       case sub:return "sub";
       case sal:return "sal";
       case sar:return "sar";
+      case mul:return "mul";
+      case div:return "div";
+      case imul:return "imul";
+      case idiv:return "idiv";
       default:THROW_UNIMPLEMENTED;
     }
   }
@@ -135,14 +142,35 @@ struct binary_op { //Assert inputs are trivial; result should be trivial
     if (s == "sub")return sub;
     if (s == "sal")return sal;
     if (s == "sar")return sar;
+    if (s == "mul")return mul;
+    if (s == "div")return div;
+    if (s == "imul")return imul;
+    if (s == "idiv")return idiv;
     THROW_UNIMPLEMENTED
   }
   static bool is_commutative(ops op) {
     switch (op) {
+      case mul:
+      case imul:
       case add:return true;
       case sal:
       case sar:
-      case sub:return false;
+      case sub:
+      case div:
+      case idiv:return false;
+      default:THROW_UNIMPLEMENTED;
+    }
+  }
+  uint64_t of_constant(uint64_t a, uint64_t b) {
+    switch (op) {
+      case mul: return a * b;
+      case imul: return int64_t(a) * int64_t(b);
+      case add: return a + b;
+      case sal: return int64_t(a) << b;
+      case sar:return int64_t(a) >> b;
+      case sub:return a - b;
+      case div:return a / b;
+      case idiv:return int64_t(a) / int64_t(b);
       default:THROW_UNIMPLEMENTED;
     }
   }
@@ -151,12 +179,13 @@ struct binary_op { //Assert inputs are trivial; result should be trivial
 };
 
 struct unary_op { //assert input is trivial; result should be trivial
-  enum ops { int_to_v, v_to_int, uint_to_v, v_to_uint };
+  enum ops { int_to_v, v_to_int, uint_to_v, v_to_uint, neg };
   static ops string_to_op(std::string_view s) {
     if (s == "int_to_v")return int_to_v;
     if (s == "v_to_int")return v_to_int;
     if (s == "uint_to_v")return uint_to_v;
     if (s == "v_to_uint")return v_to_uint;
+    if (s == "neg")return neg;
     THROW_UNIMPLEMENTED
   }
 
@@ -166,6 +195,7 @@ struct unary_op { //assert input is trivial; result should be trivial
       case v_to_int:return uint64_t(int64_t(v) >> 1);;
       case uint_to_v:return uint64_t((uint64_t(v) << 1) | 1);
       case v_to_uint:return uint64_t(uint64_t(v) >> 1);
+      case neg:return uint64_t(-int64_t(v) + 2);
       default:THROW_UNIMPLEMENTED;
     }
   }
@@ -175,6 +205,7 @@ struct unary_op { //assert input is trivial; result should be trivial
       case v_to_int:return "v_to_int";
       case uint_to_v:return "uint_to_v";
       case v_to_uint:return "v_to_uint";
+      case neg:return "neg";
       default:THROW_UNIMPLEMENTED;
     }
   }
@@ -193,6 +224,14 @@ struct unary_op { //assert input is trivial; result should be trivial
         os << "sar " << dst << ", 1 \n";
         return;
       };
+      case neg: {
+        if (src != dst) {
+          os << "mov " << dst << ", " << src << "\n";
+        }
+        os << "neg " << dst << "\n";
+        os << "add " << dst << ", 2 \n";
+        return;
+      }
       case uint_to_v: {
         THROW_UNIMPLEMENTED
         return;
@@ -241,7 +280,7 @@ struct cmp_vars {
 struct scope {
   std::vector<instruction::t> body;
   std::vector<std::vector<var> > destroys; // destroys[i] must be destroyed before instruction i
-  std::vector<std::pair<size_t,std::stringstream>> comments;
+  std::vector<std::pair<size_t, std::stringstream>> comments;
   void push_back(instruction::t &&i);
   scope &operator<<(instruction::t &&i);
   var ret;
@@ -251,8 +290,8 @@ struct scope {
   void parse(parse::tokenizer &, std::unordered_map<std::string_view, var> &);
   ir::lang::var declare_constant(uint64_t);
   ir::lang::var declare_global(std::string_view);
-  ir::lang::var declare_assign(rhs_expr::t&&);
-  std::ostream& comment() { return comments.emplace_back(body.size(),std::stringstream{}).second; }
+  ir::lang::var declare_assign(rhs_expr::t &&);
+  std::ostream &comment() { return comments.emplace_back(body.size(), std::stringstream{}).second; }
 };
 
 struct function : public scope {
@@ -317,25 +356,25 @@ enum token_type {
 
 namespace error {
 class t : public std::runtime_error {
- public:
+public:
   t() : std::runtime_error("parsing error") {}
 };
 
 class report_token : public t, public util::error::report_token_error {
- public:
+public:
   report_token(std::string_view found, std::string_view before, std::string_view after)
       : util::error::report_token_error(before, found, after) {}
 
 };
 
 class unexpected_token : public t, public util::error::report_token_error {
- public:
+public:
   unexpected_token(std::string_view found) : util::error::report_token_error("Token", found, "was not expected here") {}
 
 };
 
 class expected_token_found_another : public t, public util::error::report_token_error {
- public:
+public:
   expected_token_found_another(std::string_view expected, std::string_view found)
       : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
 };
@@ -364,7 +403,7 @@ struct token {
 };
 
 class tokenizer {
- public:
+public:
   tokenizer(const tokenizer &) = default;
   tokenizer(tokenizer &&) = default;
   tokenizer &operator=(const tokenizer &) = default;
@@ -381,7 +420,7 @@ class tokenizer {
   void unexpected_token();
   void print_errors();
   std::string_view get_source() const;
- private:
+private:
   void write_head();
   std::string_view to_parse, source;
   token head;

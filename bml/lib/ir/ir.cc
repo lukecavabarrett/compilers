@@ -330,7 +330,16 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                   const bool operator_commutative = rhs_expr::binary_op::is_commutative(b.op);
                   if (!destroys.empty() && operator_commutative && contains(destroys, b.x2) && !c.is_virtual(b.x2))
                     std::swap(b.x1, b.x2);
-                  if (contains(destroys, b.x1)) {
+
+                  if (c.is_virtual(b.x1) && c.is_virtual(b.x2)) {
+                    //if both virtual, create virtual result
+                    c.declare_const(a.dst, b.of_constant(c.is_constant(b.x1).value(), c.is_constant(b.x2).value()));
+                  } else if (contains(destroys, b.x1)) {
+
+                    //we materialize it if needed
+                    if (c.is_virtual(b.x1))c.devirtualize(b.x1, os);
+
+
                     //variable move
                     assert(c.contains((b.x1)));
                     assert(c.contains((b.x2)));
@@ -342,10 +351,24 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
                     destroys.erase(std::find(destroys.begin(), destroys.end(), b.x1));
 
                   } else {
-                    c.declare_copy(a.dst, b.x1, os);
+
+                    bool is_bx1_devirtualized = false;
+                    uint64_t bx1_const_value;
+                    if (c.is_virtual(b.x1)) {
+                      //we need to temporarily materialize it
+                      is_bx1_devirtualized = true;
+                      bx1_const_value = c.is_constant(b.x1).value();
+                      c.devirtualize(b.x1, os);
+                      c.declare_move(a.dst, b.x1);
+                    } else c.declare_copy(a.dst, b.x1, os);
+
                     c.make_non_both_mem(a.dst, b.x2, os);
-                    os << rhs_expr::binary_op::ops_to_string(b.op) << " " << c.at(a.dst) << ", " << c.at(b.x2) << "\n";
+                    os << rhs_expr::binary_op::ops_to_string(b.op) << " " << c.at(a.dst) << ", " << c.at(b.x2)
+                       << "\n";
+                    //restore bx1
+                    if (is_bx1_devirtualized)c.declare_const(b.x1, bx1_const_value);
                   }
+
                 }
 
             }, a.src);
@@ -642,7 +665,7 @@ void context_t::retrieve(var v, std::ostream &os) const {
   assert(vars.contains(v));
   std::visit(overloaded{
       [&](constant c) {
-        os << c.value;
+        os << int64_t(c.value);
       },
       [&](const global &n) {
         os << n;

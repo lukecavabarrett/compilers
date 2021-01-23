@@ -411,7 +411,7 @@ retcode_format db  10,"%llu", 0
   oasm << R"(
 section .text
 global main
-extern printf, malloc, exit, print_debug, int_sum_fun, apply_fn, decrement_nontrivial, decrement_value, increment_value, println_int, println_int_err,println_int_err_skim
+extern printf, malloc, exit, print_debug, _mllib_fn__int_add, apply_fn, decrement_nontrivial, decrement_value, increment_value, _mllib_fn__int_println, _mllib_fn__int_fprintln
 
 )";
 
@@ -819,7 +819,7 @@ return y2;
 }
 )";
   test_ir_build(source,
-                {fun("int_sum_fun", 2), 100, 10},
+                {fun("_mllib_fn__int_add", 2), 100, 10},
                 {.test_function="apply2", .expected_return=110});
 }
 
@@ -968,10 +968,23 @@ length(args : non_trivial) {
 
 TEST(IO, Stdout) {
   test_ir_build("", {42}, {
-      .test_function = "println_int",
+      .test_function = "_mllib_fn__int_println",
       .call_style=progressive_application,
       .curriables = {
-          {"println_int", 1}
+          {"_mllib_fn__int_println", 1}
+      },
+      .expected_return = 0,
+      .expected_stdout = "42\n",
+      .expected_stderr = "",
+  });
+}
+
+TEST(IO, StdoutAsFprint) {
+  test_ir_build("", {STDOUT_FILENO,42}, {
+      .test_function = "_mllib_fn__int_fprintln",
+      .call_style=progressive_application,
+      .curriables = {
+          {"_mllib_fn__int_fprintln", 2}
       },
       .expected_return = 0,
       .expected_stdout = "42\n",
@@ -980,11 +993,11 @@ TEST(IO, Stdout) {
 }
 
 TEST(IO, Stderr) {
-  test_ir_build("", {42}, {
-      .test_function = "println_int_err",
+  test_ir_build("", {STDERR_FILENO,42}, {
+      .test_function = "_mllib_fn__int_fprintln",
       .call_style=progressive_application,
       .curriables = {
-          {"println_int_err", 1}
+          {"_mllib_fn__int_fprintln", 2}
       },
       .expected_return = 0,
       .expected_stdout = "",
@@ -1050,7 +1063,7 @@ TEST(Memory, DestroyCallDestructor) {
   static constexpr std::string_view source = R"(
 print_box (args : non_trivial) {
   boxed_int : boxed = args[4];
-  pint = __fun_block_println_int__;
+  pint = __fun_block__mllib_fn__int_println__;
   x : trivial = boxed_int[2];
   unit : trivial = apply_fn(pint,x);
   return unit;
@@ -1079,7 +1092,7 @@ test_function(x){
   test_ir_build(source, {1546}, {
       .call_style=as_args,
       .curriables = {
-          {"println_int", 1}, {"make_epitaffable_box", 1}, {"print_box", 1}
+          {"_mllib_fn__int_println", 1}, {"make_epitaffable_box", 1}, {"print_box", 1}
       },
       .expected_return = 0,
       .debug_log = true,
