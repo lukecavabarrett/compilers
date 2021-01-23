@@ -71,6 +71,7 @@ void identifier::compile(direct_sections_t s, size_t stack_pos) {
   }
 }
 identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
+identifier::identifier(std::string_view n,std::string_view loc) : t(loc), name(n), definition_point(nullptr) {}
 void identifier::bind(const constr_map &) {}
 ir::lang::var identifier::ir_compile(ir_sections_t s) {
   if (definition_point->top_level) {

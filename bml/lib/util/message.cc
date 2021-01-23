@@ -18,6 +18,28 @@ inline constexpr auto make_string_view(_It begin, _It end) {
 }
 }
 
+void message::print(std::ostream &os,
+                    std::initializer_list<std::string_view> files,
+                    std::initializer_list<std::string_view> filenames) const {
+  std::string_view tk = get_code_token();
+  size_t i = 0;
+  for (std::string_view file : files) {
+    if (!file.empty() && tk.begin() >= file.begin() && tk.end() <= file.end()) {
+
+      if (i < filenames.size()) {
+        auto name = filenames.begin();
+        std::advance(name, i);
+        return print(os, file, *name);
+      } else {
+        return print(os, file,"unknown_source");
+      }
+    }
+    ++i;
+  }
+  return print(os, "","unknown_source");
+
+}
+
 void message::print(std::ostream &os, std::string_view file, std::string_view filename) const {
 
   constexpr std::string_view bold_style = "\e[1m";
@@ -30,15 +52,16 @@ void message::print(std::ostream &os, std::string_view file, std::string_view fi
   std::string_view tk = get_code_token();
   std::size_t posy, posx;
   os << bold_style;
-  if (!file.empty() && tk.begin() >= file.begin() && tk.end()<=file.end()) {
+  if (!file.empty() && tk.begin() >= file.begin() && tk.end() <= file.end()) {
     posy = std::count(file.begin(), tk.begin(), 10) + 1;
-    posx = std::distance(std::find(std::string_view::const_reverse_iterator(tk.begin() + 1), file.crend(), 10).base(), tk.begin()) + 1;
+    posx = std::distance(std::find(std::string_view::const_reverse_iterator(tk.begin() + 1), file.crend(), 10).base(),
+                         tk.begin()) + 1;
     os << filename << sep << posy << sep << posx << ssep;
   }
   os << err_style << err_type << ssep << clear_style;
   print_content(os);
   os << std::endl;
-  if (!file.empty() && tk.begin() >= file.begin() && tk.end()<=file.end()) {
+  if (!file.empty() && tk.begin() >= file.begin() && tk.end() <= file.end()) {
 
     auto it_endline = tk.begin();
     if (auto ite = std::find(tk.begin(), tk.end(), 10);ite != tk.end()) {
@@ -48,7 +71,8 @@ void message::print(std::ostream &os, std::string_view file, std::string_view fi
       it_endline = std::find(tk.end(), file.end(), 10);
     }
     for (int w = 5 - std::to_string(posy).size(); w--;)os << ' ';
-    os << posy << " | " << make_string_view(tk.begin() - posx + 1, tk.begin()) << bold_style << err_style << tk << clear_style << make_string_view(tk.end(), it_endline) << std::endl;
+    os << posy << " | " << make_string_view(tk.begin() - posx + 1, tk.begin()) << bold_style << err_style << tk
+       << clear_style << make_string_view(tk.end(), it_endline) << std::endl;
     os << "      |" << std::string(posx, ' ') << bold_style << err_style << "^";
     for (int w = tk.size() - 1; w--;)os << '~';
     os << clear_style << std::endl;

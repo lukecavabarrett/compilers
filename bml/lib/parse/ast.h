@@ -212,6 +212,7 @@ struct identifier : public t {
   free_vars_t free_vars() final;
   const matcher::universal_matcher *definition_point;
   explicit identifier(std::string_view n);
+  explicit identifier(std::string_view n,std::string_view loc);
   capture_set capture_group() final;
   std::string_view name;
   void compile(direct_sections_t s, size_t stack_pos) final;

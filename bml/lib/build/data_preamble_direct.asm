@@ -8,4 +8,5 @@ int_print dq 1,1,int_print_fn
 int_println dq 1,1,int_println_fn
 int_eq dq 1,2,int_eq_fn
 int_le dq 1,2,int_le_fn
+int_negate dq 1,1,int_negate_fn
 mf_format db "match failed",10,0

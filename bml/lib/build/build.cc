@@ -1,63 +1,44 @@
 #include <build.h>
 
+
+
+
+struct ir_registerer_t{
+  template<size_t Id>
+  void add(std::string_view external_name,size_t args,std::string_view name, std::initializer_list<std::string_view> aliases={}){
+    static ast::matcher::universal_matcher m(name);
+    data << "extern " << external_name <<" \n";
+    m.ir_globally_register(globals);
+    m.ir_allocate_globally_funblock(data, args, external_name);
+    m.use_as_immediate = m.top_level = true;
+    for(std::string_view alias : aliases)
+      globals.try_emplace(alias, &m); // alias maps to the same
+  }
+  ast::global_map& globals;
+  std::ostream &data;
+};
 ast::global_map make_ir_data_section(std::ostream &target) {
   //prepare all the standard data
   ast::global_map globals;
   target << "section .data\n";
   target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value, malloc, json_debug\n";
 
-  {
-    target << "extern int_sum_fun \n";
-    static ast::matcher::universal_matcher int_sum("int_sum");
-    int_sum.ir_globally_register(globals);
-    int_sum.ir_allocate_globally_funblock(target, 2, "int_sum_fun");
-    int_sum.use_as_immediate = int_sum.top_level = true;
-    globals.try_emplace("+", &int_sum); // + maps to the same
-  }
+  ir_registerer_t ir_registerer{.globals=globals,.data=target};
 
-  {
-    target << "extern int_sub_fun \n";
-    static ast::matcher::universal_matcher int_sub("int_sub");
-    int_sub.ir_globally_register(globals);
-    int_sub.ir_allocate_globally_funblock(target, 2, "int_sub_fun");
-    int_sub.use_as_immediate = int_sub.top_level = true;
-    globals.try_emplace("-", &int_sub); // - maps to the same
-  }
+#define register ir_registerer.add<__COUNTER__>
 
-  {
-    target << "extern int_le_fun \n";
-    static ast::matcher::universal_matcher int_le("int_le");
-    int_le.ir_globally_register(globals);
-    int_le.ir_allocate_globally_funblock(target, 2, "int_le_fun");
-    int_le.use_as_immediate = int_le.top_level = true;
-    globals.try_emplace("<=", &int_le); // - maps to the same
-  }
+  register("int_sum_fun",2,"int_sum",{"__binary_op__PLUS__"});
+  register("int_sub_fun",2,"int_sub",{"__binary_op__MINUS__"});
+  register("int_negated",1,"__unary_op__MINUS__");
+  register("int_le_fun",2,"__binary_op__LESS_THAN__");
+  register("print_int",1,"int_print");
+  register("println_int",1,"int_println");
+  register("int_eq_fun",2,"int_eq",{"__binary_op__EQUAL__"});
 
-  {
-    target << "extern print_int \n";
-    static ast::matcher::universal_matcher int_print("int_print");
-    int_print.ir_globally_register(globals);
-    int_print.ir_allocate_globally_funblock(target, 1, "print_int");
-    int_print.use_as_immediate = int_print.top_level = true;
-  }
+#undef register
 
-  {
-    target << "extern println_int \n";
-    static ast::matcher::universal_matcher int_println("int_println");
-    int_println.ir_globally_register(globals);
-    int_println.ir_allocate_globally_funblock(target, 1, "println_int");
-    int_println.use_as_immediate = int_println.top_level = true;
-  }
 
-  {
-    target << "extern int_eq_fun \n";
-    static ast::matcher::universal_matcher int_eq("int_eq");
-    int_eq.ir_globally_register(globals);
-    int_eq.ir_allocate_globally_funblock(target, 2, "int_eq_fun");
-    int_eq.use_as_immediate = int_eq.top_level = true;
-    globals.try_emplace("=", &int_eq);
-  }
-
+  //special case for the unmatched function
   {
     target << "extern match_failed_fun \n";
     static ast::matcher::universal_matcher mf("__throw__unmatched__");
@@ -66,28 +47,6 @@ ast::global_map make_ir_data_section(std::ostream &target) {
     mf.use_as_immediate = mf.top_level = true;
     target << "__throw__unmatched__ equ " << mf.ir_asm_name() << "\n";
   }
-
-  /*static ast::matcher::universal_matcher int_sub("int_sub");
-  int_sub.use_as_immediate = int_sub.top_level = true;
-  globals.try_emplace("int_sub", &int_sub);
-  globals.try_emplace("-", &int_sub);
-
-  static ast::matcher::universal_matcher int_eq("int_eq");
-  int_eq.use_as_immediate = int_eq.top_level = true;
-  globals.try_emplace("int_eq", &int_eq);
-  globals.try_emplace("=", &int_eq);
-
-  static ast::matcher::universal_matcher int_print("int_print");
-  int_print.use_as_immediate = int_print.top_level = true;
-  globals.try_emplace("int_print", &int_print);
-
-  static ast::matcher::universal_matcher int_println("int_println");
-  int_println.use_as_immediate = int_println.top_level = true;
-  globals.try_emplace("int_println", &int_println);
-
-  static ast::matcher::universal_matcher int_le("int_le");
-  int_le.use_as_immediate = int_le.top_level = true;
-  globals.try_emplace("int_le", &int_le);*/
 
   return globals;
 }
@@ -159,36 +118,39 @@ void build_ir(std::string_view s, std::ostream &target) {
     f.compile(target);
   }
 }
+
+struct direct_registerer_t{
+  template<size_t Id>
+  void add(std::string_view name, std::initializer_list<std::string_view> aliases={}){
+    static ast::matcher::universal_matcher m(name);
+
+    m.use_as_immediate = m.top_level = true;
+    globals.try_emplace(name, &m);
+    for(std::string_view alias : aliases)
+      globals.try_emplace(alias, &m);
+  }
+  ast::global_map& globals;
+};
 void build_direct(std::string_view s, std::ostream &target) {
 
   parse::tokenizer tk(s);
   ast::global_map globals;
-  ast::matcher::universal_matcher int_sum("int_sum");
-  int_sum.use_as_immediate = int_sum.top_level = true;
-  globals.try_emplace("int_sum", &int_sum);
-  globals.try_emplace("+", &int_sum);
 
-  ast::matcher::universal_matcher int_sub("int_sub");
-  int_sub.use_as_immediate = int_sub.top_level = true;
-  globals.try_emplace("int_sub", &int_sub);
-  globals.try_emplace("-", &int_sub);
 
-  ast::matcher::universal_matcher int_eq("int_eq");
-  int_eq.use_as_immediate = int_eq.top_level = true;
-  globals.try_emplace("int_eq", &int_eq);
-  globals.try_emplace("=", &int_eq);
+  direct_registerer_t direct_registerer{.globals=globals};
 
-  ast::matcher::universal_matcher int_print("int_print");
-  int_print.use_as_immediate = int_print.top_level = true;
-  globals.try_emplace("int_print", &int_print);
+#define register direct_registerer.add<__COUNTER__>
 
-  ast::matcher::universal_matcher int_println("int_println");
-  int_println.use_as_immediate = int_println.top_level = true;
-  globals.try_emplace("int_println", &int_println);
+  register("int_sum",{"__binary_op__PLUS__"});
+  register("int_sub",{"__binary_op__MINUS__"});
+  register("int_eq",{"__binary_op__EQUAL__"});
+  register("int_print");
+  register("int_println");
+  register("int_le",{"__binary_op__LESS_THAN__"});
+  register("int_negate",{"__unary_op__MINUS__"});
 
-  ast::matcher::universal_matcher int_le("int_le");
-  int_le.use_as_immediate = int_le.top_level = true;
-  globals.try_emplace("int_le", &int_le);
+
+#undef register
 
   ast::constr_map constr_map;
 
@@ -262,7 +224,8 @@ void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m) {
       throw ast::unbound_value((*std::min_element(usages.begin(),
                                                   usages.end(),
                                                   [](const auto &i1, const auto &i2) {
-                                                    return i1->name.begin() < i2->name.begin();
-                                                  }))->name);
+                                                    return i1->loc.begin() < i2->loc.begin();
+                                                  }))->loc);
+    //TODO: decide whether it would be nicer to report all occurrences of the unbound variable
   }
 }

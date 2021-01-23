@@ -33,7 +33,6 @@ void test_build_ir(std::string_view source,
                    int expected_exit_code = 0,
                    std::string_view expected_stderr = "",
                    ir_build mode = ir_build::NONE) {
-
   if (mode == ir_build::NONE)return;
 #define target  "/home/luke/CLionProjects/compilers/bml/output"
   std::ofstream oasm;
@@ -103,7 +102,7 @@ TEST(Build, Expression0_3) {
 }
 
 TEST(Build, Expression0_4) {
-  constexpr std::string_view source = "let () = int_print (if (int_eq 107 106) then 10 else 12);;\n";
+  constexpr std::string_view source = "let () = int_print (if 107 = 106 then 10 else 12);;\n";
   test_build(source, "12 ", ir_build::RUN);
 }
 
@@ -117,9 +116,7 @@ TEST(Build, Expression0_5) {
   constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = int_sum 100 ;;\n"
-                                      "let () = int_print (sum_100 54);;"
-  //"let () = int_print (int_sum 100 (if (int_eq 107 106) then x else y));;\n"
-  ;
+                                      "let () = int_print (sum_100 54);;";
   test_build(source, "154 ", ir_build::RUN);
 }
 
@@ -131,7 +128,7 @@ TEST(Build, Expression1) {
                                       "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = int_sum 100 ;;\n"
-                                      "let () = int_print (sum_100 (if (int_eq 107 106) then x else y)) ;;\n";
+                                      "let () = int_print (sum_100 (if 107=106 then x else y)) ;;\n";
   test_build(source, "154 ", ir_build::RUN);
 
 }
@@ -236,7 +233,7 @@ TEST(Build, MaybeAdditionCorrect) {
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_bind (maybe_add y) x;;\n"
-             "let maybe_print x = match x with | None -> int_print (0-1) | Some x -> int_print x;;\n"
+             "let maybe_print x = match x with | None -> int_print (-1) | Some x -> int_print x;;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
@@ -247,7 +244,7 @@ TEST(Build, MaybeAdditionWithCapture) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
-             "let maybe_print x = match x with | None -> int_print (0-1) | Some x -> int_print x;;\n"
+             "let maybe_print x = match x with | None -> int_print (-1) | Some x -> int_print x;;\n"
              "let maybe_sum maybe_a maybe_b = option_bind (fun a -> option_map (fun b -> (a+b) ) maybe_b) maybe_a;;\n"
              "let test_sum a b = maybe_print (maybe_sum a b);;\n"
              "let _ = test_sum (Some 10) (Some 100);;\n"
@@ -279,7 +276,7 @@ TEST(Build, CaptureMaybeSum) {
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
              "let maybe_sum y x = option_bind (fun x -> option_map (fun y -> x + y) y) x;;\n"
-             "let maybe_print x = match x with | None -> int_print (0-1) | Some x -> int_print x;;\n"
+             "let maybe_print x = match x with | None -> int_print (-1) | Some x -> int_print x;;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
@@ -372,7 +369,7 @@ TEST(Build, TakeFromInfiniteList) {
              "let rec print_list l = match l with\n"
              "| Null -> ()\n"
              "| Cons (x,xs) -> int_print x; print_list xs;;\n"
-             "let rec take l n = if (int_eq n 0) then Null else match l with\n"
+             "let rec take l n = if n=0 then Null else match l with\n"
              "| Null -> Null\n"
              "| Cons (x,xs) -> Cons (x,take xs (n-1))\n;;"
              "let rec a = Cons(1,a);;\n"
@@ -383,15 +380,15 @@ TEST(Build, TakeFromInfiniteList) {
 }
 
 #define floyd_algo "    let rec run_until_equal f tortoise hare =\n"\
-"    if (int_eq tortoise hare) then (tortoise,hare)\n"\
+"    if tortoise=hare then (tortoise,hare)\n"\
 "    else run_until_equal f (f tortoise) (f (f hare)) ;;\n"\
 \
 "    let rec find_mu f tortoise hare mu =\n"\
-"    if (int_eq tortoise hare) then (tortoise,hare,mu)\n"\
+"    if tortoise=hare then (tortoise,hare,mu)\n"\
 "    else find_mu f (f tortoise) (f hare) (mu+1) ;;\n"\
 \
 "    let rec find_lam f tortoise hare lam = \n"\
-"    if (int_eq tortoise hare) then lam else\n"\
+"    if tortoise=hare then lam else\n"\
 "    find_lam f tortoise (f hare) (lam +1) ;;\n"\
 \
 "let floyd f x0 = \n"\
@@ -425,21 +422,29 @@ TEST(Build, TortoiseAndHare_Simple) {
       "let () = list_examine_cycle c;;", "2 4 ", ir_build::RUN);
 }
 
+TEST(Build,SmallComparison) {
+  test_build(R"(
+ let () = int_print (3 < 4);;
+    let () = int_print (3 < 3);;
+    let () = int_println (3 < 2);;
+)","1 0 0\n",ir_build::RUN);
+}
+
 TEST(Build, IntComparison) {
   test_build(R"(
-    let () = int_print (int_le 3 4);;
-    let () = int_print (int_le 3 3);;
-    let () = int_println (int_le 3 2);;
+    let () = int_print (3 < 4);;
+    let () = int_print (3 < 3);;
+    let () = int_println (3 < 2);;
 
-    let () = int_print (int_le 0 (0-1));;
-    let () = int_print (int_le 0 0);;
-    let () = int_println (int_le 0 1);;
+    let () = int_print (0 < (-1));;
+    let () = int_print (0 < 0);;
+    let () = int_println (0 < 1);;
 
-    let () = int_print (int_le (0-1) (0-2));;
-    let () = int_print (int_le (0-1) (0-1));;
-    let () = int_println (int_le (0-1) 0);;
+    let () = int_print ((-1) < (-2));;
+    let () = int_print ((-1) < (-1));;
+    let () = int_println ((-1) <  0);;
 
-    let () = int_println (int_le (0-54) (0-53));;
+    let () = int_println ((-54) < (-53));;
 
 )", "1 0 0\n0 0 1\n0 0 1\n1\n", ir_build::RUN);
 }
@@ -448,7 +453,7 @@ TEST(Build, Stream) {
   test_build(R"(
   type 'a seq = | Item of 'a * (unit -> 'a seq);;
   let rec print_int_stream n (Item (x,xf)) =
-    if (int_eq n 0)
+    if n=0
     then (
       int_println x
     ) else (
@@ -469,7 +474,7 @@ TEST(Build, Stream) {
       filter p (xf())
     );;
 
-  let () = print_int_stream 10 (filter (fun x -> int_le 50 x) (iota 42));;
+  let () = print_int_stream 10 (filter (fun x -> 50 < x) (iota 42));;
 
   let rec partial_sum f init
  (Item(x,xf)) =
@@ -481,7 +486,6 @@ TEST(Build, Stream) {
   let () = print_int_stream 10 (partial_sum int_sum 0 (iota 1)) ;;
 
   (* let not_divisibly_by d n = not ((n mod d) = 0) ;; *)
-
 
                       )",
              "42 43 44 45 46 47 48 49 50 51 52\n"

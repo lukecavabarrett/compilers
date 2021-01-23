@@ -13,6 +13,7 @@ class message {
   virtual void print_content(std::ostream&) const = 0;
  public:
   virtual void print(std::ostream&,std::string_view file,std::string_view filename) const;
+  virtual void print(std::ostream&,std::initializer_list<std::string_view> files, std::initializer_list<std::string_view> filenames) const;
 };
 
 //std::ostream& operator<< (std::ostream& os, const message& em);

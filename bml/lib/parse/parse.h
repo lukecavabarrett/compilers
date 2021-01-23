@@ -15,30 +15,33 @@ enum token_type {
   LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE,
   EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, FUN,
   COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
-  STAR, SLASH, TYPE, NONREC, OF, END_OF_INPUT
+  LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN,
+  STAR, SLASH, TYPE, NONREC, OF, NOT_EQUAL, END_OF_INPUT
 };
 
 namespace error {
 class t : public std::runtime_error {
- public:
+public:
   t() : std::runtime_error("parsing error") {}
 };
 
 class report_token : public t, public util::error::report_token_error {
- public:
-  report_token(std::string_view found, std::string_view before, std::string_view after) : util::error::report_token_error(before, found, after) {}
+public:
+  report_token(std::string_view found, std::string_view before, std::string_view after)
+      : util::error::report_token_error(before, found, after) {}
 
 };
 
 class unexpected_token : public t, public util::error::report_token_error {
- public:
+public:
   unexpected_token(std::string_view found) : util::error::report_token_error("Token", found, "was not expected here") {}
 
 };
 
 class expected_token_found_another : public t, public util::error::report_token_error {
- public:
-  expected_token_found_another(std::string_view expected, std::string_view found) : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
+public:
+  expected_token_found_another(std::string_view expected, std::string_view found)
+      : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
 };
 }
 
@@ -46,13 +49,13 @@ namespace {
 typedef std::pair<std::string_view, token_type> st;
 }
 constexpr auto tokens_map = util::make_array(
-    st{"(", token_type::PARENS_OPEN},
-    st{")", token_type::PARENS_CLOSE},
+    st{"(", PARENS_OPEN},
+    st{")", PARENS_CLOSE},
     st{"=", EQUAL}, st{"|", PIPE},
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},
     st{"let", LET}, st{"rec", REC},
-    st{"fun",FUN},
+    st{"fun", FUN},
     st{"nonrec", NONREC}, st{"of", OF},
     st{"in", IN}, st{"and", AND},
     st{"with", WITH}, st{"match", MATCH},
@@ -60,7 +63,10 @@ constexpr auto tokens_map = util::make_array(
     st{";", SEMICOLON}, st{".", DOT},
     st{"if", IF}, st{"then", THEN}, st{"else", ELSE},
     st{"true", TRUE}, st{"false", FALSE}, st{"_", UNDERSCORE},
-    st{"*", STAR}, st{"/", SLASH}, st{"type", TYPE});
+    st{"*", STAR}, st{"/", SLASH}, st{"type", TYPE},
+    st{"<=", LESS_EQUAL_THAN}, st{">=", GREATER_EQUAL_THAN},
+    st{"<>",NOT_EQUAL},
+    st{"<", LESS_THAN}, st{">", GREATER_THAN});
 
 struct token {
 
@@ -101,7 +107,7 @@ struct token {
 };
 
 class tokenizer {
- public:
+public:
   tokenizer(const tokenizer &) = default;
   tokenizer(tokenizer &&) = default;
   tokenizer &operator=(const tokenizer &) = default;
@@ -117,7 +123,7 @@ class tokenizer {
   void expect_peek_any_of(std::initializer_list<token_type>);
   void unexpected_token();
   void print_errors();
- private:
+private:
   void write_head();
   std::string_view to_parse, source;
   token head;

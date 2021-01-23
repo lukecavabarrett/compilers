@@ -53,6 +53,14 @@ int_sum_fn:
         lea     rax, [rax+1+rax]
         ret
 
+int_negate_fn:
+        mov     rdx, qword [rdi+24]
+        sar     rdx, 1
+        xor     rax, rax
+        sub     rax, rdx
+        lea     rax, [rax+1+rax]
+        ret
+
 int_sub_fn:
         mov     rax, qword [rdi+16]
         mov     rdx, qword [rdi+24]

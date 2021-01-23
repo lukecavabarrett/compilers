@@ -80,6 +80,17 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_r(tokenizer &
   }
   return l;
 }
+template<auto make_r_type, auto sub_method, typename sep>
+std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_unary_l(tokenizer &tk) {
+  /*
+   Parse something of the form
+   A -> A
+   op1 op2 A ->  L( L(A , op2) ,op1 )
+   */
+  if (!sep::has_sep(tk))return sub_method(tk);
+  auto sepr = sep::consume_sep(tk);
+  return make_r_type(parse_fold_unary_l<make_r_type, sub_method, sep>(tk), std::move(sepr));
+}
 
 template<auto make_lr_type, auto sub_method, typename sep>
 std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &tk) {
@@ -113,20 +124,20 @@ void tokenizer::write_head() {
     head = token{.sv=std::string_view(), .type=END_OF_INPUT};
     return;
   }
-  if(to_parse.size() >=2 && to_parse[0]=='(' && to_parse[1]=='*'){
-    std::string_view start_comment(to_parse.begin(),2);
+  if (to_parse.size() >= 2 && to_parse[0] == '(' && to_parse[1] == '*') {
+    std::string_view start_comment(to_parse.begin(), 2);
     to_parse.remove_prefix(2);
     size_t nested_comment = 1;
-    while(!to_parse.empty() && nested_comment){
-      if(to_parse.size() >=2 && to_parse[0]=='(' && to_parse[1]=='*'){
+    while (!to_parse.empty() && nested_comment) {
+      if (to_parse.size() >= 2 && to_parse[0] == '(' && to_parse[1] == '*') {
         ++nested_comment;
         to_parse.remove_prefix(2);
-      } else if(to_parse.size() >=2 && to_parse[0]=='*' && to_parse[1]==')'){
+      } else if (to_parse.size() >= 2 && to_parse[0] == '*' && to_parse[1] == ')') {
         --nested_comment;
         to_parse.remove_prefix(2);
       } else to_parse.remove_prefix(1);
     }
-    if(nested_comment)throw error::report_token("Begin of comment ",start_comment," is unmatched.");
+    if (nested_comment)throw error::report_token("Begin of comment ", start_comment, " is unmatched.");
     return write_head();
   }
   for (const auto&[p, t] : tokens_map)
@@ -160,9 +171,11 @@ void tokenizer::write_head() {
 
   auto end = std::find_if_not(to_parse.begin(), to_parse.end(), allowed_in_identifier);
   if (to_parse.begin() == end) {
-    throw std::runtime_error(formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
+    throw std::runtime_error(
+        formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
   }
-  head = {.sv=itr_sv(to_parse.begin(), end), .type= ::isupper(to_parse.front()) ? token_type::CAP_NAME : token_type::IDENTIFIER};
+  head = {.sv=itr_sv(to_parse.begin(), end), .type= ::isupper(to_parse.front()) ? token_type::CAP_NAME
+                                                                                : token_type::IDENTIFIER};
   to_parse.remove_prefix(end - to_parse.begin());
 
 }
@@ -178,7 +191,7 @@ void tokenizer::expect_peek(token_type t) {
   }
 }
 void tokenizer::expect_peek_any_of(std::initializer_list<token_type> il) {
-  if(std::find(il.begin(),il.end(),head.type)==il.end()) {
+  if (std::find(il.begin(), il.end(), head.type) == il.end()) {
     throw error::unexpected_token(head.sv);
   }
 }
@@ -186,7 +199,6 @@ void tokenizer::unexpected_token() {
   throw error::unexpected_token(head.sv);
   //throw std::runtime_error("expected \"TK\", found another");
 }
-
 
 }
 namespace ast {
@@ -222,15 +234,70 @@ ptr parse_e_t(tokenizer &tk) {
   return parse_vec<build_tuple, &build_tuple::args, parse_e_a, tk_sep<COMMA>>(tk);
 }
 
-ptr make_aritm_app(ptr &&left, ptr &&right, token t) { return std::make_unique<fun_app>(std::make_unique<fun_app>(std::make_unique<identifier>(t.sv),std::move(left)), std::move(right)); }
+std::string_view make_unary_op(token t) {
+  switch (t.type) {
+    case PLUS:return "__unary_op__PLUS__";
+    case MINUS:return "__unary_op__MINUS__";
+    default: throw parse::error::report_token(t.sv, "", " is not a recognized prefix unary operator");
+  }
+}
+bool is_binary_op(token_type t) {
+  switch (t) {
+    case STAR:
+    case SLASH:
+    case PLUS:
+    case MINUS:
+    case EQUAL:
+    case LESS_THAN:
+    case LESS_EQUAL_THAN:
+    case GREATER_THAN:
+    case GREATER_EQUAL_THAN:return true;
+    default: return false;
+  }
+}
+std::string_view make_binary_op(token t) {
+  switch (t.type) {
+    case STAR:return "__binary_op__STAR__";
+    case SLASH:return "__binary_op__SLASH__";
+    case PLUS:return "__binary_op__PLUS__";
+    case MINUS:return "__binary_op__MINUS__";
+    case EQUAL:return "__binary_op__EQUAL__";
+    case LESS_THAN:return "__binary_op__LESS_THAN__";
+    case LESS_EQUAL_THAN:return "__binary_op__LESS_EQUAL_THAN__";
+    case GREATER_THAN:return "__binary_op__GREATER_THAN__";
+    case GREATER_EQUAL_THAN:return "__binary_op__GREATER_EQUAL_THAN__";
+    default: throw parse::error::report_token(t.sv, "", " is not a recognized infix binary operator");
+  }
+}
+
+ptr make_infix_app(ptr &&left, ptr &&right, token t) {
+  return std::make_unique<fun_app>(std::make_unique<fun_app>(std::make_unique<identifier>(make_binary_op(t), t.sv),
+                                                             std::move(left)),
+                                   std::move(right));
+}
+
+ptr make_prefix_app(ptr &&arg, token t) {
+  return std::make_unique<fun_app>(std::make_unique<identifier>(make_unary_op(t), t.sv), std::move(arg));
+}
+
 ptr parse_e_a(tokenizer &tk) {
+
   using namespace patterns;
-  return parse_fold_r<make_aritm_app, parse_e_f, tk_sep<PLUS,MINUS>>(tk);
+  return parse_fold_r<make_infix_app,parse_fold_r<make_infix_app,
+                      parse_fold_r<make_infix_app,
+                                   parse_fold_r<make_infix_app,
+                                                parse_fold_unary_l<make_prefix_app,
+                                                                   parse_e_f,
+                                                                   tk_sep<PLUS, MINUS>
+                                                >, tk_sep<STAR, SLASH>>,
+                                   tk_sep<PLUS, MINUS>>,
+                      tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN> >,tk_sep<EQUAL,NOT_EQUAL> >(tk);
+  //TODO: create better syntax to express them as a list
 }
 
 ptr make_fun_app(ptr &&f, ptr &&x, bool) {
-  if(constructor* c =dynamic_cast<constructor*>(f.get()); c) {
-    if(c->arg)throw parse::error::report_token(x->loc,"unexpected "," too many argument for the constructor");
+  if (constructor *c = dynamic_cast<constructor *>(f.get()); c) {
+    if (c->arg)throw parse::error::report_token(x->loc, "unexpected ", " too many argument for the constructor");
     c->arg = std::move(x);
     return std::move(f);
   } else return std::make_unique<fun_app>(std::move(f), std::move(x));
@@ -259,15 +326,19 @@ ptr parse_e_p(tokenizer &tk) {
       //TODO-someday : implement dot notation
     case PARENS_OPEN: {
       auto loc_start = tk.pop().sv.begin();
-      if (tk.peek() != PARENS_CLOSE) {
+      if (tk.peek() == PARENS_CLOSE) {
+        auto e = std::make_unique<literal>(std::make_unique<ast::literal::unit>());
+        e->loc = itr_sv(loc_start, tk.pop().sv.end());
+        return e;
+      } else if (tokenizer ahead(tk); ahead.pop(), ahead.peek() == PARENS_CLOSE && is_binary_op(tk.peek())) {
+        token t = tk.pop();
+        tk.expect_pop(PARENS_CLOSE);
+        return std::make_unique<identifier>(make_binary_op(t), t.sv);
+      } else {
         auto e = expression::parse(tk);
         tk.expect_peek(PARENS_CLOSE);
         e->loc = itr_sv(loc_start, tk.pop().sv.end());
         return std::move(e);
-      } else {
-        auto e = std::make_unique<literal>(std::make_unique<ast::literal::unit>());
-        e->loc = itr_sv(loc_start, tk.pop().sv.end());
-        return e;
       }
     }
     default:tk.unexpected_token();
@@ -319,7 +390,7 @@ ptr parse(tokenizer &tk) {
       auto loc_start = tk.peek_sv().begin();
       tk.expect_pop(FUN);
       std::vector<matcher::ptr> args;
-      while(!tk.empty() && tk.peek()!=ARROW){
+      while (!tk.empty() && tk.peek() != ARROW) {
         args.push_back(matcher::parse(tk));
       }
       tk.expect_pop(ARROW);
@@ -366,7 +437,8 @@ ptr parse_m_2(tokenizer &tk) {
       if (!parse_m_3_first(tk.peek_full())) return std::make_unique<constructor_matcher>(begin_sv);
 
       auto m = parse_m_3(tk);
-      return with_loc(std::make_unique<constructor_matcher>(std::move(m), begin_sv), itr_sv(begin_sv.begin(), m->loc.end()));
+      return with_loc(std::make_unique<constructor_matcher>(std::move(m), begin_sv),
+                      itr_sv(begin_sv.begin(), m->loc.end()));
     }
     default: { return parse_m_3(tk); }
   }
@@ -383,7 +455,9 @@ ptr parse_m_3(tokenizer &tk) {
   switch (tk.peek()) {
     case PARENS_OPEN: {
       auto loc_start = tk.pop().sv.begin();
-      if (tk.peek() == PARENS_CLOSE)return with_loc(std::make_unique<literal_matcher>(std::make_unique<ast::literal::unit>()), itr_sv(loc_start, tk.pop().sv.end()));
+      if (tk.peek() == PARENS_CLOSE)
+        return with_loc(std::make_unique<literal_matcher>(std::make_unique<ast::literal::unit>()),
+                        itr_sv(loc_start, tk.pop().sv.end()));
       auto m = parse_m_1(tk);
       tk.expect_peek(PARENS_CLOSE);
       m->loc = itr_sv(loc_start, tk.pop().sv.end());
@@ -453,11 +527,11 @@ ptr parse(tokenizer &tk) {
       while (tk.peek() != EQUAL) args.push_back(matcher::parse(tk));
 
       tk.expect_pop(EQUAL);
-      auto fun = std::make_unique<expression::fun>(std::move(args),expression::parse(tk));
+      auto fun = std::make_unique<expression::fun>(std::move(args), expression::parse(tk));
 
       fun->loc = itr_sv(m->loc.begin(), fun->body->loc.end());
 
-      defs->defs.emplace_back(std::move(m),std::move(fun));
+      defs->defs.emplace_back(std::move(m), std::move(fun));
     } else {
       tk.expect_pop(EQUAL);
       defs->defs.emplace_back(std::move(m), expression::parse(tk));
@@ -600,7 +674,9 @@ ptr parse(tokenizer &tk) {
           def->variants.back().type = expression::parse(tk);
         }
       }
-      def->loc = itr_sv(loc_start, def->variants.back().type.operator bool() ? def->variants.back().type->loc.end() : def->variants.back().name.end());
+      def->loc = itr_sv(loc_start,
+                        def->variants.back().type.operator bool() ? def->variants.back().type->loc.end()
+                                                                  : def->variants.back().name.end());
       defs->defs.push_back(std::move(def));
 
     } else {

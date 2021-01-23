@@ -370,6 +370,13 @@ uintptr_t int_le_fun(uintptr_t argv) {
   return uint_to_v(a < b ? 1 : 0);
 }
 
+uintptr_t int_negated(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  decrement_boxed(argv);
+  return int_to_v(-b);
+}
+
 uintptr_t println_int(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uint64_t b = v_to_uint(argv_b[4]);
