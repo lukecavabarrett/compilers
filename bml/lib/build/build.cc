@@ -37,7 +37,6 @@ ast::global_map make_ir_data_section(std::ostream &target) {
 
 #undef register
 
-
   //special case for the unmatched function
   {
     target << "extern match_failed_fun \n";
@@ -106,7 +105,21 @@ void build_ir(std::string_view s, std::ostream &target) {
         throw std::runtime_error("compilation error");
       }
     } else {
-      THROW_UNIMPLEMENTED
+      //expression
+      try {
+        auto e = ast::expression::parse(tk);
+        tk.expect_pop(parse::EOC);
+        e->bind(constr_map);
+        ast::free_vars_t fv = e->free_vars();
+        resolve_global_free_vars(std::move(fv), globals);
+        auto cg = e->capture_group();
+        assert(cg.empty());
+        e->ir_compile(ir_sections_t(target, std::back_inserter(functions), main));
+
+      } catch (const util::error::message &e) {
+        e.print(std::cout, s, "source.ml");
+        throw std::runtime_error("compilation error");
+      }
     }
   }
   target << "global main\n" "section .text\n";
@@ -140,7 +153,6 @@ void build_direct(std::string_view s, std::ostream &target) {
   direct_registerer_t direct_registerer{.globals=globals};
 
 #define register direct_registerer.add<__COUNTER__>
-
   register("int_sum",{"__binary_op__PLUS__"});
   register("int_sub",{"__binary_op__MINUS__"});
   register("int_eq",{"__binary_op__EQUAL__"});
@@ -148,8 +160,6 @@ void build_direct(std::string_view s, std::ostream &target) {
   register("int_println");
   register("int_le",{"__binary_op__LESS_THAN__"});
   register("int_negate",{"__unary_op__MINUS__"});
-
-
 #undef register
 
   ast::constr_map constr_map;
@@ -206,7 +216,20 @@ void build_direct(std::string_view s, std::ostream &target) {
         throw std::runtime_error("compilation error");
       }
     } else {
-      THROW_UNIMPLEMENTED
+      //expression
+      try {
+        auto e = ast::expression::parse(tk);
+        tk.expect_pop(parse::EOC);
+        e->bind(constr_map);
+        ast::free_vars_t fv = e->free_vars();
+        resolve_global_free_vars(std::move(fv), globals);
+        auto cg = e->capture_group();
+        assert(cg.empty());
+        e->compile(util::direct_sections_t(data_section, text_section, main_section),0);
+      } catch (const util::error::message &e) {
+        e.print(std::cout, s, "source.ml");
+        throw std::runtime_error("compilation error");
+      }
     }
   }
   main_section << "xor eax, eax\n"
