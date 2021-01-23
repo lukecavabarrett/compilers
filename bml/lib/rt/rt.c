@@ -1,3 +1,5 @@
+//gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -g -O0
+//gcc -c /home/luke/CLionProjects/compilers/bml/lib/rt/rt.c -o /home/luke/CLionProjects/compilers/bml/lib/rt/rt_fast.o -O3
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -40,7 +42,6 @@ uintptr_t int_to_v(int64_t x) {
 uint64_t v_to_int(uintptr_t x) {
   return ((int64_t) x) >> 1;
 }
-
 
 #define debug_stream stderr
 #define MAX_DEPTH 5
@@ -124,7 +125,7 @@ void __json_debug(uintptr_t x, int depth) {
         fprintf(debug_stream, ", \"size\" : %u, \"content\" : [", size);
         int comma = 0;
         v += 2;
-        while (size>0) {
+        while (size > 0) {
           --size;
           if (comma)fputs(", ", debug_stream);
           comma = 1;
@@ -133,7 +134,7 @@ void __json_debug(uintptr_t x, int depth) {
         }
         fputs("]", debug_stream);
       }
-      assert(size == 0);
+        assert(size == 0);
     }
     assert(size == 0);
     if (d) {
@@ -328,24 +329,46 @@ uintptr_t match_failed_fun(uintptr_t unit) {
 
 uintptr_t int_sum_fun(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
-  uint64_t b = v_to_uint(argv_b[4]);
+  int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
   increment_value((uintptr_t) argv_a);
   decrement_value((uintptr_t) argv_b);
-  uint64_t a = v_to_uint(argv_a[4]);
+  int64_t a = v_to_int(argv_a[4]);
   decrement_value((uintptr_t) argv_a);
-  return uint_to_v(a + b);
+  return int_to_v(a + b);
 }
 
 uintptr_t int_sub_fun(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
-  uint64_t b = v_to_uint(argv_b[4]);
+  int64_t b = v_to_int(argv_b[4]);
   uintptr_t *argv_a = (uintptr_t *) argv_b[2];
   increment_value((uintptr_t) argv_a);
   decrement_value((uintptr_t) argv_b);
-  uint64_t a = v_to_uint(argv_a[4]);
+  int64_t a = v_to_int(argv_a[4]);
   decrement_value((uintptr_t) argv_a);
-  return uint_to_v(a - b);
+  return int_to_v(a - b);
+}
+
+uintptr_t int_mul_fun(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  return int_to_v(a * b);
+}
+
+uintptr_t int_div_fun(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  return int_to_v(a * b);
 }
 
 uintptr_t int_eq_fun(uintptr_t argv) {
@@ -370,6 +393,17 @@ uintptr_t int_le_fun(uintptr_t argv) {
   return uint_to_v(a < b ? 1 : 0);
 }
 
+uintptr_t int_leq_fun(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  return uint_to_v(a <= b ? 1 : 0);
+}
+
 uintptr_t int_negated(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
@@ -392,6 +426,13 @@ uintptr_t print_int(uintptr_t argv) {
   fflush(stdout);
   decrement_boxed(argv);
   return uint_to_v(0);
+}
+
+uintptr_t scan_int(uintptr_t argv) {
+  decrement_boxed(argv);
+  int64_t x;
+  scanf("%ld", &x);
+  return int_to_v(x);
 }
 
 uintptr_t println_int_err(uintptr_t argv) {

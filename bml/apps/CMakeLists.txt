@@ -1,2 +1,2 @@
-add_executable(sample_ml sample.cc)
-target_link_libraries(sample_ml libbml)
+add_executable(mlc mlc.cc)
+target_link_libraries(mlc libbml)

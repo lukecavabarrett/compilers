@@ -29,9 +29,13 @@ ast::global_map make_ir_data_section(std::ostream &target) {
 
   register("int_sum_fun",2,"int_sum",{"__binary_op__PLUS__"});
   register("int_sub_fun",2,"int_sub",{"__binary_op__MINUS__"});
+  register("int_mul_fun",2,"int_mul",{"__binary_op__STAR__"});
+  register("int_div_fun",2,"int_div",{"__binary_op__SLAH__"});
   register("int_negated",1,"__unary_op__MINUS__");
   register("int_le_fun",2,"__binary_op__LESS_THAN__");
+  register("int_leq_fun",2,"__binary_op__LESS_EQUAL_THAN__");
   register("print_int",1,"int_print");
+  register("scan_int",1,"int_scan");
   register("println_int",1,"int_println");
   register("int_eq_fun",2,"int_eq",{"__binary_op__EQUAL__"});
 
@@ -50,7 +54,7 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   return globals;
 }
 
-void build_ir(std::string_view s, std::ostream &target) {
+void build_ir(std::string_view s, std::ostream &target, std::string_view filename) {
   parse::tokenizer tk(s);
   ast::global_map globals = make_ir_data_section(target);
 
