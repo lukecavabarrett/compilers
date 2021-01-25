@@ -179,10 +179,9 @@ context_t scope_compile_rec(scope &s, std::ostream &os, context_t c, bool last_c
     std::vector<var> &destroys = s.destroys.at(i + 1);
     std::visit(overloaded{
         [&](instruction::assign &a) {
-          if (last_call && (i == s.body.size() - 1) && (std::holds_alternative<rhs_expr::apply_fn>(a.src)
+          if (last_call && (i == s.body.size() - 1) && (a.dst==s.ret) && (std::holds_alternative<rhs_expr::apply_fn>(a.src)
               || std::holds_alternative<rhs_expr::branch>(a.src))) {
             need_to_return = false;
-            assert(a.dst == s.ret);
             std::visit(overloaded{
                 [](const std::variant<rhs_expr::constant,
                                       rhs_expr::global,
