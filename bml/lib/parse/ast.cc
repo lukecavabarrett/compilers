@@ -121,9 +121,7 @@ free_vars_t let_in::free_vars() {
 }
 free_vars_t fun::free_vars() {
   auto fv = body->free_vars();
-  std::string s = util::texp::make(fv)->to_string();
   for (auto &arg : args)arg->bind(fv);
-  std::string s2 = util::texp::make(fv)->to_string();
 
   return std::move(fv);
 }

@@ -469,6 +469,34 @@ uintptr_t _mllib_fn__int_print(uintptr_t argv) {
 uintptr_t _mllib_fn__int_scan(uintptr_t argv) {
   decrement_boxed(argv);
   int64_t x;
-  scanf("%ld", &x);
+  if(scanf("%ld", &x)!=1){
+    fputs("error: could not scan int. terminating.",stderr);
+    exit(1);
+  };
   return int_to_v(x);
+}
+
+uintptr_t deep_copy(uintptr_t x){
+  if(x&1)return x;
+  if(x==0)return x;
+  const uintptr_t *v = (const uintptr_t *) x;
+  if(v[0]==0)return x;
+  uint32_t tag = get_tag(v[1]);
+  uint32_t size = get_size(v[1]);
+  uint8_t d = get_d(v[1]);
+  uintptr_t * new_x = (uintptr_t *)malloc(8*(2+size+d));
+  new_x[0] = 3;
+  new_x[1] = v[1];
+  new_x[2] = (tag == Tag_Fun) ? v[2] : deep_copy(v[2]);
+  for(int i = 1; i<size; ++i)new_x[i+2] = deep_copy(v[i+2]);
+  if(d)new_x[size+2] = deep_copy(v[size+2]);
+  return (uintptr_t)new_x;
+}
+
+uintptr_t _mllib_fn__t_deep_copy(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  uintptr_t x = argv_b[4];
+  x = deep_copy(x);
+  decrement_boxed(argv);
+  return x;
 }
