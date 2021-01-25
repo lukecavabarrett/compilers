@@ -37,9 +37,10 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   register("_mllib_fn__int_leq",2,"__binary_op__LESS_EQUAL_THAN__");
   register("_mllib_fn__int_gt",2,"__binary_op__GREATER_THAN__");
   register("_mllib_fn__int_geq",2,"__binary_op__GREATER_EQUAL_THAN__");
-  register("_mllib_fn__int_print",1,"int_print");
-  register("_mllib_fn__int_println",1,"int_println");
-  register("_mllib_fn__int_scan",1,"int_scan");
+  register("_mllib_fn__int_print",1,"print_int");
+  register("_mllib_fn__int_println",1,"println_int");
+  register("_mllib_fn__int_fprintln",2,"fprintln_int");
+  register("_mllib_fn__int_scan",1,"scan_int");
 
 #undef register
 
@@ -162,8 +163,8 @@ void build_direct(std::string_view s, std::ostream &target) {
   register("int_sum",{"__binary_op__PLUS__"});
   register("int_sub",{"__binary_op__MINUS__"});
   register("int_eq",{"__binary_op__EQUAL__"});
-  register("int_print");
-  register("int_println");
+  register("print_int");
+  register("println_int");
   register("int_le",{"__binary_op__LESS_THAN__"});
   register("int_negate",{"__unary_op__MINUS__"});
 #undef register

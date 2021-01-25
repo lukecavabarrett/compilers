@@ -78,38 +78,38 @@ TEST(Build, SomeAllocations) {
 
 TEST(Build, Expression0) {
   constexpr std::string_view source = "let answer = 42;;"
-                                      "int_print 42;;\n"
-                                      "int_print answer;;\n";
+                                      "print_int 42;;\n"
+                                      "print_int answer;;\n";
   test_build(source, "42 42 ", direct_test::RUN);
 
 }
 
 TEST(Build, Expression0_1) {
-  constexpr std::string_view source = "int_print (10+20);;\n";
+  constexpr std::string_view source = "print_int (10+20);;\n";
   test_build(source, "30 ", direct_test::RUN);
 }
 
 TEST(Build, Expression0_2) {
   constexpr std::string_view source = "let cond = false;;\n"
-                                      "int_print (if cond then 42 else 1729);;\n";
+                                      "print_int (if cond then 42 else 1729);;\n";
   test_build(source, "1729 ", direct_test::RUN);
 }
 
 TEST(Build, Expression0_3) {
   constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
-                                      "int_print x; int_print y;;\n";
+                                      "print_int x; print_int y;;\n";
   test_build(source, "92 54 ", direct_test::RUN);
 }
 
 TEST(Build, Expression0_4) {
-  constexpr std::string_view source = "int_print (if 107 = 106 then 10 else 12);;\n";
+  constexpr std::string_view source = "print_int (if 107 = 106 then 10 else 12);;\n";
   test_build(source, "12 ", direct_test::RUN);
 }
 
 TEST(Build, PartialApplication) {
   constexpr std::string_view source = "let s100 = (+) 100;;\n"
-                                      "int_print (s100 54);;\n";
+                                      "print_int (s100 54);;\n";
   test_build(source, "154 ", direct_test::RUN);
 }
 
@@ -117,7 +117,7 @@ TEST(Build, Expression0_5) {
   constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = (+) 100 ;;\n"
-                                      "int_print (sum_100 54);;";
+                                      "print_int (sum_100 54);;";
   test_build(source, "154 ", direct_test::RUN);
 }
 
@@ -129,7 +129,7 @@ TEST(Build, Expression1) {
                                       "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = (+) 100 ;;\n"
-                                      "int_print (sum_100 (if 107=106 then x else y)) ;;\n";
+                                      "print_int (sum_100 (if 107=106 then x else y)) ;;\n";
   test_build(source, "154 ", direct_test::RUN);
 
 }
@@ -137,27 +137,27 @@ TEST(Build, Expression1) {
 TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
                                       "let y = g (+) 10;;\n"
-                                      "int_print y;;";
+                                      "print_int y;;";
   test_build(source, "11 ", direct_test::RUN);
 }
 
 TEST(Build, Expression3) {
   constexpr std::string_view source = "let twice x = x + x ;;\n"
                                       "let ans = 45 + 25 - 93 + (twice (97 + 21));;\n"
-                                      "int_print ans;;";
+                                      "print_int ans;;";
   test_build(source, "213 ", direct_test::RUN);
 }
 
 TEST(Build, Expression4) {
-  test_build("let f x () = int_print x ;;\n"
+  test_build("let f x () = print_int x ;;\n"
              "let g = f 42;;\n"
              "g ();;", "42 ", direct_test::RUN);
 }
 
 TEST(Build, BoollLiterals) {
   test_build(R"(
-    int_println (if true then 42 else 55);;
-    int_println (if false then 42 else 55);;
+    println_int (if true then 42 else 55);;
+    println_int (if false then 42 else 55);;
   )", "42\n55\n", direct_test::RUN);
 }
 
@@ -166,49 +166,49 @@ TEST(Build, Constructor) {
              "let some13 = Some 13 and none = None;;\n"
              "let Some 13 = some13;;\n"
              "let Some x = some13;;\n"
-             "int_print x;;\n", "13 ", direct_test::RUN);
+             "print_int x;;\n", "13 ", direct_test::RUN);
 }
 
 TEST(Build, SomeAddition) {
   test_build("type int_option = | Some of int ;;\n"
              "let some_add (Some x) (Some y) (Some z) = Some (x+y+z);;\n"
              "let Some ans = some_add (Some 10) (Some 100) (Some 1);;\n"
-             "int_print ans;;\n", "111 ", direct_test::RUN);
+             "print_int ans;;\n", "111 ", direct_test::RUN);
 }
 
 TEST(Build, OptionMapSome) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print (Some 42);;\n", "42 ", direct_test::RUN);
+             "let _ = option_map print_int (Some 42);;\n", "42 ", direct_test::RUN);
 
 }
 
 TEST(Build, OptionMapNone) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print None;;\n", "", direct_test::RUN);
+             "let _ = option_map print_int None;;\n", "", direct_test::RUN);
 }
 
 TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map int_print Another;;\n", "", direct_test::RUN, 1, "match failed\n");
+             "let _ = option_map print_int Another;;\n", "", direct_test::RUN, 1, "match failed\n");
 }
 
 TEST(Build, ApplyTwice) {
   test_build("let apply_twice f x = f (f x);;\n"
              "let plus_two = apply_twice (fun x -> x + 1);;\n"
-             "int_print (plus_two 40);;\n", "42 ", direct_test::RUN);
+             "print_int (plus_two 40);;\n", "42 ", direct_test::RUN);
 }
 
 TEST(Build, ApplyTwiceOnSteroids) {
   test_build("let apply_twice f x = f (f x);;\n"
-             "int_print (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4 ", direct_test::RUN);
+             "print_int (apply_twice apply_twice (fun x -> x + 1) 0);;\n", "4 ", direct_test::RUN);
 }
 
 TEST(Build, FnCompose) {
   test_build("let fn_compose g f x = g (f x);;\n"
-             "int_print (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26 ", direct_test::RUN);
+             "print_int (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n", "26 ", direct_test::RUN);
 }
 
 TEST(Build, OptionMap) {
@@ -216,7 +216,7 @@ TEST(Build, OptionMap) {
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;"
              "let Some ans = maybe_add (Some 10) 1;;\n"
-             "int_print ans;;\n", "11 ", direct_test::RUN);
+             "print_int ans;;\n", "11 ", direct_test::RUN);
 }
 
 TEST(Build, MaybeAdditionNested) {
@@ -225,7 +225,7 @@ TEST(Build, MaybeAdditionNested) {
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_map (maybe_add y) x;;\n"
              "let Some (Some ans) = maybe_sum (Some 10) (Some 100);;\n"
-             "int_print ans;;\n", "110 ", direct_test::RUN);
+             "print_int ans;;\n", "110 ", direct_test::RUN);
 }
 
 TEST(Build, MaybeAdditionCorrect) {
@@ -234,7 +234,7 @@ TEST(Build, MaybeAdditionCorrect) {
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_bind (maybe_add y) x;;\n"
-             "let maybe_print x = match x with | None -> int_print (-1) | Some x -> int_print x;;\n"
+             "let maybe_print x = match x with | None -> print_int (-1) | Some x -> print_int x;;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
@@ -245,7 +245,7 @@ TEST(Build, MaybeAdditionWithCapture) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
-             "let maybe_print x = match x with | None -> int_print (-1) | Some x -> int_print x;;\n"
+             "let maybe_print x = match x with | None -> print_int (-1) | Some x -> print_int x;;\n"
              "let maybe_sum maybe_a maybe_b = option_bind (fun a -> option_map (fun b -> (a+b) ) maybe_b) maybe_a;;\n"
              "let test_sum a b = maybe_print (maybe_sum a b);;\n"
              "let _ = test_sum (Some 10) (Some 100);;\n"
@@ -255,9 +255,9 @@ TEST(Build, MaybeAdditionWithCapture) {
 }
 
 TEST(Build, LetExpression) {
-  test_build("let play_with x = int_print x; (let y = x + x in y);;\n"
+  test_build("let play_with x = print_int x; (let y = x + x in y);;\n"
              "let ans = play_with 10;;"
-             "int_print ans;;", "10 20 ", direct_test::RUN);
+             "print_int ans;;", "10 20 ", direct_test::RUN);
 }
 
 TEST(Build, Malloc) {
@@ -269,7 +269,7 @@ TEST(Build, Malloc) {
 TEST(Build, CaptureX) {
   test_build("let plus_x x = (fun y -> x + y);;\n"
              "let plus_3 = plus_x 3;;\n"
-             "int_print (plus_3 4);;", "7 ", direct_test::RUN);
+             "print_int (plus_3 4);;", "7 ", direct_test::RUN);
 }
 
 TEST(Build, CaptureMaybeSum) {
@@ -277,7 +277,7 @@ TEST(Build, CaptureMaybeSum) {
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let option_bind f x = match x with | None -> None | Some x -> f x;;\n"
              "let maybe_sum y x = option_bind (fun x -> option_map (fun y -> x + y) y) x;;\n"
-             "let maybe_print x = match x with | None -> int_print (-1) | Some x -> int_print x;;\n"
+             "let maybe_print x = match x with | None -> print_int (-1) | Some x -> print_int x;;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
@@ -287,12 +287,12 @@ TEST(Build, CaptureMaybeSum) {
 TEST(Build, LongSum) {
   test_build("let long_sum a b c d e f g h i j k = a+b+c+d+e+f+g+h+i+j+k;;\n"
              "let ans = long_sum 1 2 3 4 5 6 7 8 9 10 11;;\n"
-             "int_print ans ;;", "66 ", direct_test::RUN);
+             "print_int ans ;;", "66 ", direct_test::RUN);
 }
 
 TEST(Build, DeepCapture) {
   test_build("let deep_capture x = fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> x ;;"
-             "      int_print (deep_capture 1729 () () () () () () ());;", "1729 ", direct_test::RUN);
+             "      print_int (deep_capture 1729 () () () () () () ());;", "1729 ", direct_test::RUN);
 }
 
 TEST(Build, ManyMatchers) {
@@ -307,7 +307,7 @@ TEST(Build, ManyMatchers) {
              "| Tuple (x,Int y) -> 6 + x + y\n"
              "| Tuple (x,Tuple (y, Tuple (z,_))) -> 7 + x + y +z\n"
              "| Tuple (x, t) -> 8 + x;;\n"
-             "let g x = int_print (f x);;\n"
+             "let g x = print_int (f x);;\n"
              "g Void;;\n"
              "g (Int 0);;\n"
              "g (Int 1);;\n"
@@ -321,9 +321,9 @@ TEST(Build, ManyMatchers) {
 
 TEST(Build, DeepMatchers) {
   test_build("let f ((x,y),z) = x + y + z;;\n"
-             "int_print (f ((1,10),100));;\n", "111 ");
+             "print_int (f ((1,10),100));;\n", "111 ");
   test_build("let f (((((a,b),c),d),e),f) = a+b+c+d+e+f ;;\n"
-             "int_print (f  (((((1,2),4),8),16),32) );;\n", "63 ", direct_test::RUN);
+             "print_int (f  (((((1,2),4),8),16),32) );;\n", "63 ", direct_test::RUN);
 }
 
 TEST(Build, MatchersTheRevenge) {
@@ -331,7 +331,7 @@ TEST(Build, MatchersTheRevenge) {
              "let f x = match x with\n"
              "| Null -> 0\n"
              "| Triple ((x,y),z) -> x + y + z;;\n"
-             "let g x = int_print (f x);;\n"
+             "let g x = print_int (f x);;\n"
              "g Null;;\n"
              "g (Triple ((1,10),100));;\n", "0 111 ", direct_test::RUN);
 }
@@ -341,14 +341,14 @@ TEST(Build, ListUtils1) {
              "let rec length l = match l with\n"
              "| Null -> 0\n"
              "| Cons (_,xs) -> (length xs) + 1;;\n"
-             "int_print (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3 ", direct_test::RUN);
+             "print_int (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", "3 ", direct_test::RUN);
 }
 
 TEST(Build, ListUtils2) {
   test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
              "let rec print_list l = match l with\n"
              "| Null -> ()\n"
-             "| Cons (x,xs) -> int_print x; print_list xs;;\n"
+             "| Cons (x,xs) -> print_int x; print_list xs;;\n"
              "print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", "1 2 3 ", direct_test::RUN);
 }
 
@@ -358,7 +358,7 @@ TEST(Build, InfiniteList) {
              "| Null -> 0\n"
              "| Cons (_,xs) -> (length xs) + 1;;\n"
              "let rec a = Cons(1,a);;\n"
-             "int_print (length a) ;;",
+             "print_int (length a) ;;",
              "",
              direct_test::RUN,
              139,
@@ -369,7 +369,7 @@ TEST(Build, TakeFromInfiniteList) {
   test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
              "let rec print_list l = match l with\n"
              "| Null -> ()\n"
-             "| Cons (x,xs) -> int_print x; print_list xs;;\n"
+             "| Cons (x,xs) -> print_int x; print_list xs;;\n"
              "let rec take l n = if n=0 then Null else match l with\n"
              "| Null -> Null\n"
              "| Cons (x,xs) -> Cons (x,take xs (n-1))\n;;"
@@ -406,7 +406,7 @@ TEST(Build, TortoiseAndHare_Numbers) {
       floyd_algo
 
       "let (lam,mu) = floyd (fun x -> match x with | 10 -> 5 | x -> x+1) 0;;\n"
-      "int_print lam; int_print mu;;\n", "6 5 ", direct_test::RUN);
+      "print_int lam; print_int mu;;\n", "6 5 ", direct_test::RUN);
 }
 
 TEST(Build, TortoiseAndHare_Simple) {
@@ -416,7 +416,7 @@ TEST(Build, TortoiseAndHare_Simple) {
 
       "let list_examine_cycle l = \n"
       " let (lam,mu) = floyd (fun Cons(_,xs) -> xs) l in\n"
-      "int_print lam; int_print mu;;\n"
+      "print_int lam; print_int mu;;\n"
 
       "let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;\n"
 
@@ -425,27 +425,27 @@ TEST(Build, TortoiseAndHare_Simple) {
 
 TEST(Build, SmallComparison) {
   test_build(R"(
- int_print (3 < 4);;
-    int_print (3 < 3);;
-    int_println (3 < 2);;
+ print_int (3 < 4);;
+    print_int (3 < 3);;
+    println_int (3 < 2);;
 )", "1 0 0\n", direct_test::RUN);
 }
 
 TEST(Build, IntComparison) {
   test_build(R"(
-    int_print (3 < 4);;
-    int_print (3 < 3);;
-    int_println (3 < 2);;
+    print_int (3 < 4);;
+    print_int (3 < 3);;
+    println_int (3 < 2);;
 
-    int_print (0 < (-1));;
-    int_print (0 < 0);;
-    int_println (0 < 1);;
+    print_int (0 < (-1));;
+    print_int (0 < 0);;
+    println_int (0 < 1);;
 
-    int_print ((-1) < (-2));;
-    int_print ((-1) < (-1));;
-    int_println ((-1) <  0);;
+    print_int ((-1) < (-2));;
+    print_int ((-1) < (-1));;
+    println_int ((-1) <  0);;
 
-    int_println ((-54) < (-53));;
+    println_int ((-54) < (-53));;
 
 )", "1 0 0\n0 0 1\n0 0 1\n1\n", direct_test::RUN);
 }
@@ -456,9 +456,9 @@ TEST(Build, Stream) {
   let rec print_int_stream n (Item (x,xf)) =
     if n=0
     then (
-      int_println x
+      println_int x
     ) else (
-      int_print x; print_int_stream (n-1) (xf())
+      print_int x; print_int_stream (n-1) (xf())
     )
   ;;
 
@@ -496,24 +496,24 @@ TEST(Build, Stream) {
 }
 
 TEST(Build, ArithmeticExpression) {
-  test_build("int_println (4*5+27/34*32-27*34/32+5*(6+23)/45);;", "-5\n");
+  test_build("println_int (4*5+27/34*32-27*34/32+5*(6+23)/45);;", "-5\n");
 }
 
 TEST(Build, InverseDigits) {
   test_build("let big_inverse x = 1000000 / x;;"
-             "int_println (big_inverse 7);;", "142857\n");
+             "println_int (big_inverse 7);;", "142857\n");
 }
 
 TEST(Build, Multiplied) {
   test_build("let big_mul x =  1234567890 * x;;"
-             "int_println (big_mul 7);;", "8641975230\n");
+             "println_int (big_mul 7);;", "8641975230\n");
 }
 
 TEST(Build, CallWithDad){
   test_build(R"(
 type 'a lista = | Vuota | NonVuota of 'a * 'a lista ;;
 let rec repeat x n = if n=0 then Vuota else (NonVuota (x, repeat x (n-1) ) );;
-let rec print_list l = match l with | Vuota -> () | (NonVuota (x,rest)) -> (int_print x; print_list rest) ;;
+let rec print_list l = match l with | Vuota -> () | (NonVuota (x,rest)) -> (print_int x; print_list rest) ;;
 print_list (repeat 42 10);;
 )","42 42 42 42 42 42 42 42 42 42 ");
 }
