@@ -508,6 +508,16 @@ TEST(Build, Multiplied) {
   test_build("let big_mul x =  1234567890 * x;;"
              "int_println (big_mul 7);;", "8641975230\n");
 }
+
+TEST(Build, CallWithDad){
+  test_build(R"(
+type 'a lista = | Vuota | NonVuota of 'a * 'a lista ;;
+let rec repeat x n = if n=0 then Vuota else (NonVuota (x, repeat x (n-1) ) );;
+let rec print_list l = match l with | Vuota -> () | (NonVuota (x,rest)) -> (int_print x; print_list rest) ;;
+print_list (repeat 42 10);;
+)","42 42 42 42 42 42 42 42 42 42 ");
+}
+
 /*
 
 */
