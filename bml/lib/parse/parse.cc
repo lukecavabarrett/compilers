@@ -224,9 +224,10 @@ ptr parse_e_p(tokenizer &tk);
 bool parse_e_p_first(token_type);
 
 ptr make_seq(ptr &&a, ptr &&b, token) { return std::make_unique<seq>(std::move(a), std::move(b)); }
+ptr make_destroy(ptr &&a, ptr &&b, token) { return std::make_unique<destroy>(std::move(a), std::move(b)); }
 ptr parse_e_s(tokenizer &tk) {
   using namespace patterns;
-  return parse_fold_r<make_seq, tk_sep<SEMICOLON>, parse_e_t>(tk);
+  return parse_fold_r<make_seq, tk_sep<SEMICOLON>, parse_fold_r<make_destroy, tk_sep<SEMICOLON>, parse_e_t>>(tk);
 }
 
 ptr parse_e_t(tokenizer &tk) {

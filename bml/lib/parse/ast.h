@@ -268,6 +268,17 @@ struct fun_app : public t {
 TO_TEXP(f, x);
 };
 
+struct destroy : public t {
+  expression::ptr obj, d;
+  destroy(expression::ptr &&obj, expression::ptr &&d);
+  free_vars_t free_vars() final;
+  capture_set capture_group() final;
+  void compile(direct_sections_t s, size_t stack_pos) final;
+  ir::lang::var ir_compile(ir_sections_t) final;
+  void bind(const constr_map &cm) final;
+TO_TEXP(obj, d);
+};
+
 struct seq : public t {
   expression::ptr a, b;
   seq(expression::ptr &&a, expression::ptr &&b);

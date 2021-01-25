@@ -39,10 +39,90 @@ uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
 
 namespace expression {
 
+void identifier::bind(const constr_map &) {}
+void fun_app::bind(const constr_map &cm) {
+  f->bind(cm);
+  x->bind(cm);
+}
+void destroy::bind(const constr_map &cm) {THROW_UNIMPLEMENTED}
+void if_then_else::bind(const constr_map &cm) {
+  condition->bind(cm);
+  true_branch->bind(cm);
+  false_branch->bind(cm);
+}
+void constructor::bind(const constr_map &cm) {
+  if (auto it = cm.find(name); it == cm.end()) {
+    throw ast::unbound_constructor(name);
+  } else {
+    definition_point = it->second;
+  }
+  if (arg)arg->bind(cm);
+}
+void seq::bind(const constr_map &cm) {
+  a->bind(cm);
+  b->bind(cm);
+}
+void match_with::bind(const constr_map &cm) {
+  for (auto&[p, r] : branches) {
+    p->bind(cm);
+    r->bind(cm);
+  }
+  what->bind(cm);
+}
+void build_tuple::bind(const constr_map &cm) {
+  for (auto &p : args)p->bind(cm);
+}
+void let_in::bind(const constr_map &cm) {
+  d->bind(cm);
+  e->bind(cm);
+}
+void fun::bind(const constr_map &cm) {
+  for (auto &arg : args)arg->bind(cm);
+  body->bind(cm);
+}
+
+free_vars_t literal::free_vars() { return {}; }
 free_vars_t identifier::free_vars() {
   std::string n(name);
   if (definition_point && definition_point->top_level) return {};
   return {{name, {this}}};
+}
+free_vars_t build_tuple::free_vars() {
+  free_vars_t fv;
+  for (auto &p : args)fv = join_free_vars(p->free_vars(), std::move(fv));
+  return fv;
+}
+free_vars_t fun_app::free_vars() { return join_free_vars(f->free_vars(), x->free_vars()); }
+free_vars_t destroy::free_vars() {THROW_UNIMPLEMENTED; }
+free_vars_t constructor::free_vars() {
+  if (arg)return arg->free_vars();
+  return {};
+}
+free_vars_t if_then_else::free_vars() {
+  return join_free_vars(join_free_vars(condition->free_vars(),
+                                       true_branch->free_vars()),
+                        false_branch->free_vars());
+}
+free_vars_t seq::free_vars() { return join_free_vars(a->free_vars(), b->free_vars()); }
+free_vars_t match_with::free_vars() {
+  free_vars_t fv = what->free_vars();
+  for (auto&[p, r] : branches) {
+    free_vars_t bfv = r->free_vars();
+    p->bind(bfv);
+    fv = join_free_vars(std::move(fv), std::move(bfv));
+  }
+  return fv;
+}
+free_vars_t let_in::free_vars() {
+  return d->free_vars(e->free_vars());
+}
+free_vars_t fun::free_vars() {
+  auto fv = body->free_vars();
+  std::string s = util::texp::make(fv)->to_string();
+  for (auto &arg : args)arg->bind(fv);
+  std::string s2 = util::texp::make(fv)->to_string();
+
+  return std::move(fv);
 }
 
 capture_set identifier::capture_group() {
@@ -53,6 +133,44 @@ capture_set identifier::capture_group() {
   if (definition_point->top_level) return {};
   return {definition_point};
 }
+capture_set literal::capture_group() { return {}; }
+capture_set constructor::capture_group() {
+  if (arg)arg->capture_group();
+  return {};
+}
+capture_set if_then_else::capture_group() {
+  return join_capture_set(join_capture_set(condition->capture_group(),
+                                           true_branch->capture_group()),
+                          false_branch->capture_group());
+}
+capture_set build_tuple::capture_group() {
+  capture_set fv;
+  for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
+  return fv;
+}
+capture_set fun_app::capture_group() { return join_capture_set(f->capture_group(), x->capture_group()); }
+capture_set destroy::capture_group() { THROW_UNIMPLEMENTED; }
+capture_set seq::capture_group() { return join_capture_set(a->capture_group(), b->capture_group()); }
+capture_set match_with::capture_group() {
+  capture_set cs = what->capture_group();
+  for (auto&[p, r] : branches) {
+    capture_set bcs = r->capture_group();
+    p->bind(bcs);
+    cs = join_capture_set(std::move(cs), std::move(bcs));
+  }
+  return cs;
+}
+capture_set let_in::capture_group() {
+  return d->capture_group(e->capture_group());
+}
+capture_set fun::capture_group() {
+  auto cs = body->capture_group();
+  for (auto &arg : args)arg->bind(cs);
+  captures.assign(cs.cbegin(), cs.cend());
+  std::sort(captures.begin(), captures.end());
+  return std::move(cs);
+}
+
 void identifier::compile(direct_sections_t s, size_t stack_pos) {
   std::string_view n = name;
   if (definition_point->top_level) {
@@ -70,35 +188,9 @@ void identifier::compile(direct_sections_t s, size_t stack_pos) {
     s.main << "]  ; retrieving " << name << " from local scope\n";
   }
 }
-identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
-identifier::identifier(std::string_view n, std::string_view loc) : t(loc), name(n), definition_point(nullptr) {}
-void identifier::bind(const constr_map &) {}
-ir::lang::var identifier::ir_compile(ir_sections_t s) {
-  if (definition_point->top_level) {
-    return definition_point->ir_evaluate_global(s.main);
-  } else {
-    return definition_point->ir_var;
-  }
-}
-
-literal::literal(ast::literal::ptr &&v) : value(std::move(v)) {}
-free_vars_t literal::free_vars() { return {}; }
-capture_set literal::capture_group() { return {}; }
 void literal::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
 }
-ir::lang::var literal::ir_compile(ir_sections_t s) {
-  return s.main.declare_constant(this->value->to_value());
-}
-free_vars_t constructor::free_vars() {
-  if (arg)return arg->free_vars();
-  return {};
-}
-capture_set constructor::capture_group() {
-  if (arg)arg->capture_group();
-  return {};
-}
-constructor::constructor(std::string_view n) : name(n) {}
 void constructor::compile(direct_sections_t s, size_t stack_pos) {
   assert(definition_point);
   if (definition_point->is_immediate() != (arg == nullptr)) {
@@ -117,44 +209,6 @@ void constructor::compile(direct_sections_t s, size_t stack_pos) {
            << "mov qword [rax+8], rbx\n";
   }
 }
-void constructor::bind(const constr_map &cm) {
-  if (auto it = cm.find(name); it == cm.end()) {
-    throw ast::unbound_constructor(name);
-  } else {
-    definition_point = it->second;
-  }
-  if (arg)arg->bind(cm);
-}
-ir::lang::var constructor::ir_compile(ir_sections_t s) {
-  using namespace ir::lang;
-  assert(definition_point->tag >= 5);
-  assert(definition_point->tag & 1);
-  if (arg) {
-    var content = arg->ir_compile(s);
-    var block = s.main.declare_assign(rhs_expr::malloc{.size=3});
-    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
-        3)});
-    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
-        make_tag_size_d(definition_point->tag, 1, 0))});
-    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
-    return block;
-  } else {
-    assert(definition_point->tag & 1);
-    return s.main.declare_constant(definition_point->tag);
-  }
-}
-if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
-    : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
-free_vars_t if_then_else::free_vars() {
-  return join_free_vars(join_free_vars(condition->free_vars(),
-                                       true_branch->free_vars()),
-                        false_branch->free_vars());
-}
-capture_set if_then_else::capture_group() {
-  return join_capture_set(join_capture_set(condition->capture_group(),
-                                           true_branch->capture_group()),
-                          false_branch->capture_group());
-}
 void if_then_else::compile(direct_sections_t s, size_t stack_pos) {
   static size_t if_id = 0;
   ++if_id;
@@ -167,32 +221,6 @@ void if_then_else::compile(direct_sections_t s, size_t stack_pos) {
   false_branch->compile(s, stack_pos);
   s.main << " .L_IF_E_" << if_id << ":\n";
 
-}
-void if_then_else::bind(const constr_map &cm) {
-  condition->bind(cm);
-  true_branch->bind(cm);
-  false_branch->bind(cm);
-}
-ir::lang::var if_then_else::ir_compile(ir_sections_t s) {
-  using namespace ir::lang;
-  s.main.push_back(instruction::cmp_vars{.v1 = condition->ir_compile(s), .v2 = s.main.declare_constant(2), .op=instruction::cmp_vars::test});
-  scope true_scope, false_scope;
-  true_scope.ret = true_branch->ir_compile(s.with_main(true_scope));
-  false_scope.ret = false_branch->ir_compile(s.with_main(false_scope));
-  return s.main.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jmp_instr::jz, .nojmp_branch = std::move(
-      true_scope), .jmp_branch = std::move(false_scope)}));
-}
-
-build_tuple::build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
-free_vars_t build_tuple::free_vars() {
-  free_vars_t fv;
-  for (auto &p : args)fv = join_free_vars(p->free_vars(), std::move(fv));
-  return fv;
-}
-capture_set build_tuple::capture_group() {
-  capture_set fv;
-  for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
-  return fv;
 }
 void build_tuple::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "push r12\n";
@@ -207,26 +235,6 @@ void build_tuple::compile(direct_sections_t s, size_t stack_pos) {
             "pop r12\n";
   --stack_pos;
 }
-void build_tuple::bind(const constr_map &cm) {
-  for (auto &p : args)p->bind(cm);
-}
-ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
-  using namespace ir::lang;
-  var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + args.size()});
-  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=0, .src=s.main.declare_constant(3)});
-  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=1, .src=s.main.declare_constant(
-      make_tag_size_d(Tag_Tuple, args.size(), 0))});
-  for (size_t i = 0; i < args.size(); ++i) {
-    s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=2 + i, .src=args.at(i)->ir_compile(
-        s)});
-  }
-  return block;
-}
-fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
-  loc = unite_sv(f, x);
-}
-free_vars_t fun_app::free_vars() { return join_free_vars(f->free_vars(), x->free_vars()); }
-capture_set fun_app::capture_group() { return join_capture_set(f->capture_group(), x->capture_group()); }
 void fun_app::compile(direct_sections_t s, size_t stack_pos) {
   f->compile(s, stack_pos);
   s.main << "push rax\n";
@@ -237,86 +245,10 @@ void fun_app::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "mov rsi, rax\n"
             "call apply_fn\n";
 }
-void fun_app::bind(const constr_map &cm) {
-  f->bind(cm);
-  x->bind(cm);
-}
-ir::lang::var fun_app::ir_compile(ir_sections_t s) {
-  using namespace ir::lang;
-
-  //optimize for arithmetic
-  if (auto *unary_f = dynamic_cast<identifier *>(this->f.get()); unary_f && unary_f->name.starts_with("__unary_op__")) {
-    //unary
-    if (unary_f->name == "__unary_op__PLUS__")return x->ir_compile(s).mark(trivial);
-    if (unary_f->name == "__unary_op__MINUS__")
-      return s.main.declare_assign(rhs_expr::unary_op{
-          .op=rhs_expr::unary_op::neg, .x =  x->ir_compile(s).mark(trivial)}).mark(trivial);
-    THROW_INTERNAL_ERROR // no other unary operators
-  }
-
-  //TODO: support all arithmetic
-  if (auto *fa = dynamic_cast<fun_app *>(f.get()); fa)
-    if (auto *binary_f = dynamic_cast<identifier *>(fa->f.get()); binary_f && util::is_in<std::string_view>(binary_f->name,{"__binary_op__PLUS__","__binary_op__MINUS__","__binary_op__STAR__"})){
-      //binary op
-      //TODO-someday: addition and subtraction might require a single rather than three ops
-      var a_v = fa->x->ir_compile(s).mark(trivial);
-      var a = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::v_to_int, .x = a_v}).mark(trivial);
-
-      var b_v = x->ir_compile(s).mark(trivial);
-      var b = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::v_to_int, .x = b_v}).mark(trivial);
-
-      auto with_unary = [&](rhs_expr::binary_op::ops o){
-        var a_op_b = s.main.declare_assign(rhs_expr::binary_op{.op = o, .x1 = a,.x2 = b }).mark(trivial);
-        var a_op_b_v = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::int_to_v, .x = a_op_b}).mark(trivial);
-        return a_op_b_v;
-      };
-      if (binary_f->name == "__binary_op__PLUS__")return with_unary(rhs_expr::binary_op::add);
-      if (binary_f->name == "__binary_op__MINUS__")return with_unary(rhs_expr::binary_op::sub);
-      if (binary_f->name == "__binary_op__STAR__")return with_unary(rhs_expr::binary_op::imul);
-      //TODO: add others
-      THROW_INTERNAL_ERROR
-
-    }
-
-  //trivial case, a normal function
-  var vf = f->ir_compile(s);
-  var vx = x->ir_compile(s);
-  return s.main.declare_assign(rhs_expr::apply_fn{.f = vf, .x = vx});
-}
-seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
-free_vars_t seq::free_vars() { return join_free_vars(a->free_vars(), b->free_vars()); }
-capture_set seq::capture_group() { return join_capture_set(a->capture_group(), b->capture_group()); }
+void destroy::compile(direct_sections_t s, size_t stack_pos) {THROW_UNIMPLEMENTED;}
 void seq::compile(direct_sections_t s, size_t stack_pos) {
   a->compile(s, stack_pos);
   b->compile(s, stack_pos);
-}
-void seq::bind(const constr_map &cm) {
-  a->bind(cm);
-  b->bind(cm);
-}
-ir::lang::var seq::ir_compile(ir_sections_t s) {
-  a->ir_compile(s);
-  return b->ir_compile(s);
-}
-
-match_with::match_with(expression::ptr &&w) : what(std::move(w)) {}
-free_vars_t match_with::free_vars() {
-  free_vars_t fv = what->free_vars();
-  for (auto&[p, r] : branches) {
-    free_vars_t bfv = r->free_vars();
-    p->bind(bfv);
-    fv = join_free_vars(std::move(fv), std::move(bfv));
-  }
-  return fv;
-}
-capture_set match_with::capture_group() {
-  capture_set cs = what->capture_group();
-  for (auto&[p, r] : branches) {
-    capture_set bcs = r->capture_group();
-    p->bind(bcs);
-    cs = join_capture_set(std::move(cs), std::move(bcs));
-  }
-  return cs;
 }
 void match_with::compile(direct_sections_t s, size_t stack_pos) {
   static size_t match_id = 0;
@@ -348,78 +280,11 @@ void match_with::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "add rsp, 8\n";
   --stack_pos;
 }
-void match_with::bind(const constr_map &cm) {
-  for (auto&[p, r] : branches) {
-    p->bind(cm);
-    r->bind(cm);
-  }
-  what->bind(cm);
-}
-ir::lang::var match_with::ir_compile(ir_sections_t s) {
-  assert(!branches.empty());
-  using namespace ir::lang;
-  var to_match = what->ir_compile(s);
-
-  scope *current = &s.main;
-
-  std::optional<var> returned;
-  for (const auto &branch : branches) {
-    branch.pattern->print(current->comment() << "matching ");
-    var cond = branch.pattern->ir_test_unroll(*current, to_match).mark(trivial);
-    current->push_back(instruction::cmp_vars{.v1 = cond, .v2 = current->declare_constant(2), .op=instruction::cmp_vars::test});
-    auto if_applies = std::make_unique<ternary>();
-    if_applies->cond = ternary::jz;
-    //if_applies->nojmp_branch; // if applies
-    //if_applies->jmp_branch; // if not applies
-    scope &branch_scope = if_applies->nojmp_branch;
-    branch.pattern->ir_locally_unroll(branch_scope, to_match);
-    branch_scope.ret = branch.result->ir_compile(s.with_main(branch_scope));
-
-    scope *on_fail = &if_applies->jmp_branch;
-    auto v = current->declare_assign(std::move(if_applies));
-    if (returned.has_value())current->ret = v; else returned.emplace(v);
-    current = on_fail;
-  }
-  current->ret =
-      current->declare_assign(rhs_expr::apply_fn{.f=current->declare_global("__throw__unmatched__"), .x=current->declare_constant(
-          3)});
-  return returned.value();
-}
-free_vars_t let_in::free_vars() {
-  return d->free_vars(e->free_vars());
-}
-capture_set let_in::capture_group() {
-  return d->capture_group(e->capture_group());
-}
-void let_in::bind(const constr_map &cm) {
-  d->bind(cm);
-  e->bind(cm);
-}
 void let_in::compile(direct_sections_t s, size_t stack_pos) {
   size_t new_stack_pos = d->compile_locally(s, stack_pos);
   e->compile(s, new_stack_pos);
   if (new_stack_pos > stack_pos)
     s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
-}
-ir::lang::var let_in::ir_compile(ir_sections_t s) {
-  d->ir_compile_locally(s);
-  return e->ir_compile(s);
-}
-fun::fun(std::vector<matcher::ptr> &&args, ptr &&body) : args(std::move(args)), body(std::move(body)) {}
-free_vars_t fun::free_vars() {
-  auto fv = body->free_vars();
-  std::string s = util::texp::make(fv)->to_string();
-  for (auto &arg : args)arg->bind(fv);
-  std::string s2 = util::texp::make(fv)->to_string();
-
-  return std::move(fv);
-}
-capture_set fun::capture_group() {
-  auto cs = body->capture_group();
-  for (auto &arg : args)arg->bind(cs);
-  captures.assign(cs.cbegin(), cs.cend());
-  std::sort(captures.begin(), captures.end());
-  return std::move(cs);
 }
 void fun::compile(direct_sections_t s, size_t stack_pos) {
   std::string name = compile_global(s);
@@ -449,65 +314,6 @@ void fun::compile(direct_sections_t s, size_t stack_pos) {
   }
 
 }
-void fun::bind(const constr_map &cm) {
-  for (auto &arg : args)arg->bind(cm);
-  body->bind(cm);
-}
-bool fun::is_capturing(const matcher::universal_matcher *m) const {
-  return std::binary_search(captures.begin(), captures.end(), m);
-}
-size_t fun::capture_index(const matcher::universal_matcher *m) const {
-  return std::distance(captures.begin(), std::lower_bound(captures.begin(), captures.end(), m));
-}
-std::string fun::text_name_gen(std::string_view name_hint) {
-  if (name_hint.empty()) {
-    static size_t id = 0;
-    std::string s = ("___unnamed_fn");
-    if (id)s.append("__").append(std::to_string(id));
-    ++id;
-    return s;
-  } else {
-    static size_t id = 0;
-    std::string s = ("___");
-    s.append(name_hint).append("_fn");
-    if (id)s.append("__").append(std::to_string(id));
-    ++id;
-    return s;
-  }
-}
-
-std::string fun::ir_compile_global(ir_sections_t s) {
-  const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
-  static size_t fun_id_gen = 1;
-  const size_t fun_id = fun_id_gen++;
-  std::string name = std::string("__fun_").append(std::to_string(fun_id)).append("__");
-  using namespace ir::lang;
-  function f;
-  var arg_block;
-  f.args = {arg_block};
-  f.name = name;
-  //read unroll args onto variables
-  bool should_skip = false;
-  // iterate the args in reverse order
-  for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
-    if (should_skip)arg_block = f.declare_assign(arg_block[2]);
-    should_skip = true;
-    (*arg_it)->ir_locally_unroll(f, f.declare_assign(arg_block[4]));
-  }
-  if (has_captures) {
-    arg_block = f.declare_assign(arg_block[2]);
-    size_t id = 4;
-    for (auto &c : captures) {
-      f.push_back(instruction::assign{.dst= c->ir_var, .src=arg_block[id]});
-      ++id;
-    }
-  }
-  //compute value
-  f.ret = body->ir_compile(s.with_main(f));
-  *(s.text++) = std::move(f);
-  return name;
-}
-
 std::string fun::compile_global(direct_sections_t s, std::string_view name_hint) {
   const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
 
@@ -545,6 +351,140 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   s.text << this_fun.str() << std::endl;
   return text_ptr;
 }
+
+ir::lang::var identifier::ir_compile(ir_sections_t s) {
+  if (definition_point->top_level) {
+    return definition_point->ir_evaluate_global(s.main);
+  } else {
+    return definition_point->ir_var;
+  }
+}
+ir::lang::var literal::ir_compile(ir_sections_t s) {
+  return s.main.declare_constant(this->value->to_value());
+}
+ir::lang::var constructor::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  assert(definition_point->tag >= 5);
+  assert(definition_point->tag & 1);
+  if (arg) {
+    var content = arg->ir_compile(s);
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=3});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
+        3)});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
+        make_tag_size_d(definition_point->tag, 1, 0))});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
+    return block;
+  } else {
+    assert(definition_point->tag & 1);
+    return s.main.declare_constant(definition_point->tag);
+  }
+}
+ir::lang::var if_then_else::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  s.main.push_back(instruction::cmp_vars{.v1 = condition->ir_compile(s), .v2 = s.main.declare_constant(2), .op=instruction::cmp_vars::test});
+  scope true_scope, false_scope;
+  true_scope.ret = true_branch->ir_compile(s.with_main(true_scope));
+  false_scope.ret = false_branch->ir_compile(s.with_main(false_scope));
+  return s.main.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jmp_instr::jz, .nojmp_branch = std::move(
+      true_scope), .jmp_branch = std::move(false_scope)}));
+}
+ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+  var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + args.size()});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=0, .src=s.main.declare_constant(3)});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=1, .src=s.main.declare_constant(
+      make_tag_size_d(Tag_Tuple, args.size(), 0))});
+  for (size_t i = 0; i < args.size(); ++i) {
+    s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=2 + i, .src=args.at(i)->ir_compile(
+        s)});
+  }
+  return block;
+}
+ir::lang::var fun_app::ir_compile(ir_sections_t s) {
+  using namespace ir::lang;
+
+  //optimize for arithmetic
+  if (auto *unary_f = dynamic_cast<identifier *>(this->f.get()); unary_f && unary_f->name.starts_with("__unary_op__")) {
+    //unary
+    if (unary_f->name == "__unary_op__PLUS__")return x->ir_compile(s).mark(trivial);
+    if (unary_f->name == "__unary_op__MINUS__")
+      return s.main.declare_assign(rhs_expr::unary_op{
+          .op=rhs_expr::unary_op::neg, .x =  x->ir_compile(s).mark(trivial)}).mark(trivial);
+    THROW_INTERNAL_ERROR // no other unary operators
+  }
+
+  //TODO: support all arithmetic
+  if (auto *fa = dynamic_cast<fun_app *>(f.get()); fa)
+    if (auto *binary_f = dynamic_cast<identifier *>(fa->f.get()); binary_f
+        && util::is_in<std::string_view>(binary_f->name,
+                                         {"__binary_op__PLUS__", "__binary_op__MINUS__", "__binary_op__STAR__"})) {
+      //binary op
+      //TODO-someday: addition and subtraction might require a single rather than three ops
+      var a_v = fa->x->ir_compile(s).mark(trivial);
+      var a = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::v_to_int, .x = a_v}).mark(trivial);
+
+      var b_v = x->ir_compile(s).mark(trivial);
+      var b = s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::v_to_int, .x = b_v}).mark(trivial);
+
+      auto with_unary = [&](rhs_expr::binary_op::ops o) {
+        var a_op_b = s.main.declare_assign(rhs_expr::binary_op{.op = o, .x1 = a, .x2 = b}).mark(trivial);
+        var a_op_b_v =
+            s.main.declare_assign(rhs_expr::unary_op{.op = rhs_expr::unary_op::int_to_v, .x = a_op_b}).mark(trivial);
+        return a_op_b_v;
+      };
+      if (binary_f->name == "__binary_op__PLUS__")return with_unary(rhs_expr::binary_op::add);
+      if (binary_f->name == "__binary_op__MINUS__")return with_unary(rhs_expr::binary_op::sub);
+      if (binary_f->name == "__binary_op__STAR__")return with_unary(rhs_expr::binary_op::imul);
+      //TODO: add others
+      THROW_INTERNAL_ERROR
+
+    }
+
+  //trivial case, a normal function
+  var vf = f->ir_compile(s);
+  var vx = x->ir_compile(s);
+  return s.main.declare_assign(rhs_expr::apply_fn{.f = vf, .x = vx});
+}
+ir::lang::var destroy::ir_compile(ir_sections_t) {THROW_UNIMPLEMENTED;}
+ir::lang::var seq::ir_compile(ir_sections_t s) {
+  a->ir_compile(s);
+  return b->ir_compile(s);
+}
+ir::lang::var match_with::ir_compile(ir_sections_t s) {
+  assert(!branches.empty());
+  using namespace ir::lang;
+  var to_match = what->ir_compile(s);
+
+  scope *current = &s.main;
+
+  std::optional<var> returned;
+  for (const auto &branch : branches) {
+    branch.pattern->print(current->comment() << "matching ");
+    var cond = branch.pattern->ir_test_unroll(*current, to_match).mark(trivial);
+    current->push_back(instruction::cmp_vars{.v1 = cond, .v2 = current->declare_constant(2), .op=instruction::cmp_vars::test});
+    auto if_applies = std::make_unique<ternary>();
+    if_applies->cond = ternary::jz;
+    //if_applies->nojmp_branch; // if applies
+    //if_applies->jmp_branch; // if not applies
+    scope &branch_scope = if_applies->nojmp_branch;
+    branch.pattern->ir_locally_unroll(branch_scope, to_match);
+    branch_scope.ret = branch.result->ir_compile(s.with_main(branch_scope));
+
+    scope *on_fail = &if_applies->jmp_branch;
+    auto v = current->declare_assign(std::move(if_applies));
+    if (returned.has_value())current->ret = v; else returned.emplace(v);
+    current = on_fail;
+  }
+  current->ret =
+      current->declare_assign(rhs_expr::apply_fn{.f=current->declare_global("__throw__unmatched__"), .x=current->declare_constant(
+          3)});
+  return returned.value();
+}
+ir::lang::var let_in::ir_compile(ir_sections_t s) {
+  d->ir_compile_locally(s);
+  return e->ir_compile(s);
+}
 ir::lang::var fun::ir_compile(ir_sections_t s) {
   std::string text_ptr = ir_compile_global(s);
   if (captures.empty()) {
@@ -572,6 +512,86 @@ ir::lang::var fun::ir_compile(ir_sections_t s) {
           + i, .src=captures.at(i)->ir_var});
     }
     return block;
+  }
+}
+std::string fun::ir_compile_global(ir_sections_t s) {
+  const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
+  static size_t fun_id_gen = 1;
+  const size_t fun_id = fun_id_gen++;
+  std::string name = std::string("__fun_").append(std::to_string(fun_id)).append("__");
+  using namespace ir::lang;
+  function f;
+  var arg_block;
+  f.args = {arg_block};
+  f.name = name;
+  //read unroll args onto variables
+  bool should_skip = false;
+  // iterate the args in reverse order
+  for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
+    if (should_skip)arg_block = f.declare_assign(arg_block[2]);
+    should_skip = true;
+    (*arg_it)->ir_locally_unroll(f, f.declare_assign(arg_block[4]));
+  }
+  if (has_captures) {
+    arg_block = f.declare_assign(arg_block[2]);
+    size_t id = 4;
+    for (auto &c : captures) {
+      f.push_back(instruction::assign{.dst= c->ir_var, .src=arg_block[id]});
+      ++id;
+    }
+  }
+  //compute value
+  f.ret = body->ir_compile(s.with_main(f));
+  *(s.text++) = std::move(f);
+  return name;
+}
+
+identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
+identifier::identifier(std::string_view n, std::string_view loc) : t(loc), name(n), definition_point(nullptr) {}
+
+literal::literal(ast::literal::ptr &&v) : value(std::move(v)) {}
+
+constructor::constructor(std::string_view n) : name(n) {}
+
+if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
+    : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
+
+build_tuple::build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
+
+fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
+  loc = unite_sv(f, x);
+}
+
+destroy::destroy(ptr &&obj, ptr &&d) :obj(std::move(obj)), d(std::move(d)) {
+  loc = unite_sv(obj,d);
+}
+
+
+seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
+
+match_with::match_with(expression::ptr &&w) : what(std::move(w)) {}
+
+fun::fun(std::vector<matcher::ptr> &&args, ptr &&body) : args(std::move(args)), body(std::move(body)) {}
+bool fun::is_capturing(const matcher::universal_matcher *m) const {
+  return std::binary_search(captures.begin(), captures.end(), m);
+}
+size_t fun::capture_index(const matcher::universal_matcher *m) const {
+  return std::distance(captures.begin(), std::lower_bound(captures.begin(), captures.end(), m));
+}
+std::string fun::text_name_gen(std::string_view name_hint) {
+  if (name_hint.empty()) {
+    static size_t id = 0;
+    std::string s = ("___unnamed_fn");
+    if (id)s.append("__").append(std::to_string(id));
+    ++id;
+    return s;
+  } else {
+    static size_t id = 0;
+    std::string s = ("___");
+    s.append(name_hint).append("_fn");
+    if (id)s.append("__").append(std::to_string(id));
+    ++id;
+    return s;
   }
 }
 

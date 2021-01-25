@@ -16,7 +16,7 @@ enum token_type {
   EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, FUN,
   COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
   LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN,
-  STAR, SLASH, TYPE, NONREC, OF, NOT_EQUAL, END_OF_INPUT
+  STAR, SLASH, TYPE, NONREC, OF, NOT_EQUAL, DESTROY_ARROW, END_OF_INPUT
 };
 
 namespace error {
@@ -65,8 +65,9 @@ constexpr auto tokens_map = util::make_array(
     st{"true", TRUE}, st{"false", FALSE}, st{"_", UNDERSCORE},
     st{"*", STAR}, st{"/", SLASH}, st{"type", TYPE},
     st{"<=", LESS_EQUAL_THAN}, st{">=", GREATER_EQUAL_THAN},
-    st{"<>",NOT_EQUAL},
-    st{"<", LESS_THAN}, st{">", GREATER_THAN});
+    st{"<>", NOT_EQUAL},
+    st{"<", LESS_THAN}, st{">", GREATER_THAN},
+    st{"~>", DESTROY_ARROW});
 
 struct token {
 
