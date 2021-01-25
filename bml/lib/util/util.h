@@ -80,8 +80,17 @@ bool is_in(const T &v, std::initializer_list<T> lst) {
 template<class... Ts>
 struct overloaded : Ts ... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+namespace chars{
 
+bool is_escaped_in_string_literal(char c);
+bool has_escaped_mnemonic(char c);
+char escaped_mnemonic(char c);
+bool is_valid_mnemonic(char c);
+char parse_mnemonic(char c);
 }
+}
+
+
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)

@@ -9,12 +9,12 @@
 #include <unordered_set>
 #include <set>
 #include <util/sexp.h>
-namespace util{
+namespace util {
 
 namespace texp {
 
 struct t {
-  virtual void to_stream(std::ostream&) const = 0 ;
+  virtual void to_stream(std::ostream &) const = 0;
   std::string to_string() const {
     std::stringstream ss;
     to_stream(ss);
@@ -22,112 +22,122 @@ struct t {
   }
 };
 
-
 typedef std::unique_ptr<t> ptr;
 
 struct texp_of_t {
   virtual ptr to_texp() const = 0;
 };
 
-
 struct list : public t {
   std::vector<ptr> elems;
   list() = default;
-  list(list&&) = default;
-  list(std::vector<ptr>&& e) : elems(std::move(e)) {}
-  void to_stream(std::ostream& os) const final {
+  list(list &&) = default;
+  list(std::vector<ptr> &&e) : elems(std::move(e)) {}
+  void to_stream(std::ostream &os) const final {
     os << "[";
     bool comma = false;
-    for(const auto &p : elems){
-      if(comma)os << ", ";
+    for (const auto &p : elems) {
+      if (comma)os << ", ";
       comma = true;
       p->to_stream(os);
     }
-    os <<"]";
+    os << "]";
   }
 };
 
 struct object : public t {
   std::string name;
   object() = default;
-  object(object&&) = default;
+  object(object &&) = default;
   object(std::string_view name) : name(name) {}
-  std::vector<std::pair<std::string_view,ptr>> fields;
-  void to_stream(std::ostream& os) const final {
+  std::vector<std::pair<std::string_view, ptr>> fields;
+  void to_stream(std::ostream &os) const final {
     os << name << "{";
     bool comma = false;
-    for(const auto &[f,v] : fields){
-      if(comma)os << ", ";
+    for (const auto &[f, v] : fields) {
+      if (comma)os << ", ";
       comma = true;
       os << f << " : ";
       v->to_stream(os);
     }
-    os <<"}";
+    os << "}";
   }
 };
 
 struct dict : public t {
-  std::vector<std::pair<ptr,ptr>> elems;
-  void to_stream(std::ostream& os) const final {
-    os  << "{";
+  std::vector<std::pair<ptr, ptr>> elems;
+  void to_stream(std::ostream &os) const final {
+    os << "{";
     bool comma = false;
-    for(const auto &[f,v] : elems){
-      if(comma)os << ", ";
+    for (const auto &[f, v] : elems) {
+      if (comma)os << ", ";
       comma = true;
       f->to_stream(os);
       os << " : ";
       v->to_stream(os);
     }
-    os <<"}";
+    os << "}";
   }
 };
 
 struct set : public t {
   std::vector<ptr> elems;
-  void to_stream(std::ostream& os) const final {
-    os  << "{";
+  void to_stream(std::ostream &os) const final {
+    os << "{";
     bool comma = false;
-    for(const auto &v : elems){
-      if(comma)os << ", ";
-      comma=true;
+    for (const auto &v : elems) {
+      if (comma)os << ", ";
+      comma = true;
       v->to_stream(os);
     }
-    os <<"}";
+    os << "}";
   }
 };
 
 struct string : public t {
   std::string s;
-  string(std::string&& s) : s(std::move(s)){}
-  void to_stream(std::ostream& os) const final { os << '\''<<s<<'\''; }
+  string(std::string &&s) : s(std::move(s)) {}
+  void to_stream(std::ostream &os) const final {
+    using namespace chars;
+    os << '\'';
+    for (char c : s)
+      if (is_escaped_in_string_literal(c)) {
+        os << "\\";
+        if(has_escaped_mnemonic(c))os<<escaped_mnemonic(c);
+        else os<<int(c);
+      } else {
+        os << c;
+      };
+    os << '\'';
+  }
 };
 
 struct null : public t {
-  void to_stream(std::ostream& os) const final { os << "null"; }
+  void to_stream(std::ostream &os) const final { os << "null"; }
 };
 
 template<typename T>
 struct stringible : public t {
   T value;
-  stringible(const T& v) : value(v) {}
-  void to_stream(std::ostream& os) const final { os << std::to_string(value);/*<<":"<< type_name<T>();*/ }
+  stringible(const T &v) : value(v) {}
+  void to_stream(std::ostream &os) const final { os << std::to_string(value);/*<<":"<< type_name<T>();*/ }
 };
 
 struct boolean : public t {
   bool value;
   boolean(bool v) : value(v) {}
-  void to_stream(std::ostream& os) const final { os << (value ? "true" : "false"); }
+  void to_stream(std::ostream &os) const final { os << (value ? "true" : "false"); }
 };
 
 template<typename T>
 struct abstr : public t {
   abstr() {}
-  void to_stream(std::ostream& os) const final { os << type_name<T>() << " = <abstr>"; }
+  void to_stream(std::ostream &os) const final { os << type_name<T>() << " = <abstr>"; }
 };
 
 struct any : public t {
   any() {}
-  void to_stream(std::ostream& os) const final { os << "<any>"; }
+  void to_stream(std::ostream &os) const final { os << "<any>"; }
 };
 
 namespace __internal {
@@ -171,12 +181,12 @@ struct texp_of_single {
 
 template<>
 struct texp_of_single<std::string> {
-  static ptr get_texp(const std::string &p) {return try_get_as_string::get_texp(p);}
-};template<>
-struct texp_of_single<std::string_view> {
-  static ptr get_texp(const std::string_view &p) {return try_get_as_string::get_texp(p);}
+  static ptr get_texp(const std::string &p) { return try_get_as_string::get_texp(p); }
 };
-
+template<>
+struct texp_of_single<std::string_view> {
+  static ptr get_texp(const std::string_view &p) { return try_get_as_string::get_texp(p); }
+};
 
 template<typename C>
 struct texp_of_single<std::unique_ptr<C> > {
@@ -229,7 +239,7 @@ template<typename T>
 struct texp_of_single<std::unordered_set<T>> {
   static ptr get_texp(const std::unordered_set<T> &m) {
     auto s = std::make_unique<set>();
-    for (const auto&k : m)s->elems.push_back(texp_of_single<T>::get_texp(k));
+    for (const auto &k : m)s->elems.push_back(texp_of_single<T>::get_texp(k));
     return std::move(s);
   }
 };
@@ -238,7 +248,7 @@ template<typename T>
 struct texp_of_single<std::set<T>> {
   static ptr get_texp(const std::set<T> &m) {
     auto s = std::make_unique<set>();
-    for (const auto&k : m)s->elems.push_back(texp_of_single<T>::get_texp(k));
+    for (const auto &k : m)s->elems.push_back(texp_of_single<T>::get_texp(k));
     return std::move(s);
   }
 };
@@ -250,19 +260,18 @@ struct texp_of_single<bool> {
   }
 };
 
-
-
-template<typename T,typename ...Ts>
-ptr make_from_object(std::string_view comma_separated_names,const Ts &... fields) {
-  assert(std::count(comma_separated_names.begin(),comma_separated_names.end(),',')==(sizeof...(fields))-1); //TODO: make this a static assert
+template<typename T, typename ...Ts>
+ptr make_from_object(std::string_view comma_separated_names, const Ts &... fields) {
+  assert(std::count(comma_separated_names.begin(), comma_separated_names.end(), ',')
+             == (sizeof...(fields)) - 1); //TODO: make this a static assert
   auto ita = comma_separated_names.begin();
 
   auto o = std::make_unique<object>();
   o->name = type_name<T>();
-  for(t* p : {texp_of_single<Ts>::get_texp(fields).release() ...}){
-    auto itb = std::find(ita,comma_separated_names.end(),',');
-    o->fields.emplace_back(itr_sv(ita,itb),p);
-    ita = itb+1;
+  for (t *p : {texp_of_single<Ts>::get_texp(fields).release() ...}) {
+    auto itb = std::find(ita, comma_separated_names.end(), ',');
+    o->fields.emplace_back(itr_sv(ita, itb), p);
+    ita = itb + 1;
   }
   return std::move(o);
 }
@@ -274,18 +283,19 @@ ptr make_from_empty_object() {
   return std::move(o);
 }
 
-template<typename T,typename ...Ts>
-ptr make_object_from_texps(std::string_view comma_separated_names,Ts &... fields) {
-  assert(std::count(comma_separated_names.begin(),comma_separated_names.end(),',')==(sizeof...(fields))-1); //TODO: make this a static assert
+template<typename T, typename ...Ts>
+ptr make_object_from_texps(std::string_view comma_separated_names, Ts &... fields) {
+  assert(std::count(comma_separated_names.begin(), comma_separated_names.end(), ',')
+             == (sizeof...(fields)) - 1); //TODO: make this a static assert
   auto ita = comma_separated_names.begin();
 
   auto o = std::make_unique<object>();
   o->name = type_name<T>();
-  for(t* p : {fields.p.release() ...}){
-    auto itb = std::find(ita,comma_separated_names.end(),',');
-    if(p== nullptr)p = new any();
-    o->fields.emplace_back(itr_sv(ita,itb),p);
-    ita = itb+1;
+  for (t *p : {fields.p.release() ...}) {
+    auto itb = std::find(ita, comma_separated_names.end(), ',');
+    if (p == nullptr)p = new any();
+    o->fields.emplace_back(itr_sv(ita, itb), p);
+    ita = itb + 1;
   }
   return std::move(o);
 }
@@ -327,13 +337,11 @@ ptr make(const T &x) {
 struct ptr_init {
   ptr p;
   ptr_init() : p(std::make_unique<any>()) {}
-  ptr_init(ptr_init&&) = default;
-  ptr_init(ptr&& p) : p(std::move(p)) {}
+  ptr_init(ptr_init &&) = default;
+  ptr_init(ptr &&p) : p(std::move(p)) {}
 
   template<typename T>
-  ptr_init(const T &x) : p (__internal::texp_of_single<T>::get_texp(x)) {}
-
-
+  ptr_init(const T &x) : p(__internal::texp_of_single<T>::get_texp(x)) {}
 
 };
 

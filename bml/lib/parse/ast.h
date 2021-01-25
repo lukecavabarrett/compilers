@@ -556,6 +556,7 @@ TO_TEXP_EMPTY()
 struct string : public t {
   std::string value;
   string(std::string_view value) : value(value) {}
+  string(std::string&& value) : value(std::move(value)) {}
   uint64_t to_value() const final;
 TO_TEXP(value)
 };

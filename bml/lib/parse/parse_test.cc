@@ -6,8 +6,8 @@ namespace {
 
 template<auto ParseFun>
 void parse_expect_rethrow(std::string_view source, std::string_view expected) {
-  auto tks = parse::tokenizer(source);
   try {
+    auto tks = parse::tokenizer(source);
     auto ast = ParseFun(tks);
     EXPECT_TRUE(tks.empty());
     EXPECT_EQ(ast->to_texp()->to_string(), expected);
@@ -170,4 +170,8 @@ TEST_PARSE_EXPRESSION_EQUAL("a b |> c d |> e f <| g h |> i j <| k l ","(a b |> c
 TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) <| (g h |> i j) <| (k l) ","(a b |> c d |> e f) ( (g h |> i j)  (k l))");
 TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) ((g h |> i j) (k l))","(e f (c d (a b))) ((i j (g h)) (k l))");
 
+TEST_PARSE_EXPRESSION(R"( "Hello, World!" )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello, World!\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello,\n Newline!\n" )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello,\n Newline!\n\0\0\0\0\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello,\10 Newline!\10" )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello,\n Newline!\n\0\0\0\0\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello, john\"\\"  )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello, john\"\\\0\0\0'}})");
 }

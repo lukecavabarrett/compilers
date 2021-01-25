@@ -102,7 +102,7 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
   auto sepr = sep::consume_sep(tk);
-  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sep, sub_method>(tk),std::move(sepr));
+  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sep, sub_method>(tk), std::move(sepr));
 }
 
 }
@@ -137,7 +137,7 @@ void tokenizer::write_head() {
         to_parse.remove_prefix(2);
       } else to_parse.remove_prefix(1);
     }
-    if (nested_comment)throw error::report_token("Begin of comment ", start_comment, " is unmatched.");
+    if (nested_comment)throw parse::error::report_token( start_comment, "Begin of comment "," is unmatched.");
     return write_head();
   }
   for (const auto&[p, t] : tokens_map)
@@ -149,7 +149,18 @@ void tokenizer::write_head() {
 
   if (to_parse.front() == '\"') {
     //string literal
-    throw std::runtime_error("parsing of string literal unimplemented");
+    size_t i = 1;
+    bool previous_slash = false;
+    while (i < to_parse.size() && (to_parse[i] != '\"' || previous_slash)){
+      if(!previous_slash && to_parse[i]=='\\')previous_slash=true;
+      else previous_slash = false;
+      ++i;
+    }
+    if (i == to_parse.size())throw parse::error::report_token(to_parse,"string literal", " is not terminated.");
+    i += 1;
+    head = token{.sv=std::string_view(to_parse.begin(), i), .type=LITERAL};
+    to_parse.remove_prefix(i);
+    return;
   }
 
   if (to_parse.front() == '.') {
@@ -291,11 +302,11 @@ ptr make_fun_constr_app(ptr &&f, ptr &&x, bool) {
   } else return std::make_unique<fun_app>(std::move(f), std::move(x));
 }
 
-ptr make_rev_fun_app(ptr &&x, ptr &&f,token t) {
+ptr make_rev_fun_app(ptr &&x, ptr &&f, token t) {
   return std::make_unique<fun_app>(std::move(f), std::move(x));
 }
 
-ptr make_fun_app(ptr &&f, ptr &&x,token t) {
+ptr make_fun_app(ptr &&f, ptr &&x, token t) {
   return std::make_unique<fun_app>(std::move(f), std::move(x));
 }
 
@@ -303,15 +314,20 @@ ptr parse_e_a(tokenizer &tk) {
 
   using namespace patterns;
   return parse_fold_r<make_infix_app, tk_sep<EQUAL, NOT_EQUAL>,
-         parse_fold_r<make_infix_app, tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN>,
-         parse_fold_l<make_fun_app,tk_sep<PIPE_LEFT>,
-         parse_fold_r<make_rev_fun_app,tk_sep<PIPE_RIGHT>,
-         parse_fold_r<make_infix_app, tk_sep<PLUS, MINUS>,
-         parse_fold_r<make_infix_app, tk_sep<STAR, SLASH>,
-         parse_fold_unary_l<make_prefix_app, tk_sep<PLUS, MINUS>,
-         parse_fold_r<make_fun_constr_app,peek_sep<parse_e_p_first>,
-         parse_e_p
-         >>>>>>>>(tk);
+                      parse_fold_r<make_infix_app, tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN>,
+                                   parse_fold_l<make_fun_app, tk_sep<PIPE_LEFT>,
+                                                parse_fold_r<make_rev_fun_app, tk_sep<PIPE_RIGHT>,
+                                                             parse_fold_r<make_infix_app, tk_sep<PLUS, MINUS>,
+                                                                          parse_fold_r<make_infix_app,
+                                                                                       tk_sep<STAR, SLASH>,
+                                                                                       parse_fold_unary_l<
+                                                                                           make_prefix_app,
+                                                                                           tk_sep<PLUS, MINUS>,
+                                                                                           parse_fold_r<
+                                                                                               make_fun_constr_app,
+                                                                                               peek_sep<parse_e_p_first>,
+                                                                                               parse_e_p
+                                                                                           >>>>>>>>(tk);
   //TODO: create better syntax to express them as a list
 }
 
@@ -323,7 +339,7 @@ ptr parse_e_p(tokenizer &tk) {
     case TRUE:
     case FALSE:
     case LITERAL: {
-      return std::make_unique<literal>(ast::literal::parse(tk.pop()));
+      return with_loc(std::make_unique<literal>(ast::literal::parse(tk.pop())), tk.peek_sv());
     }
     case IDENTIFIER: {
       return std::make_unique<identifier>(tk.pop().sv);
@@ -502,8 +518,44 @@ ptr parse(const token &t) {
     case FALSE:return std::make_unique<boolean>(false);
     case LITERAL: {
       if (int64_t n;std::from_chars(t.sv.begin(), t.sv.end(), n).ec == std::errc())return std::make_unique<integer>(n);
-      //TODO: floating point literal, string literal
-      throw std::runtime_error(AT "unimplemented floating point literal, string literal");
+      if (t.sv.front() == '\"') {
+        //string literal
+        std::string_view s = t.sv;
+        s.remove_prefix(1);
+        s.remove_suffix(1);
+        std::string slit;
+        for (size_t i = 0; i < s.size(); ++i)
+          if (s[i] == '\\') {
+            //escape sequences
+            if (isdigit(s[i + 1])) {
+              //read the number
+              size_t j = i + 1, n = 0;
+              while (j < s.size() && isdigit(s[j])) {
+                n = 10 * n + s[j] - '0';
+                ++j;
+              }
+              if (j - i > 5 || n > 255)
+                throw parse::error::report_token(std::string_view(s.data() + i, j - i),
+                                                 "Escape sequence ",
+                                                 " doesn't fit in single-byte character [0-255].");
+              i = j - 1;
+              slit.push_back(char(n));
+            } else if (chars::is_valid_mnemonic(s[i + 1])) {
+              slit.push_back(chars::parse_mnemonic(s[i + 1]));
+              ++i;
+            } else {
+              //error
+              throw parse::error::report_token(std::string_view(s.data() + i, 2),
+                                               "Escape sequence ",
+                                               " is not recognized.");
+            }
+          } else slit.push_back(s[i]);
+        slit.push_back(0);
+        while (slit.size() % 8)slit.push_back(0);
+        return std::make_unique<string>(std::move(slit));
+      }
+      //TODO: floating point literal
+      throw std::runtime_error(AT "unimplemented floating point literal");
     }
     default: throw std::runtime_error(AT "trying to parse a literal");
   }
@@ -598,14 +650,14 @@ ptr parse_c(tokenizer &tk) {
 
 ptr parse_p(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<product, &product::ts, tk_sep<STAR>,parse_c >(tk);
+  return parse_vec<product, &product::ts, tk_sep<STAR>, parse_c>(tk);
 }
-ptr make_function(ptr&&a,ptr&&b,token t){
-  return std::make_unique<function>(std::move(a),std::move(b));
+ptr make_function(ptr &&a, ptr &&b, token t) {
+  return std::make_unique<function>(std::move(a), std::move(b));
 }
 ptr parse_f(tokenizer &tk) {
   using namespace patterns;
-  return parse_fold_l<make_function, tk_sep<ARROW>,parse_p>(tk);
+  return parse_fold_l<make_function, tk_sep<ARROW>, parse_p>(tk);
 }
 
 ptr parse_t(tokenizer &tk) {
