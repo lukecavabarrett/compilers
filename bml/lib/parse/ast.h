@@ -230,6 +230,7 @@ struct constructor : public t {
   type::definition::single_variant::constr *definition_point;
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
+  ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d);
   void bind(const constr_map &cm) final;
 TO_TEXP(name, arg);
 };
@@ -253,6 +254,7 @@ struct build_tuple : public t {
   capture_set capture_group() final;;
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
+  ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d);
   void bind(const constr_map &cm) final;
 TO_TEXP(args);
 };

@@ -518,6 +518,57 @@ print_list (repeat 42 10);;
 )","42 42 42 42 42 42 42 42 42 42 ");
 }
 
+TEST(Build,BoxedType){
+  test_build(R"(
+type 'a boxed = | Boxed of 'a ;;
+
+let f x =
+  let x = (Boxed x) ~> (fun (Boxed n) -> println_int n) in
+  println_int 100;;
+
+f 42;;
+)","42\n100\n");
+  test_build(R"(
+type 'a boxed = | Boxed of 'a ;;
+
+let f x =
+  let x = (Boxed x) ~> (fun (Boxed n) -> println_int n) in
+  println_int 100; x;;
+
+f 42;;
+)","100\n42\n");
+  test_build(R"(
+type 'a boxed = | Boxed of 'a ;;
+
+let f x =
+  let x = (Boxed x) ~> (fun (Boxed n) -> println_int n) in
+  println_int 100; x;;
+
+let apply2 (f1,f2) (x1,x2) = (f1 x1, f2 x2) ;;
+let const x y = x;;
+
+apply2 (const (), println_int) (f 42,34);;
+(* First, the call to f1 print 100 and returns (Boxed 42);
+    Then, in apply 2 the Boxed gets ignored by const () and hence gets destroyed;
+    Finally 34 is printed (tuples are evaluated left to right) *)
+)","100\n42\n34\n");
+  test_build(R"(
+type 'a boxed = | Boxed of 'a ;;
+
+let make_deadspeaking_box x = (Boxed x) ~> (fun (Boxed n) -> println_int n);;
+
+type 'a list = | Empty | Cons of 'a * 'a list ;;
+
+let rec repeat_ x n tail = if n=0 then tail else repeat_ x (n-1) (Cons x,tail);;
+let repeat x n = repeat_ x n Empty;;
+
+repeat (repeat (make_deadspeaking_box 1729) 1000) 1000;;
+(* Even by making "copies" of a value, these are functional copies, so the box is only deleted once*)
+)","1729\n");
+  //TODO: deep_copy
+
+}
+
 /*
 
 */

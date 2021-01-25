@@ -44,7 +44,10 @@ void fun_app::bind(const constr_map &cm) {
   f->bind(cm);
   x->bind(cm);
 }
-void destroy::bind(const constr_map &cm) {THROW_UNIMPLEMENTED}
+void destroy::bind(const constr_map &cm) {
+  obj->bind(cm);
+  d->bind(cm);
+}
 void if_then_else::bind(const constr_map &cm) {
   condition->bind(cm);
   true_branch->bind(cm);
@@ -93,7 +96,7 @@ free_vars_t build_tuple::free_vars() {
   return fv;
 }
 free_vars_t fun_app::free_vars() { return join_free_vars(f->free_vars(), x->free_vars()); }
-free_vars_t destroy::free_vars() {THROW_UNIMPLEMENTED; }
+free_vars_t destroy::free_vars() { return join_free_vars(obj->free_vars(), d->free_vars()); }
 free_vars_t constructor::free_vars() {
   if (arg)return arg->free_vars();
   return {};
@@ -149,7 +152,7 @@ capture_set build_tuple::capture_group() {
   return fv;
 }
 capture_set fun_app::capture_group() { return join_capture_set(f->capture_group(), x->capture_group()); }
-capture_set destroy::capture_group() { THROW_UNIMPLEMENTED; }
+capture_set destroy::capture_group() { return join_capture_set(obj->capture_group(), d->capture_group());; }
 capture_set seq::capture_group() { return join_capture_set(a->capture_group(), b->capture_group()); }
 capture_set match_with::capture_group() {
   capture_set cs = what->capture_group();
@@ -245,7 +248,7 @@ void fun_app::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "mov rsi, rax\n"
             "call apply_fn\n";
 }
-void destroy::compile(direct_sections_t s, size_t stack_pos) {THROW_UNIMPLEMENTED;}
+void destroy::compile(direct_sections_t s, size_t stack_pos) { THROW_UNIMPLEMENTED; }
 void seq::compile(direct_sections_t s, size_t stack_pos) {
   a->compile(s, stack_pos);
   b->compile(s, stack_pos);
@@ -380,6 +383,21 @@ ir::lang::var constructor::ir_compile(ir_sections_t s) {
     return s.main.declare_constant(definition_point->tag);
   }
 }
+ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) {
+  using namespace ir::lang;
+  assert(definition_point->tag >= 5);
+  assert(definition_point->tag & 1);
+  assert(arg);
+  var content = arg->ir_compile(s);
+  var block = s.main.declare_assign(rhs_expr::malloc{.size=4});
+  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
+      3)});
+  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
+      make_tag_size_d(definition_point->tag, 1, 1))});
+  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
+  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 3, .src = d});
+  return block;
+}
 ir::lang::var if_then_else::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
   s.main.push_back(instruction::cmp_vars{.v1 = condition->ir_compile(s), .v2 = s.main.declare_constant(2), .op=instruction::cmp_vars::test});
@@ -399,6 +417,19 @@ ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
     s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=2 + i, .src=args.at(i)->ir_compile(
         s)});
   }
+  return block;
+}
+ir::lang::var build_tuple::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) {
+  using namespace ir::lang;
+  var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + args.size() + 1});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=0, .src=s.main.declare_constant(3)});
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=1, .src=s.main.declare_constant(
+      make_tag_size_d(Tag_Tuple, args.size(), 1))});
+  for (size_t i = 0; i < args.size(); ++i) {
+    s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=2 + i, .src=args.at(i)->ir_compile(
+        s)});
+  }
+  s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=2 + args.size(), .src=d});
   return block;
 }
 ir::lang::var fun_app::ir_compile(ir_sections_t s) {
@@ -446,7 +477,15 @@ ir::lang::var fun_app::ir_compile(ir_sections_t s) {
   var vx = x->ir_compile(s);
   return s.main.declare_assign(rhs_expr::apply_fn{.f = vf, .x = vx});
 }
-ir::lang::var destroy::ir_compile(ir_sections_t) {THROW_UNIMPLEMENTED;}
+ir::lang::var destroy::ir_compile(ir_sections_t s) {
+  if (auto *t = dynamic_cast<build_tuple *>(  obj.get());t) {
+    return t->ir_compile_with_destructor(s, d->ir_compile(s));
+  }
+  if (auto *c = dynamic_cast<constructor *>(  obj.get());c) {
+    return c->ir_compile_with_destructor(s, d->ir_compile(s));
+  }
+  THROW_INTERNAL_ERROR; //cannot have destructor on a non boxed
+}
 ir::lang::var seq::ir_compile(ir_sections_t s) {
   a->ir_compile(s);
   return b->ir_compile(s);
@@ -562,10 +601,9 @@ fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
   loc = unite_sv(f, x);
 }
 
-destroy::destroy(ptr &&obj, ptr &&d) :obj(std::move(obj)), d(std::move(d)) {
-  loc = unite_sv(obj,d);
+destroy::destroy(ptr &&obj_, ptr &&d_) : obj(std::move(obj_)), d(std::move(d_)) {
+  loc = unite_sv(obj, d);
 }
-
 
 seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(this->a, this->b); }
 
