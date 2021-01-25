@@ -101,8 +101,8 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &
    */
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
-  sep::consume_sep(tk);
-  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sep, sub_method>(tk));
+  auto sepr = sep::consume_sep(tk);
+  return make_lr_type(std::move(l), parse_fold_l<make_lr_type, sep, sub_method>(tk),std::move(sepr));
 }
 
 }
@@ -283,7 +283,7 @@ ptr make_prefix_app(ptr &&arg, token t) {
   return std::make_unique<fun_app>(std::make_unique<identifier>(make_unary_op(t), t.sv), std::move(arg));
 }
 
-ptr make_fun_app(ptr &&f, ptr &&x, bool) {
+ptr make_fun_constr_app(ptr &&f, ptr &&x, bool) {
   if (constructor *c = dynamic_cast<constructor *>(f.get()); c) {
     if (c->arg)throw parse::error::report_token(x->loc, "unexpected ", " too many argument for the constructor");
     c->arg = std::move(x);
@@ -291,17 +291,27 @@ ptr make_fun_app(ptr &&f, ptr &&x, bool) {
   } else return std::make_unique<fun_app>(std::move(f), std::move(x));
 }
 
+ptr make_rev_fun_app(ptr &&x, ptr &&f,token t) {
+  return std::make_unique<fun_app>(std::move(f), std::move(x));
+}
+
+ptr make_fun_app(ptr &&f, ptr &&x,token t) {
+  return std::make_unique<fun_app>(std::move(f), std::move(x));
+}
+
 ptr parse_e_a(tokenizer &tk) {
 
   using namespace patterns;
   return parse_fold_r<make_infix_app, tk_sep<EQUAL, NOT_EQUAL>,
          parse_fold_r<make_infix_app, tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN>,
+         parse_fold_l<make_fun_app,tk_sep<PIPE_LEFT>,
+         parse_fold_r<make_rev_fun_app,tk_sep<PIPE_RIGHT>,
          parse_fold_r<make_infix_app, tk_sep<PLUS, MINUS>,
          parse_fold_r<make_infix_app, tk_sep<STAR, SLASH>,
          parse_fold_unary_l<make_prefix_app, tk_sep<PLUS, MINUS>,
-         parse_fold_r<make_fun_app,peek_sep<parse_e_p_first>,
+         parse_fold_r<make_fun_constr_app,peek_sep<parse_e_p_first>,
          parse_e_p
-         >>>>>>(tk);
+         >>>>>>>>(tk);
   //TODO: create better syntax to express them as a list
 }
 
@@ -590,9 +600,12 @@ ptr parse_p(tokenizer &tk) {
   using namespace patterns;
   return parse_vec<product, &product::ts, tk_sep<STAR>,parse_c >(tk);
 }
+ptr make_function(ptr&&a,ptr&&b,token t){
+  return std::make_unique<function>(std::move(a),std::move(b));
+}
 ptr parse_f(tokenizer &tk) {
   using namespace patterns;
-  return parse_fold_l<std::make_unique<function, ptr &&, ptr &&>, tk_sep<ARROW>,parse_p>(tk);
+  return parse_fold_l<make_function, tk_sep<ARROW>,parse_p>(tk);
 }
 
 ptr parse_t(tokenizer &tk) {

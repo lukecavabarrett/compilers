@@ -15,8 +15,8 @@ enum token_type {
   LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE,
   EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, FUN,
   COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
-  LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN,
-  STAR, SLASH, TYPE, NONREC, OF, NOT_EQUAL, DESTROY_ARROW, END_OF_INPUT
+  LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN, STAR, SLASH,
+  TYPE, NONREC, OF, NOT_EQUAL, DESTROY_ARROW, PIPE_LEFT, PIPE_RIGHT, END_OF_INPUT
 };
 
 namespace error {
@@ -51,6 +51,7 @@ typedef std::pair<std::string_view, token_type> st;
 constexpr auto tokens_map = util::make_array(
     st{"(", PARENS_OPEN},
     st{")", PARENS_CLOSE},
+    st{"<|", PIPE_LEFT}, st{"|>", PIPE_RIGHT},
     st{"=", EQUAL}, st{"|", PIPE},
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},
@@ -101,6 +102,22 @@ struct token {
       case ELSE:return "ELSE";
       case TRUE:return "TRUE";
       case FALSE:return "FALSE";
+      case FUN:return "FUN";
+      case UNDERSCORE:return "UNDERSCORE";
+      case LESS_THAN:return "LESS_THAN";
+      case GREATER_THAN:return "GREATER_THAN";
+      case LESS_EQUAL_THAN:return "LESS_EQUAL_THAN";
+      case GREATER_EQUAL_THAN:return "GREATER_EQUAL_THAN";
+      case STAR:return "STAR";
+      case SLASH:return "SLASH";
+      case TYPE:return "TYPE";
+      case NONREC:return "NONREC";
+      case OF:return "OF";
+      case NOT_EQUAL:return "NOT_EQUAL";
+      case DESTROY_ARROW:return "DESTROY_ARROW";
+      case PIPE_LEFT:return "PIPE_LEFT";
+      case PIPE_RIGHT:return "PIPE_RIGHT";
+      case END_OF_INPUT:return "END_OF_INPUT";
     }
     return std::string("unimplemented (").append(sv).append(")");
     //assert(false);

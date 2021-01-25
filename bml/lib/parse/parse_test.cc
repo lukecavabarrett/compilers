@@ -166,4 +166,8 @@ TEST_PARSE_EXPRESSION("(+)","ast::expression::identifier{name : '__binary_op__PL
 TEST_PARSE_EXPRESSION("( * )","ast::expression::identifier{name : '__binary_op__STAR__'}");
 TEST_PARSE_EXPRESSION("( *)","ast::expression::identifier{name : '__binary_op__STAR__'}");
 
+TEST_PARSE_EXPRESSION_EQUAL("a b |> c d |> e f <| g h |> i j <| k l ","(a b |> c d |> e f) <| (g h |> i j) <| (k l) ");
+TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) <| (g h |> i j) <| (k l) ","(a b |> c d |> e f) ( (g h |> i j)  (k l))");
+TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) ((g h |> i j) (k l))","(e f (c d (a b))) ((i j (g h)) (k l))");
+
 }
