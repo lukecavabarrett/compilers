@@ -1148,12 +1148,12 @@ context_t context_t::merge(context_t c1, std::ostream &os1, context_t c2, std::o
   }
 
   assert(c1.regs == c2.regs);
-  assert(c1.stack == c2.stack);
   if (c1.stack_size() > c2.stack_size()) {
     assert(std::all_of(c1.stack.begin() + c2.stack_size(), c1.stack.end(), is_free));
-    os1 << "add rsp, " << 8 * (c2.stack_size() - c1.stack_size()) << "\n";
+    os1 << "add rsp, " << 8 * (c1.stack_size() - c2.stack_size()) << "\n";
     c1.stack.resize(c2.stack_size(), free{});
   }
+  assert(c1.stack == c2.stack);
 
 
 

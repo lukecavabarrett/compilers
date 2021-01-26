@@ -7,6 +7,8 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
+#include <stdbool.h>
 
 #define Tag_Tuple  0
 #define Tag_Fun 1
@@ -551,4 +553,52 @@ uintptr_t _mllib_fn__str_at(uintptr_t argv) {
   char c = s[idx];
   decrement_boxed(argv);
   return int_to_v(c);
+}
+
+uintptr_t _mllib_fn__fclose(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int fd = v_to_int( argv_b[4]);
+  if (close(fd)){
+    perror("closing file");
+    exit(1);
+  }
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
+uintptr_t _mllib_fn__fopen(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  const char *path = (const char *)((uintptr_t*)(argv_a[4])+2);
+  const char *mode = (const char *)((uintptr_t*)(argv_b[4])+2);
+  //TODO: build mode
+  int flag = 0;
+  bool r = false, w = false;
+  for(const char *c = mode; *c; ++c){
+    switch (*c) {
+      case 'r':r=true;break;
+      case 'w':w=true;break;
+      case 'c':flag|=O_CREAT;break;
+      case '+':flag|=O_APPEND;break;
+      default:{
+        fprintf(stderr," \"%s\" is not a valid flag for opening a file\n",mode);
+        exit(1);
+      }
+    }
+  }
+  if(w)flag|=O_CREAT;
+  if(r && w)flag|=O_RDWR;
+  if(r && !w)flag|=O_RDONLY;
+  if(!r && w)flag|=O_WRONLY;
+  if(!r && !w){
+    fprintf(stderr," \"%s\" is not a valid flag for opening a file - you should specify at least one between 'r' or 'w'\n",mode);
+    exit(1);
+  }
+  int fd = open(path,flag,0666);
+  if (fd<0){
+    perror("opening file");
+    exit(1);
+  }
+  decrement_boxed(argv);
+  return int_to_v(fd);
 }

@@ -1,19 +1,30 @@
-let rec print_fibonacci_helper i n f_i f_ip =
-    if n<= i then int_println f_i
-    else int_print f_i; print_fibonacci_helper (i+1) n f_ip (f_i+f_ip);;
+(* First, define the library for the autoclosefile.
+    We don't have modules yet, so we'll just prepend
+  acf_ to the functions of this "module" for clarity.*)
 
-let print_fibonacci n = print_fibonacci_helper 0 n 0 1 ;; (* a cleaner interface *)
-(*
-let rec countdown n = match n with | 0 -> int_println 0 | _ -> int_println n ; countdown (n-1);;
-let rec stack_blowing_countup n = match n with | 0 -> int_println 0 | _ -> stack_blowing_countup (n-1); int_println n ;;
+(*Module Auto_close_file *)
 
-let rec loop i last = (int_println i); (if i=last then () else loop (i+1) last);;
-let rec countup n = loop 0 n;;
-*)
+    (* These two should be not exposed *)
+    type acf_t = | Fd of int;;
+    let acf_fd (Fd fd) = fd;;
 
-let rec main () =
-    let input = int_scan () in
-    if input < 0 then ()
-    else print_fibonacci input; main () ;;
+    let acf_open path mode = (Fd (fopen path mode)) ~> (fun (Fd fd) -> fclose fd);;
+    let acf_open_msg path mode msg = (Fd (fopen path mode)) ~> (fun (Fd fd) -> fprint_str fd msg; fclose fd);;
+    let acf_print_str acf str = fprint_str (acf_fd acf) str; acf;;
+    let acf_print_int acf n = fprintln_int (acf_fd acf) n; acf;;
+    type acf_poly_t = | Int of int | Str of string ;;
+    let rec acf_print_poly acf x =
+      (match x with
+        | (Int n) -> fprintln_int (acf_fd acf) n
+        | (Str s) -> fprint_str (acf_fd acf) s);
+      acf_print_poly acf ;; (* This function doesn't actually typechek in HM, but it had a cool signature for this example *)
+(* end module *)
 
-main ();;
+let make_logger () =
+  let f = acf_open_msg "/tmp/log.txt" "w+" "##### Closing log file #####\n" in
+  acf_print_str f "##### Opening log file #####\n"
+  ; acf_print_poly f (Int 34)  (Str "Hello\n") (Int 62875)
+;;
+
+make_logger ();; (* The Acf gets destroyed, and the file get closed *)
+make_logger () (Int 1729) (Str "As long as we use it, the file is still alive!\n");; (* This time it survives a bit more *)
