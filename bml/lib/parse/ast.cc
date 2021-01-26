@@ -72,7 +72,7 @@ void match_with::bind(const constr_map &cm) {
   }
   what->bind(cm);
 }
-void build_tuple::bind(const constr_map &cm) {
+void tuple::bind(const constr_map &cm) {
   for (auto &p : args)p->bind(cm);
 }
 void let_in::bind(const constr_map &cm) {
@@ -90,7 +90,7 @@ free_vars_t identifier::free_vars() {
   if (definition_point && definition_point->top_level) return {};
   return {{name, {this}}};
 }
-free_vars_t build_tuple::free_vars() {
+free_vars_t tuple::free_vars() {
   free_vars_t fv;
   for (auto &p : args)fv = join_free_vars(p->free_vars(), std::move(fv));
   return fv;
@@ -144,7 +144,7 @@ capture_set if_then_else::capture_group() {
                                            true_branch->capture_group()),
                           false_branch->capture_group());
 }
-capture_set build_tuple::capture_group() {
+capture_set tuple::capture_group() {
   capture_set fv;
   for (auto &p : args)fv = join_capture_set(p->capture_group(), std::move(fv));
   return fv;
@@ -223,7 +223,7 @@ void if_then_else::compile(direct_sections_t s, size_t stack_pos) {
   s.main << " .L_IF_E_" << if_id << ":\n";
 
 }
-void build_tuple::compile(direct_sections_t s, size_t stack_pos) {
+void tuple::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "push r12\n";
   ++stack_pos;
   s.main << "mov edi, " << std::to_string(args.size() * 8) << "\n"
@@ -405,7 +405,7 @@ ir::lang::var if_then_else::ir_compile(ir_sections_t s) {
   return s.main.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jmp_instr::jz, .nojmp_branch = std::move(
       true_scope), .jmp_branch = std::move(false_scope)}));
 }
-ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
+ir::lang::var tuple::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
   var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + args.size()});
   s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=0, .src=s.main.declare_constant(3)});
@@ -417,7 +417,7 @@ ir::lang::var build_tuple::ir_compile(ir_sections_t s) {
   }
   return block;
 }
-ir::lang::var build_tuple::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) {
+ir::lang::var tuple::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) {
   using namespace ir::lang;
   var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + args.size() + 1});
   s.main.push_back(instruction::write_uninitialized_mem{.base=block, .block_offset=0, .src=s.main.declare_constant(3)});
@@ -476,7 +476,7 @@ ir::lang::var fun_app::ir_compile(ir_sections_t s) {
   return s.main.declare_assign(rhs_expr::apply_fn{.f = vf, .x = vx});
 }
 ir::lang::var destroy::ir_compile(ir_sections_t s) {
-  if (auto *t = dynamic_cast<build_tuple *>(  obj.get());t) {
+  if (auto *t = dynamic_cast<tuple *>(  obj.get());t) {
     return t->ir_compile_with_destructor(s, d->ir_compile(s));
   }
   if (auto *c = dynamic_cast<constructor *>(  obj.get());c) {
@@ -593,7 +593,7 @@ constructor::constructor(std::string_view n) : name(n) {}
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
     : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
 
-build_tuple::build_tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
+tuple::tuple(std::vector<expression::ptr> &&args) : args(std::move(args)) {}
 
 fun_app::fun_app(ptr &&f_, ptr &&x_) : f(std::move(f_)), x(std::move(x_)) {
   loc = unite_sv(f, x);
@@ -608,10 +608,10 @@ seq::seq(ptr &&a, ptr &&b) : a(std::move(a)), b(std::move(b)) { loc = unite_sv(t
 match_with::match_with(expression::ptr &&w) : what(std::move(w)) {}
 
 fun::fun(std::vector<matcher::ptr> &&args, ptr &&body) : args(std::move(args)), body(std::move(body)) {}
-bool fun::is_capturing(const matcher::universal_matcher *m) const {
+bool fun::is_capturing(const matcher::universal *m) const {
   return std::binary_search(captures.begin(), captures.end(), m);
 }
-size_t fun::capture_index(const matcher::universal_matcher *m) const {
+size_t fun::capture_index(const matcher::universal *m) const {
   return std::distance(captures.begin(), std::lower_bound(captures.begin(), captures.end(), m));
 }
 std::string fun::text_name_gen(std::string_view name_hint) {
@@ -634,10 +634,10 @@ std::string fun::text_name_gen(std::string_view name_hint) {
 }
 
 namespace definition {
-bool def::is_tuple() const { return dynamic_cast<expression::build_tuple *>(e.get()); }
+bool def::is_tuple() const { return dynamic_cast<expression::tuple *>(e.get()); }
 bool def::is_constr() const { return dynamic_cast<expression::constructor *>(e.get()); }
 bool def::is_fun() const { return dynamic_cast<expression::fun *>(e.get()); }
-bool def::is_single_name() const { return dynamic_cast<matcher::universal_matcher *>(name.get()); }
+bool def::is_single_name() const { return dynamic_cast<matcher::universal *>(name.get()); }
 def::def(matcher::ptr &&name, expression::ptr e) : name(std::move(name)), e(std::move(e)) {}
 
 free_vars_t t::free_vars(free_vars_t &&fv) {
@@ -682,10 +682,10 @@ void t::ir_compile_global(ir_sections_t s) {
   }
   for (auto &def : defs)
     if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
-      dynamic_cast<matcher::universal_matcher *>(def.name.get())->use_as_immediate = true;
+      dynamic_cast<matcher::universal *>(def.name.get())->use_as_immediate = true;
     }
   for (auto &def : defs) {
-    matcher::universal_matcher *name = dynamic_cast<matcher::universal_matcher *>(def.name.get());
+    matcher::universal *name = dynamic_cast<matcher::universal *>(def.name.get());
     if (name && def.is_fun()) {
       expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
       assert(f->captures.empty());
@@ -693,7 +693,7 @@ void t::ir_compile_global(ir_sections_t s) {
       name->ir_allocate_globally_funblock(s.data, f->args.size(), text_ptr);
     } else if (name && def.is_tuple()) {
 
-      expression::build_tuple *e = dynamic_cast<expression::build_tuple *>(def.e.get());
+      expression::tuple *e = dynamic_cast<expression::tuple *>(def.e.get());
       name->ir_allocate_global_tuple(s.data, e->args.size());
       var tuple_addr = s.main.declare_global(name->ir_asm_name());
       assert(name->use_as_immediate);
@@ -733,17 +733,17 @@ void t::compile_global(direct_sections_t s) {
   }
   for (auto &def : defs)
     if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
-      dynamic_cast<matcher::universal_matcher *>(def.name.get())->use_as_immediate = true;
+      dynamic_cast<matcher::universal *>(def.name.get())->use_as_immediate = true;
     }
   for (auto &def : defs) {
-    matcher::universal_matcher *name = dynamic_cast<matcher::universal_matcher *>(def.name.get());
+    matcher::universal *name = dynamic_cast<matcher::universal *>(def.name.get());
     if (name && def.is_fun()) {
       expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
       assert(f->captures.empty());
       std::string text_ptr = f->compile_global(s, name->name);
       name->globally_allocate_funblock(f->args.size(), s.data, text_ptr);
     } else if (name && def.is_tuple()) {
-      expression::build_tuple *e = dynamic_cast<expression::build_tuple *>(def.e.get());
+      expression::tuple *e = dynamic_cast<expression::tuple *>(def.e.get());
       name->globally_allocate_tupleblock(s.data, e->args.size());
       assert(name->use_as_immediate);
       size_t i = 0;
@@ -791,8 +791,24 @@ void t::bind(const constr_map &cm) {
 
 }
 
-matcher::universal_matcher::universal_matcher(std::string_view n) : name(n), stack_relative_pos(-1), top_level(false) {}
-void matcher::universal_matcher::bind(free_vars_t &fv) {
+namespace matcher {
+//bind constructor map
+void universal::bind(const constr_map &cm) {}
+void constructor::bind(const constr_map &cm) {
+  if (auto it = cm.find(cons); it == cm.end()) {
+    throw ast::unbound_constructor(cons);
+  } else {
+    definition_point = it->second;
+  }
+  if (arg)arg->bind(cm);
+}
+void tuple::bind(const constr_map &cm) {
+  for (auto &p : args)p->bind(cm);
+}
+void ignore::bind(capture_set &cs) {}
+
+//bind free variables
+void universal::bind(free_vars_t &fv) {
   if (auto it = fv.find(name); it != fv.end()) {
     usages = std::move(it->second);
     fv.erase(it);
@@ -802,47 +818,104 @@ void matcher::universal_matcher::bind(free_vars_t &fv) {
     //TODO-someday: warning that the name is unused
   }
 }
-void matcher::universal_matcher::bind(capture_set &cs) {
+void constructor::bind(free_vars_t &fv) {
+  if (arg)arg->bind(fv);
+}
+void tuple::bind(free_vars_t &fv) {
+  for (auto &p : args)p->bind(fv);
+}
+void ignore::bind(free_vars_t &fv) {}
+
+//bind capture set
+void universal::bind(capture_set &cs) {
   cs.erase(this);
 }
-void matcher::universal_matcher::bind(const constr_map &cm) {}
-std::string matcher::universal_matcher::asm_name() const {
-  return name_resolution_id ? std::string(name).append("_").append(std::to_string(name_resolution_id)) : std::string(
-      name);
+void constructor::bind(capture_set &cs) {
+  if (arg)arg->bind(cs);
 }
+void tuple::bind(capture_set &cs) {
+  for (auto &p : args)p->bind(cs);
+}
+void ignore::bind(const constr_map &cm) {}
 
-std::string matcher::universal_matcher::ir_asm_name() const {
-  return std::string("__global_value_").append(std::to_string(name_resolution_id)).append("__");
-}
-void matcher::universal_matcher::ir_globally_register(global_map &m) {
+//ir_globally_register
+void universal::ir_globally_register(global_map &m) {
   static size_t start_id = 1;
   top_level = true;
   m[name] = this;
   name_resolution_id = ++start_id;
 }
-void matcher::universal_matcher::globally_register(global_map &m) {
+void constructor::ir_globally_register(global_map &m) {
+  if (arg)arg->ir_globally_register(m);
+}
+void tuple::ir_globally_register(global_map &m) {
+  for (auto &p : args)p->ir_globally_register(m);
+}
+void ignore::ir_globally_register(global_map &m) {}
+
+//ir_allocate_global_value
+void universal::ir_allocate_global_value(std::ostream &os) {
+  use_as_immediate = false;
+  os << ir_asm_name() << " dq 0 ; " << name << " : value \n";
+}
+void constructor::ir_allocate_global_value(std::ostream &os) { if (arg)arg->ir_allocate_global_value(os); }
+void tuple::ir_allocate_global_value(std::ostream &os) {
+  for (auto &p : args)p->ir_allocate_global_value(os);
+}
+void ignore::ir_allocate_global_value(std::ostream &os) {}
+
+//ir_global_unroll
+void universal::ir_global_unroll(ir::scope &s, ir::lang::var what) {
+  assert(!use_as_immediate);
+  using namespace ir::lang;
+  var where = s.declare_global(ir_asm_name());
+  s.push_back(instruction::write_uninitialized_mem{.base = where, .block_offset = 0, .src = what});
+}
+void constructor::ir_global_unroll(ir::scope &s, ir::lang::var block) {
+  assert(definition_point);
+  assert(definition_point->is_immediate() == (arg == nullptr));
+  using namespace ir::lang;
+  if (arg) {
+    arg->ir_global_unroll(s, s.declare_assign(block[2]));
+  }
+}
+void tuple::ir_global_unroll(ir::scope &s, ir::lang::var block) {
+  using namespace ir::lang;
+  for (size_t i = 0; i < args.size(); ++i) {
+    var content = s.declare_assign(block[i + 2]);
+    args.at(i)->ir_global_unroll(s, content);
+  }
+}
+
+//singles
+std::string universal::asm_name() const {
+  return name_resolution_id ? std::string(name).append("_").append(std::to_string(name_resolution_id)) : std::string(
+      name);
+}
+universal::universal(std::string_view n) : name(n), stack_relative_pos(-1), top_level(false) {}
+
+std::string universal::ir_asm_name() const {
+  return std::string("__global_value_").append(std::to_string(name_resolution_id)).append("__");
+}
+void universal::globally_register(global_map &m) {
   top_level = true;
   if (auto[it, b] = m.try_emplace(name, this); !b) {
     name_resolution_id = it->second->name_resolution_id + 1;
     it->second = this;
   }
 }
-void matcher::universal_matcher::globally_allocate(std::ostream &os) {
+void universal::globally_allocate(std::ostream &os) {
   use_as_immediate = false;
   os << asm_name() << " dq 0" << std::endl;
 }
-void matcher::universal_matcher::ir_allocate_global_value(std::ostream &os) {
-  use_as_immediate = false;
-  os << ir_asm_name() << " dq 0 ; " << name << " : value \n";
-}
-void matcher::universal_matcher::globally_allocate_funblock(size_t n_args,
-                                                            std::ostream &os,
-                                                            std::string_view text_ptr) {
+void universal::globally_allocate_funblock(size_t n_args,
+                                           std::ostream &os,
+                                           std::string_view text_ptr) {
   use_as_immediate = true;
   os << asm_name() << " dq 1," << n_args << "," << text_ptr << "\n" << std::endl;
 }
 
-void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, size_t tuple_size) {
+void universal::globally_allocate_tupleblock(std::ostream &os, size_t tuple_size) {
   use_as_immediate = true;
   os << asm_name() << " dq ";
   bool comma = false;
@@ -854,75 +927,69 @@ void matcher::universal_matcher::globally_allocate_tupleblock(std::ostream &os, 
   os << "\n";
 }
 
-void matcher::universal_matcher::ir_allocate_globally_funblock(std::ostream &os, size_t n_args,
-                                                               std::string_view text_ptr) {
+void universal::ir_allocate_globally_funblock(std::ostream &os, size_t n_args,
+                                              std::string_view text_ptr) {
   use_as_immediate = true;
   os << ir_asm_name() << " dq 0, " << make_tag_size_d(Tag_Fun, 2, 0) << "," << text_ptr << "," << uint_to_v(n_args)
      << "; " << name
      << " : funblock\n";
 }
-void matcher::universal_matcher::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
+void universal::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
   use_as_immediate = true;
   os << ir_asm_name() << " dq 0," << make_tag_size_d(Tag_Tuple, tuple_size, 0);
   for (int i = 0; i < tuple_size; ++i)os << ", 0";
   os << "; " << name << " : tuple[" << tuple_size << "]\n";
 }
 
-void matcher::universal_matcher::ir_allocate_global_constrblock(std::ostream &os,
-                                                                const type::definition::single_variant::constr &constr) {
+void universal::ir_allocate_global_constrblock(std::ostream &os,
+                                               const type::definition::single_variant::constr &constr) {
   use_as_immediate = true;
   assert(!constr.is_immediate());
   os << ir_asm_name() << " dq 0," << make_tag_size_d(constr.tag, 1, 0) << ", 0   ; " << name << " : " << constr.name
      << " = " << constr.tag << "\n";
 }
 
-void matcher::universal_matcher::globally_allocate_constrblock(std::ostream &os,
-                                                               const type::definition::single_variant::constr &constr) {
+void universal::globally_allocate_constrblock(std::ostream &os,
+                                              const type::definition::single_variant::constr &constr) {
   use_as_immediate = true;
   assert(!constr.is_immediate());
   os << asm_name() << " dq " << constr.tag << ", 0   ; `" << constr.name << "` = " << constr.tag << "\n";
 }
-void matcher::universal_matcher::ir_allocate_global_constrimm(std::ostream &os,
-                                                              const type::definition::single_variant::constr &constr) {
+void universal::ir_allocate_global_constrimm(std::ostream &os,
+                                             const type::definition::single_variant::constr &constr) {
   use_as_immediate = false;
   assert(constr.is_immediate());
   os << ir_asm_name() << " dq " << constr.tag << "; " << name << " : " << constr.name << " = " << constr.tag << "\n";
 }
-void matcher::universal_matcher::globally_allocate_constrimm(std::ostream &os,
-                                                             const type::definition::single_variant::constr &constr) {
+void universal::globally_allocate_constrimm(std::ostream &os,
+                                            const type::definition::single_variant::constr &constr) {
   use_as_immediate = false;
   assert(constr.is_immediate());
   os << asm_name() << " dq " << constr.tag << "; `" << constr.name << "` = " << constr.tag << "\n";
 }
 
-void matcher::universal_matcher::global_unroll(std::ostream &os) {
+void universal::global_unroll(std::ostream &os) {
   os << "mov qword [" << asm_name() << "], rax" << std::endl;
 }
 
-void matcher::universal_matcher::ir_global_unroll(ir::scope &s, ir::lang::var what) {
-  assert(!use_as_immediate);
-  using namespace ir::lang;
-  var where = s.declare_global(ir_asm_name());
-  s.push_back(instruction::write_uninitialized_mem{.base = where, .block_offset = 0, .src = what});
-}
 
-size_t matcher::universal_matcher::locally_unroll(std::ostream &os, size_t stack_pos) {
+size_t universal::locally_unroll(std::ostream &os, size_t stack_pos) {
   ++stack_pos;
   stack_relative_pos = stack_pos;
   os << "push rax  ; " << name << " is on position " << stack_relative_pos << " on the stack\n";
   return stack_pos;
 }
-size_t matcher::universal_matcher::test_locally_unroll(std::ostream &os,
-                                                       size_t stack_pos,
-                                                       size_t caller_stack_pos,
-                                                       std::string_view on_fail) {
+size_t universal::test_locally_unroll(std::ostream &os,
+                                      size_t stack_pos,
+                                      size_t caller_stack_pos,
+                                      std::string_view on_fail) {
   ++stack_pos;
   stack_relative_pos = stack_pos;
   os << "mov qword[rsp-" << 8 * (stack_pos - caller_stack_pos) << "], rax ; " << name << " is on position "
      << stack_relative_pos << " on the stack\n";
   return stack_pos;
 }
-void matcher::universal_matcher::globally_evaluate(std::ostream &os) const {
+void universal::globally_evaluate(std::ostream &os) const {
   assert(top_level);
   if (use_as_immediate) {
     os << "mov rax, " << asm_name() << std::endl;
@@ -931,7 +998,7 @@ void matcher::universal_matcher::globally_evaluate(std::ostream &os) const {
   }
 }
 
-ir::lang::var matcher::universal_matcher::ir_evaluate_global(ir::lang::scope &s) const {
+ir::lang::var universal::ir_evaluate_global(ir::lang::scope &s) const {
   assert(top_level);
   using namespace ir::lang;
   var gl = s.declare_global(ir_asm_name());
@@ -941,34 +1008,18 @@ ir::lang::var matcher::universal_matcher::ir_evaluate_global(ir::lang::scope &s)
     return s.declare_assign(gl[0]);
   }
 }
-void matcher::universal_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var v) {
+void universal::ir_locally_unroll(ir::scope &s, ir::lang::var v) {
   assert(!top_level);
   using namespace ir::lang;
   s.push_back(instruction::assign{.dst = ir_var, .src = v});
   s.comment() << "local variable \"" << name << "\" is on " << ir_var;
 }
 
-void matcher::constructor_matcher::bind(free_vars_t &fv) {
-  if (arg)arg->bind(fv);
-}
-void matcher::constructor_matcher::bind(capture_set &cs) {
-  if (arg)arg->bind(cs);
-}
-void matcher::constructor_matcher::globally_register(global_map &m) {
+
+void constructor::globally_register(global_map &m) {
   if (arg)arg->globally_register(m);
 }
-void matcher::constructor_matcher::ir_globally_register(global_map &m) {
-  if (arg)arg->ir_globally_register(m);
-}
-void matcher::constructor_matcher::bind(const constr_map &cm) {
-  if (auto it = cm.find(cons); it == cm.end()) {
-    throw ast::unbound_constructor(cons);
-  } else {
-    definition_point = it->second;
-  }
-  if (arg)arg->bind(cm);
-}
-void matcher::constructor_matcher::global_unroll(std::ostream &os) {
+void constructor::global_unroll(std::ostream &os) {
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
   if (arg) {
@@ -976,16 +1027,8 @@ void matcher::constructor_matcher::global_unroll(std::ostream &os) {
     arg->global_unroll(os);
   }
 }
-void matcher::constructor_matcher::ir_global_unroll(ir::scope &s, ir::lang::var block) {
-  assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
-  using namespace ir::lang;
-  if (arg) {
-    arg->ir_global_unroll(s, s.declare_assign(block[2]));
-  }
-}
 
-size_t matcher::constructor_matcher::locally_unroll(std::ostream &os, size_t stack_pos) {
+size_t constructor::locally_unroll(std::ostream &os, size_t stack_pos) {
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
   if (arg) {
@@ -994,7 +1037,7 @@ size_t matcher::constructor_matcher::locally_unroll(std::ostream &os, size_t sta
   } else return stack_pos;
 }
 
-void matcher::constructor_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
+void constructor::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
   if (arg) {
@@ -1002,10 +1045,10 @@ void matcher::constructor_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var
   }
 }
 
-size_t matcher::constructor_matcher::test_locally_unroll(std::ostream &os,
-                                                         size_t stack_pos,
-                                                         size_t caller_stack_pos,
-                                                         std::string_view on_fail) {
+size_t constructor::test_locally_unroll(std::ostream &os,
+                                        size_t stack_pos,
+                                        size_t caller_stack_pos,
+                                        std::string_view on_fail) {
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
   if (arg) {
@@ -1021,7 +1064,7 @@ size_t matcher::constructor_matcher::test_locally_unroll(std::ostream &os,
     return stack_pos;
   }
 }
-ir::lang::var matcher::constructor_matcher::ir_test_unroll(ir::scope &s, ir::lang::var v) {
+ir::lang::var constructor::ir_test_unroll(ir::scope &s, ir::lang::var v) {
   using namespace ir::lang;
   assert(definition_point);
   assert(definition_point->is_immediate() == (arg == nullptr));
@@ -1054,28 +1097,13 @@ ir::lang::var matcher::constructor_matcher::ir_test_unroll(ir::scope &s, ir::lan
   }
 }
 
-void matcher::tuple_matcher::bind(free_vars_t &fv) {
-  for (auto &p : args)p->bind(fv);
-}
-void matcher::tuple_matcher::bind(capture_set &cs) {
-  for (auto &p : args)p->bind(cs);
-}
-void matcher::tuple_matcher::bind(const constr_map &cm) {
-  for (auto &p : args)p->bind(cm);
-}
-void matcher::tuple_matcher::globally_allocate(std::ostream &os) {
+void tuple::globally_allocate(std::ostream &os) {
   for (auto &p : args)p->globally_allocate(os);
 }
-void matcher::tuple_matcher::ir_allocate_global_value(std::ostream &os) {
-  for (auto &p : args)p->ir_allocate_global_value(os);
-}
-void matcher::tuple_matcher::globally_register(global_map &m) {
+void tuple::globally_register(global_map &m) {
   for (auto &p : args)p->globally_register(m);
 }
-void matcher::tuple_matcher::ir_globally_register(global_map &m) {
-  for (auto &p : args)p->ir_globally_register(m);
-}
-void matcher::tuple_matcher::global_unroll(std::ostream &os) {
+void tuple::global_unroll(std::ostream &os) {
   os << "push r12\n"
         "mov r12, rax\n";
   for (int i = 0; i < args.size(); ++i) {
@@ -1084,15 +1112,8 @@ void matcher::tuple_matcher::global_unroll(std::ostream &os) {
   }
   os << "pop r12\n";
 }
-void matcher::tuple_matcher::ir_global_unroll(ir::scope &s, ir::lang::var block) {
-  using namespace ir::lang;
-  for (size_t i = 0; i < args.size(); ++i) {
-    var content = s.declare_assign(block[i + 2]);
-    args.at(i)->ir_global_unroll(s, content);
-  }
-}
 
-void matcher::tuple_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
+void tuple::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
   using namespace ir::lang;
   for (size_t i = 0; i < args.size(); ++i) {
     var content = s.declare_assign(block[i + 2]);
@@ -1100,40 +1121,40 @@ void matcher::tuple_matcher::ir_locally_unroll(ir::scope &s, ir::lang::var block
   }
 }
 
-size_t matcher::tuple_matcher::locally_unroll(std::ostream &os, size_t stack_pos) {
+size_t tuple::locally_unroll(std::ostream &os, size_t stack_pos) {
   size_t rax_pos = stack_pos + stack_unrolling_dimension(); // The first free position in stack
   os << "mov qword [rsp-" << 8 * (rax_pos - stack_pos) << "], rax ; save rax\n";
   for (int i = 0; i < args.size(); ++i) {
     if (i)os << "mov rax, qword [rsp-" << 8 * (rax_pos - stack_pos) << "] ; restore rax\n";
     os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] "
-       << "; tuple_matcher " << loc << " " << (i + 1) << " of " << args.size() << " \n";
+       << "; tuple " << loc << " " << (i + 1) << " of " << args.size() << " \n";
     stack_pos = args.at(i)->locally_unroll(os, stack_pos);
 
   }
   return stack_pos;
 }
-size_t matcher::tuple_matcher::test_locally_unroll(std::ostream &os,
-                                                   size_t stack_pos,
-                                                   size_t caller_stack_pos,
-                                                   std::string_view on_fail) {
+size_t tuple::test_locally_unroll(std::ostream &os,
+                                  size_t stack_pos,
+                                  size_t caller_stack_pos,
+                                  std::string_view on_fail) {
 
   size_t rax_pos = stack_pos + stack_unrolling_dimension(); // The first free position in stack
   os << "mov qword [rsp-" << 8 * (rax_pos - caller_stack_pos) << "], rax ; save rax\n";
   for (int i = 0; i < args.size(); ++i) {
     if (i)os << "mov rax, qword [rsp-" << 8 * (rax_pos - caller_stack_pos) << "] ; restore rax\n";
     os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] "
-       << "; tuple_matcher " << (i + 1) << " of " << args.size() << " \n";
+       << "; tuple " << (i + 1) << " of " << args.size() << " \n";
     stack_pos = args.at(i)->test_locally_unroll(os, stack_pos, caller_stack_pos, on_fail);
 
   }
   return stack_pos;
 }
-size_t matcher::tuple_matcher::unrolled_size() const {
+size_t tuple::unrolled_size() const {
   size_t s = 0;
   for (auto &m : args)s += m->unrolled_size();
   return s;
 }
-size_t matcher::tuple_matcher::stack_unrolling_dimension() const {
+size_t tuple::stack_unrolling_dimension() const {
   size_t s = 0, d = 0;
   for (auto &m : args) {
     d = std::max(d, s + m->stack_unrolling_dimension());
@@ -1142,7 +1163,7 @@ size_t matcher::tuple_matcher::stack_unrolling_dimension() const {
   ++d;
   return d;
 }
-std::ostream &matcher::tuple_matcher::print(std::ostream &os) const {
+std::ostream &tuple::print(std::ostream &os) const {
   os << "(";
   bool comma = false;
   for (const auto &arg : args) {
@@ -1152,7 +1173,7 @@ std::ostream &matcher::tuple_matcher::print(std::ostream &os) const {
   }
   return os << ")";
 }
-ir::lang::var matcher::tuple_matcher::ir_test_unroll(ir::scope &main, ir::lang::var v) {
+ir::lang::var tuple::ir_test_unroll(ir::scope &main, ir::lang::var v) {
   using namespace ir::lang;
 
   scope *current = &main;
@@ -1173,22 +1194,15 @@ ir::lang::var matcher::tuple_matcher::ir_test_unroll(ir::scope &main, ir::lang::
   return main.ret;
 }
 
-namespace literal {
-uint64_t integer::to_value() const {
-  return uint64_t((value << 1) | 1);
-}
-uint64_t boolean::to_value() const { return value ? 3 : 1; }
-uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
-}
-size_t matcher::literal_matcher::test_locally_unroll(std::ostream &os,
-                                                     size_t stack_pos,
-                                                     size_t caller_stack_pos,
-                                                     std::string_view on_fail) {
+
+size_t literal::test_locally_unroll(std::ostream &os,
+                                    size_t stack_pos,
+                                    size_t caller_stack_pos, std::string_view on_fail) {
   os << "cmp rax, " << value->to_value() << " ; literal " << loc << "\n";
   os << "jne " << on_fail << " \n";
   return stack_pos;
 }
-ir::lang::var matcher::literal_matcher::ir_test_unroll(ir::scope &s, ir::lang::var v) {
+ir::lang::var literal::ir_test_unroll(ir::scope &s, ir::lang::var v) {
   using namespace ir::lang;
   s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(value->to_value()), .op=instruction::cmp_vars::cmp});
   scope strue, sfalse;
@@ -1196,5 +1210,14 @@ ir::lang::var matcher::literal_matcher::ir_test_unroll(ir::scope &s, ir::lang::v
   sfalse.ret = sfalse.declare_assign(1);
   return s.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(strue), .jmp_branch=std::move(
       sfalse)}));
+}
+
+}
+namespace literal {
+uint64_t integer::to_value() const {
+  return uint64_t((value << 1) | 1);
+}
+uint64_t boolean::to_value() const { return value ? 3 : 1; }
+uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
 }
 }

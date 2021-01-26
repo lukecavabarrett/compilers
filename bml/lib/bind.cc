@@ -10,8 +10,8 @@
     Identifiers are introduced by matchers, Constructors by type system.
     For types we certainly want to have an instance-representation in C++ (i.e. for each primitive or declared type, a C++ instance describing that) and
     we also want a way to look up constructors. (The latter is easy, as we go with a linear structure, hence map : std::string_view -> [type or constructor ? still have to decide]
-    For identifier, as they are introduced by universal_matcher, we might go with a tree map (even though we just use an inner line hence some good trick could be done)
-    For each universal_matcher, we want to know where that is going to stored. That is going to be either at an absolute (virtual) address for global stuff,
+    For identifier, as they are introduced by universal, we might go with a tree map (even though we just use an inner line hence some good trick could be done)
+    For each universal, we want to know where that is going to stored. That is going to be either at an absolute (virtual) address for global stuff,
     and a stack-relative address for scope-relative stuff (function parameters, closure parameters, locally introduced values)
 
     Things can get messy with closures. e.g.

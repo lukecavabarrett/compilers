@@ -151,12 +151,13 @@ void tokenizer::write_head() {
     //string literal
     size_t i = 1;
     bool previous_slash = false;
-    while (i < to_parse.size() && (to_parse[i] != '\"' || previous_slash)){
+    while (i < to_parse.size() && to_parse[i]!=10 && (to_parse[i] != '\"' || previous_slash)){
       if(!previous_slash && to_parse[i]=='\\')previous_slash=true;
       else previous_slash = false;
       ++i;
     }
     if (i == to_parse.size())throw parse::error::report_token(to_parse,"string literal", " is not terminated.");
+    if (to_parse[i]==10)throw parse::error::report_token(std::string_view(to_parse.begin(),i),"string literal", " is not terminated.");
     i += 1;
     head = token{.sv=std::string_view(to_parse.begin(), i), .type=LITERAL};
     to_parse.remove_prefix(i);
@@ -245,7 +246,7 @@ ptr parse_e_s(tokenizer &tk) {
 
 ptr parse_e_t(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<build_tuple, &build_tuple::args, tk_sep<COMMA>, parse_e_a>(tk);
+  return parse_vec<tuple, &tuple::args, tk_sep<COMMA>, parse_e_a>(tk);
 }
 
 std::string_view make_unary_op(token t) {
@@ -450,7 +451,7 @@ bool parse_m_3_first(const token &t);
 
 ptr parse_m_1(tokenizer &tk) {
   using namespace patterns;
-  return parse_vec<tuple_matcher, &tuple_matcher::args, tk_sep<COMMA>, parse_m_2>(tk);
+  return parse_vec<tuple, &tuple::args, tk_sep<COMMA>, parse_m_2>(tk);
 }
 
 ptr parse_m_2(tokenizer &tk) {
@@ -458,10 +459,10 @@ ptr parse_m_2(tokenizer &tk) {
     case CAP_NAME: {
       //TODO: Maybe better structure for loc?
       auto begin_sv = tk.pop().sv;
-      if (!parse_m_3_first(tk.peek_full())) return std::make_unique<constructor_matcher>(begin_sv);
+      if (!parse_m_3_first(tk.peek_full())) return std::make_unique<constructor>(begin_sv);
 
       auto m = parse_m_3(tk);
-      return with_loc(std::make_unique<constructor_matcher>(std::move(m), begin_sv),
+      return with_loc(std::make_unique<constructor>(std::move(m), begin_sv),
                       itr_sv(begin_sv.begin(), m->loc.end()));
     }
     default: { return parse_m_3(tk); }
@@ -480,7 +481,7 @@ ptr parse_m_3(tokenizer &tk) {
     case PARENS_OPEN: {
       auto loc_start = tk.pop().sv.begin();
       if (tk.peek() == PARENS_CLOSE)
-        return with_loc(std::make_unique<literal_matcher>(std::make_unique<ast::literal::unit>()),
+        return with_loc(std::make_unique<literal>(std::make_unique<ast::literal::unit>()),
                         itr_sv(loc_start, tk.pop().sv.end()));
       auto m = parse_m_1(tk);
       tk.expect_peek(PARENS_CLOSE);
@@ -488,15 +489,15 @@ ptr parse_m_3(tokenizer &tk) {
       return std::move(m);
     }
     case UNDERSCORE: {
-      return with_loc(std::make_unique<anonymous_universal_matcher>(), tk.pop().sv);
+      return with_loc(std::make_unique<ignore>(), tk.pop().sv);
     }
     case IDENTIFIER: {
-      return std::make_unique<universal_matcher>(tk.pop().sv);
+      return std::make_unique<universal>(tk.pop().sv);
     }
     case TRUE:
     case FALSE:
     case LITERAL: {
-      return with_loc(std::make_unique<literal_matcher>(ast::literal::parse(tk.pop())), tk.peek_sv());
+      return with_loc(std::make_unique<literal>(ast::literal::parse(tk.pop())), tk.peek_sv());
     }
     default: {
       throw std::runtime_error("unexpected_token");
@@ -579,11 +580,11 @@ ptr parse(tokenizer &tk) {
     if (first)first = false;
     auto loc_start = tk.peek_sv().begin();
     auto m = matcher::parse(tk);
-    if (dynamic_cast<matcher::universal_matcher *>(m.get()) && tk.peek() != EQUAL) {
+    if (dynamic_cast<matcher::universal *>(m.get()) && tk.peek() != EQUAL) {
       //function alternative definition
       std::vector<matcher::ptr> args;
       //
-      //fundef->name.reset(dynamic_cast<matcher::universal_matcher *>(m.release()));
+      //fundef->name.reset(dynamic_cast<matcher::universal *>(m.release()));
       while (tk.peek() != EQUAL) args.push_back(matcher::parse(tk));
 
       tk.expect_pop(EQUAL);
@@ -753,10 +754,10 @@ ptr parse(tokenizer &tk) {
     }
 
 
-    /*if (dynamic_cast<matcher::universal_matcher *>(m.get()) && tk.peek() != EQUAL) {
+    /*if (dynamic_cast<matcher::universal *>(m.get()) && tk.peek() != EQUAL) {
       //function definition
       function::ptr fundef = std::make_unique<function>();
-      fundef->name.reset(dynamic_cast<matcher::universal_matcher *>(m.release()));
+      fundef->name.reset(dynamic_cast<matcher::universal *>(m.release()));
       while (tk.peek() != EQUAL) {
         auto m = matcher::parse(tk);
         fundef->args.push_back(std::move(m));

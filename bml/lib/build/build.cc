@@ -6,7 +6,7 @@
 struct ir_registerer_t{
   template<size_t Id>
   void add(std::string_view external_name,size_t args,std::string_view name, std::initializer_list<std::string_view> aliases={}){
-    static ast::matcher::universal_matcher m(name);
+    static ast::matcher::universal m(name);
     data << "extern " << external_name <<" \n";
     m.ir_globally_register(globals);
     m.ir_allocate_globally_funblock(data, args, external_name);
@@ -48,7 +48,7 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   //special case for the unmatched function
   {
     target << "extern match_failed_fun \n";
-    static ast::matcher::universal_matcher mf("__throw__unmatched__");
+    static ast::matcher::universal mf("__throw__unmatched__");
     mf.ir_globally_register(globals);
     mf.ir_allocate_globally_funblock(target, 1, "match_failed_fun");
     mf.use_as_immediate = mf.top_level = true;
@@ -143,7 +143,7 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
 struct direct_registerer_t{
   template<size_t Id>
   void add(std::string_view name, std::initializer_list<std::string_view> aliases={}){
-    static ast::matcher::universal_matcher m(name);
+    static ast::matcher::universal m(name);
 
     m.use_as_immediate = m.top_level = true;
     globals.try_emplace(name, &m);

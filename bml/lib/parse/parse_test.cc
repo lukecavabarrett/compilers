@@ -19,8 +19,8 @@ void parse_expect_rethrow(std::string_view source, std::string_view expected) {
 
 template<auto ParseFun>
 void parse_equal_rethrow(std::string_view source1, std::string_view source2) {
-  auto tks1 = parse::tokenizer(source1), tks2 = parse::tokenizer(source2);
   try {
+    auto tks1 = parse::tokenizer(source1), tks2 = parse::tokenizer(source2);
     auto ast1 = ParseFun(tks1), ast2 = ParseFun(tks2);
     EXPECT_TRUE(tks1.empty());
     EXPECT_TRUE(tks2.empty());
@@ -66,26 +66,26 @@ TEST(Expression, MACROS_CONCAT_NAME(Expression, __COUNTER__)) {
   EXPECT_THROW(parse_expect_rethrow<ast::expression::parse>("Upper x y", ""), std::runtime_error);
 }
 TEST_PARSE_EXPRESSION("fun x -> x+1",
-                      "ast::expression::fun{args : [ast::matcher::universal_matcher{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 1}}}}");
+                      "ast::expression::fun{args : [ast::matcher::universal{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 1}}}}");
 TEST_PARSE_EXPRESSION("(fun x -> x+1) + y",
-                      "ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::fun{args : [ast::matcher::universal_matcher{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 1}}}}},  x : ast::expression::identifier{name : 'y'}}"
+                      "ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::fun{args : [ast::matcher::universal{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 1}}}}},  x : ast::expression::identifier{name : 'y'}}"
 )
 TEST_PARSE_EXPRESSION("(fun x -> fn_const x) y",
-                      "ast::expression::fun_app{f : ast::expression::fun{args : [ast::matcher::universal_matcher{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::identifier{name : 'fn_const'},  x : ast::expression::identifier{name : 'x'}}},  x : ast::expression::identifier{name : 'y'}}");
+                      "ast::expression::fun_app{f : ast::expression::fun{args : [ast::matcher::universal{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::identifier{name : 'fn_const'},  x : ast::expression::identifier{name : 'x'}}},  x : ast::expression::identifier{name : 'y'}}");
 TEST_PARSE_EXPRESSION("fun x -> fn_const x y",
-                      "ast::expression::fun{args : [ast::matcher::universal_matcher{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : 'fn_const'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::identifier{name : 'y'}}}"
+                      "ast::expression::fun{args : [ast::matcher::universal{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : 'fn_const'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::identifier{name : 'y'}}}"
 );
 TEST_PARSE_EXPRESSION("fun x y (a,b) None -> fn_const x y",
-                      "ast::expression::fun{args : [ast::matcher::universal_matcher{name : 'x'}, ast::matcher::universal_matcher{name : 'y'}, ast::matcher::tuple_matcher{args : [ast::matcher::universal_matcher{name : 'a'}, ast::matcher::universal_matcher{name : 'b'}]}, ast::matcher::constructor_matcher{cons : 'None',  arg : null}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : 'fn_const'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::identifier{name : 'y'}}}"
+                      "ast::expression::fun{args : [ast::matcher::universal{name : 'x'}, ast::matcher::universal{name : 'y'}, ast::matcher::tuple{args : [ast::matcher::universal{name : 'a'}, ast::matcher::universal{name : 'b'}]}, ast::matcher::constructor{cons : 'None',  arg : null}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : 'fn_const'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::identifier{name : 'y'}}}"
 );
 TEST_PARSE_EXPRESSION("fun (Constr x) -> x + 2",
-                      "ast::expression::fun{args : [ast::matcher::constructor_matcher{cons : 'Constr',  arg : ast::matcher::universal_matcher{name : 'x'}}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 2}}}}"
+                      "ast::expression::fun{args : [ast::matcher::constructor{cons : 'Constr',  arg : ast::matcher::universal{name : 'x'}}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 2}}}}"
 )
 TEST_PARSE_EXPRESSION("fun Constr (x) -> x + 2",
-                      "ast::expression::fun{args : [ast::matcher::constructor_matcher{cons : 'Constr',  arg : ast::matcher::universal_matcher{name : 'x'}}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 2}}}}"
+                      "ast::expression::fun{args : [ast::matcher::constructor{cons : 'Constr',  arg : ast::matcher::universal{name : 'x'}}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 2}}}}"
 )
 TEST_PARSE_EXPRESSION("fun (Constr) x -> x + 2",
-                      "ast::expression::fun{args : [ast::matcher::constructor_matcher{cons : 'Constr',  arg : null}, ast::matcher::universal_matcher{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 2}}}}"
+                      "ast::expression::fun{args : [ast::matcher::constructor{cons : 'Constr',  arg : null}, ast::matcher::universal{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::identifier{name : 'x'}},  x : ast::expression::literal{value : ast::literal::integer{value : 2}}}}"
 )
 TEST_PARSE_EXPRESSION("lower lower",
                       "ast::expression::fun_app{f : ast::expression::identifier{name : 'lower'},  x : ast::expression::identifier{name : 'lower'}}");
@@ -93,19 +93,19 @@ TEST_PARSE_EXPRESSION("45 + 25 - 93 + twice 97 + 21",
                       "ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__MINUS__'},  x : ast::expression::fun_app{f : ast::expression::fun_app{f : ast::expression::identifier{name : '__binary_op__PLUS__'},  x : ast::expression::literal{value : ast::literal::integer{value : 45}}},  x : ast::expression::literal{value : ast::literal::integer{value : 25}}}},  x : ast::expression::literal{value : ast::literal::integer{value : 93}}}},  x : ast::expression::fun_app{f : ast::expression::identifier{name : 'twice'},  x : ast::expression::literal{value : ast::literal::integer{value : 97}}}}},  x : ast::expression::literal{value : ast::literal::integer{value : 21}}}"
 );
 TEST_PARSE_EXPRESSION("Error a , t ",
-                      "ast::expression::build_tuple{args : [ast::expression::constructor{name : 'Error',  arg : ast::expression::identifier{name : 'a'}}, ast::expression::identifier{name : 't'}]}"
+                      "ast::expression::tuple{args : [ast::expression::constructor{name : 'Error',  arg : ast::expression::identifier{name : 'a'}}, ast::expression::identifier{name : 't'}]}"
 )
 TEST_PARSE_MATCHER("Error _ , t ",
-                   "ast::matcher::tuple_matcher{args : [ast::matcher::constructor_matcher{cons : 'Error',  arg : ast::matcher::anonymous_universal_matcher{}}, ast::matcher::universal_matcher{name : 't'}]}"
+                   "ast::matcher::tuple{args : [ast::matcher::constructor{cons : 'Error',  arg : ast::matcher::ignore{}}, ast::matcher::universal{name : 't'}]}"
 )
 TEST_PARSE_EXPRESSION("match t with\n"
                       "| Some value -> Some (f value)\n"
                       "| None -> None",
-                      "ast::expression::match_with{what : ast::expression::identifier{name : 't'},  branches : [ast::expression::match_with::branch{pattern : ast::matcher::constructor_matcher{cons : 'Some',  arg : ast::matcher::universal_matcher{name : 'value'}},  result : ast::expression::constructor{name : 'Some',  arg : ast::expression::fun_app{f : ast::expression::identifier{name : 'f'},  x : ast::expression::identifier{name : 'value'}}}}, ast::expression::match_with::branch{pattern : ast::matcher::constructor_matcher{cons : 'None',  arg : null},  result : ast::expression::constructor{name : 'None',  arg : null}}]}");
+                      "ast::expression::match_with{what : ast::expression::identifier{name : 't'},  branches : [ast::expression::match_with::branch{pattern : ast::matcher::constructor{cons : 'Some',  arg : ast::matcher::universal{name : 'value'}},  result : ast::expression::constructor{name : 'Some',  arg : ast::expression::fun_app{f : ast::expression::identifier{name : 'f'},  x : ast::expression::identifier{name : 'value'}}}}, ast::expression::match_with::branch{pattern : ast::matcher::constructor{cons : 'None',  arg : null},  result : ast::expression::constructor{name : 'None',  arg : null}}]}");
 TEST_PARSE_MATCHER("Error _ , t ",
-                   "ast::matcher::tuple_matcher{args : [ast::matcher::constructor_matcher{cons : 'Error',  arg : ast::matcher::anonymous_universal_matcher{}}, ast::matcher::universal_matcher{name : 't'}]}")
+                   "ast::matcher::tuple{args : [ast::matcher::constructor{cons : 'Error',  arg : ast::matcher::ignore{}}, ast::matcher::universal{name : 't'}]}")
 TEST_PARSE_DEFINITION("let rec f x = f x and x = f () ",
-                      "ast::definition::t{rec : true,  defs : [ast::definition::def{name : ast::matcher::universal_matcher{name : 'f'},  e : ast::expression::fun{args : [ast::matcher::universal_matcher{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::identifier{name : 'f'},  x : ast::expression::identifier{name : 'x'}}}}, ast::definition::def{name : ast::matcher::universal_matcher{name : 'x'},  e : ast::expression::fun_app{f : ast::expression::identifier{name : 'f'},  x : ast::expression::literal{value : ast::literal::unit{}}}}]}"
+                      "ast::definition::t{rec : true,  defs : [ast::definition::def{name : ast::matcher::universal{name : 'f'},  e : ast::expression::fun{args : [ast::matcher::universal{name : 'x'}],  body : ast::expression::fun_app{f : ast::expression::identifier{name : 'f'},  x : ast::expression::identifier{name : 'x'}}}}, ast::definition::def{name : ast::matcher::universal{name : 'x'},  e : ast::expression::fun_app{f : ast::expression::identifier{name : 'f'},  x : ast::expression::literal{value : ast::literal::unit{}}}}]}"
 );
 
 TEST_PARSE_TYPE("int", "ast::type::expression::identifier{name : 'int'}");

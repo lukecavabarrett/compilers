@@ -166,7 +166,7 @@ struct identifier;
 namespace matcher {
 struct t;
 typedef std::unique_ptr<t> ptr;
-struct universal_matcher;
+struct universal;
 }
 
 namespace literal {
@@ -180,10 +180,10 @@ typedef std::unique_ptr<t> ptr;
 }
 
 typedef std::unordered_map<std::string_view, ast::type::definition::single_variant::constr *> constr_map;
-typedef std::unordered_map<std::string_view, matcher::universal_matcher *> global_map;
+typedef std::unordered_map<std::string_view, matcher::universal *> global_map;
 typedef std::forward_list<expression::identifier *> usage_list;
 typedef std::unordered_map<std::string_view, usage_list> free_vars_t;
-typedef std::unordered_set<const matcher::universal_matcher *> capture_set;
+typedef std::unordered_set<const matcher::universal *> capture_set;
 
 namespace expression {
 
@@ -210,7 +210,7 @@ TO_TEXP(value);
 
 struct identifier : public t {
   free_vars_t free_vars() final;
-  const matcher::universal_matcher *definition_point;
+  const matcher::universal *definition_point;
   explicit identifier(std::string_view n);
   explicit identifier(std::string_view n,std::string_view loc);
   capture_set capture_group() final;
@@ -246,10 +246,10 @@ struct if_then_else : public t {
 TO_TEXP(condition, true_branch, false_branch);
 };
 
-struct build_tuple : public t {
+struct tuple : public t {
   std::vector<expression::ptr> args;
-  explicit build_tuple(std::vector<expression::ptr> &&args);
-  build_tuple() = default;
+  explicit tuple(std::vector<expression::ptr> &&args);
+  tuple() = default;
   free_vars_t free_vars() final;
   capture_set capture_group() final;;
   void compile(direct_sections_t s, size_t stack_pos) final;
@@ -326,7 +326,7 @@ TO_TEXP(d, e);
 struct fun : public t {
   std::vector<matcher::ptr> args;
   expression::ptr body;
-  std::vector<const matcher::universal_matcher *> captures;
+  std::vector<const matcher::universal *> captures;
   fun(std::vector<matcher::ptr> &&args, expression::ptr &&body);
   free_vars_t free_vars() final;;
   capture_set capture_group() final;;
@@ -336,8 +336,8 @@ struct fun : public t {
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
-  bool is_capturing(const matcher::universal_matcher *m) const;
-  size_t capture_index(const matcher::universal_matcher *m) const;
+  bool is_capturing(const matcher::universal *m) const;
+  size_t capture_index(const matcher::universal *m) const;
 TO_TEXP(args, body);
   std::string ir_compile_global(ir_sections_t s);
 };
@@ -367,8 +367,8 @@ struct t : public locable, texp_of_t {
                                      size_t caller_stack_pos,
                                      std::string_view on_fail) = 0; // match value in rax, on_success unrolling on stack (WITHOUT moving rsp - it'll be incremented by the user); returns new stack_pos; on failure clean stack and jmp to on_fail
 };
-struct universal_matcher : public t {
-  typedef std::unique_ptr<universal_matcher> ptr;
+struct universal : public t {
+  typedef std::unique_ptr<universal> ptr;
   size_t stack_relative_pos = -1;
   bool use_as_immediate = false;
   size_t name_resolution_id = 0;
@@ -378,7 +378,7 @@ struct universal_matcher : public t {
   // 2. Hence closures do not need to capture this
   // 3. It's type doesn't get changed by type inference - unified on a "per use" basis
   ir::lang::var ir_var; //useless if toplevel; otherwise identifies which var to use (both locally and captured)
-  explicit universal_matcher(std::string_view n);
+  explicit universal(std::string_view n);
   void bind(free_vars_t &fv) final;
   void bind(capture_set &cs) final;
   void bind(const constr_map &cm) final;
@@ -419,16 +419,16 @@ TO_TEXP(name)
   ir::var ir_evaluate_global(ir::scope &s) const;
 };
 
-struct anonymous_universal_matcher : public t {
-  typedef std::unique_ptr<anonymous_universal_matcher> ptr;
+struct ignore : public t {
+  typedef std::unique_ptr<ignore> ptr;
   std::ostream &print(std::ostream &os) const final { return os << "_"; }
-  void bind(free_vars_t &fv) final {}
-  void bind(capture_set &cs) final {}
-  void bind(const constr_map &cm) final {}
-  void ir_allocate_global_value(std::ostream &os) final {}
+  void bind(free_vars_t &fv) final;
+  void bind(capture_set &cs) final;
+  void bind(const constr_map &cm) final;
+  void ir_allocate_global_value(std::ostream &os) final;
   void globally_allocate(std::ostream &os) final {}
   void globally_register(global_map &m) final {}
-  void ir_globally_register(global_map &m) final {}
+  void ir_globally_register(global_map &m) final;
   void global_unroll(std::ostream &os) final {}
   void ir_global_unroll(ir::scope &s, ir::lang::var) final {}
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
@@ -443,13 +443,13 @@ struct anonymous_universal_matcher : public t {
 TO_TEXP_EMPTY()
 };
 
-struct constructor_matcher : public t {
-  typedef std::unique_ptr<constructor_matcher> ptr;
+struct constructor : public t {
+  typedef std::unique_ptr<constructor> ptr;
   matcher::ptr arg;
   std::string_view cons;
   type::definition::single_variant::constr *definition_point;
-  constructor_matcher(matcher::ptr &&m, std::string_view c) : arg(std::move(m)), cons(c) {}
-  constructor_matcher(std::string_view c) : arg(), cons(c) {}
+  constructor(matcher::ptr &&m, std::string_view c) : arg(std::move(m)), cons(c) {}
+  constructor(std::string_view c) : arg(), cons(c) {}
   std::ostream &print(std::ostream &os) const final {
     return arg ? arg->print(os << definition_point->name << " ") : (os << definition_point->name);
   }
@@ -458,7 +458,7 @@ struct constructor_matcher : public t {
   void globally_register(global_map &m) final;
   void ir_globally_register(global_map &m) final;
   void bind(const constr_map &cm) final;
-  void ir_allocate_global_value(std::ostream &os) final { if (arg)arg->ir_allocate_global_value(os); }
+  void ir_allocate_global_value(std::ostream &os) final;
   void globally_allocate(std::ostream &os) final { if (arg)arg->globally_allocate(os); }
   void global_unroll(std::ostream &os) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var) final;
@@ -474,14 +474,14 @@ struct constructor_matcher : public t {
 TO_TEXP(cons, arg);
 };
 
-struct literal_matcher : public t {
-  typedef std::unique_ptr<literal_matcher> ptr;
+struct literal : public t {
+  typedef std::unique_ptr<literal> ptr;
   ast::literal::ptr value;
   std::ostream &print(std::ostream &os) const final {
     assert(!loc.empty());
     return os << loc;
   }
-  literal_matcher(ast::literal::ptr &&lit) : value(std::move(lit)) {}
+  literal(ast::literal::ptr &&lit) : value(std::move(lit)) {}
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
   void bind(const constr_map &cm) final {}
@@ -503,9 +503,9 @@ struct literal_matcher : public t {
 TO_TEXP(value);
 };
 
-struct tuple_matcher : public t {
+struct tuple : public t {
   std::vector<matcher::ptr> args;
-  tuple_matcher() = default;
+  tuple() = default;
   void bind(free_vars_t &fv) final;
   void bind(capture_set &cs) final;
   void bind(const constr_map &cm) final;
