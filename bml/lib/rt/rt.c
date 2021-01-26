@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <unistd.h>
+#include <string.h>
 
 #define Tag_Tuple  0
 #define Tag_Fun 1
@@ -436,8 +438,6 @@ uintptr_t _mllib_fn__int_geq(uintptr_t argv) {
   return uint_to_v(a >= b ? 1 : 0);
 }
 
-
-
 uintptr_t _mllib_fn__int_println(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
@@ -454,7 +454,7 @@ uintptr_t _mllib_fn__int_fprintln(uintptr_t argv) {
   decrement_value((uintptr_t) argv_b);
   int64_t a = v_to_int(argv_a[4]);
   decrement_value((uintptr_t) argv_a);
-  dprintf(a,"%ld\n", b);
+  dprintf(a, "%ld\n", b);
   return uint_to_v(0);
 }
 
@@ -467,31 +467,40 @@ uintptr_t _mllib_fn__int_print(uintptr_t argv) {
   return uint_to_v(0);
 }
 
+uintptr_t _mllib_fn__chr_print(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int8_t b = v_to_int(argv_b[4]);
+  printf("%c", b);
+  fflush(stdout);
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
 uintptr_t _mllib_fn__int_scan(uintptr_t argv) {
   decrement_boxed(argv);
   int64_t x;
-  if(scanf("%ld", &x)!=1){
-    fputs("error: could not scan int. terminating.",stderr);
+  if (scanf("%ld", &x) != 1) {
+    fputs("error: could not scan int. terminating.", stderr);
     exit(1);
   };
   return int_to_v(x);
 }
 
-uintptr_t deep_copy(uintptr_t x){
-  if(x&1)return x;
-  if(x==0)return x;
+uintptr_t deep_copy(uintptr_t x) {
+  if (x & 1)return x;
+  if (x == 0)return x;
   const uintptr_t *v = (const uintptr_t *) x;
-  if(v[0]==0)return x;
+  if (v[0] == 0)return x;
   uint32_t tag = get_tag(v[1]);
   uint32_t size = get_size(v[1]);
   uint8_t d = get_d(v[1]);
-  uintptr_t * new_x = (uintptr_t *)malloc(8*(2+size+d));
+  uintptr_t *new_x = (uintptr_t *) malloc(8 * (2 + size + d));
   new_x[0] = 3;
   new_x[1] = v[1];
   new_x[2] = (tag == Tag_Fun) ? v[2] : deep_copy(v[2]);
-  for(int i = 1; i<size; ++i)new_x[i+2] = deep_copy(v[i+2]);
-  if(d)new_x[size+2] = deep_copy(v[size+2]);
-  return (uintptr_t)new_x;
+  for (int i = 1; i < size; ++i)new_x[i + 2] = deep_copy(v[i + 2]);
+  if (d)new_x[size + 2] = deep_copy(v[size + 2]);
+  return (uintptr_t) new_x;
 }
 
 uintptr_t _mllib_fn__t_deep_copy(uintptr_t argv) {
@@ -500,4 +509,46 @@ uintptr_t _mllib_fn__t_deep_copy(uintptr_t argv) {
   x = deep_copy(x);
   decrement_boxed(argv);
   return x;
+}
+
+uintptr_t _mllib_fn__str_print(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  uintptr_t *b = (uintptr_t *) argv_b[4];
+  const char *s = (const char *) (b + 2);
+  fputs(s, stdout);
+  fflush(stdout);
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
+uintptr_t _mllib_fn__str_fprint(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  const uintptr_t *b = (uintptr_t *) argv_b[4];
+  const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  int fd = v_to_int(argv_a[4]);
+  const char *s = (const char *) (b + 2);
+  write(fd, s, strlen(s));
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
+uintptr_t _mllib_fn__str_length(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  uintptr_t *b = (uintptr_t *) argv_b[4];
+  size_t len = get_size(b[1]) * 8;
+  const char *s = (const char *) (b + 2);
+  while (len > 0 && s[len - 1] == 0)--len;
+  decrement_boxed(argv);
+  return int_to_v(len);
+}
+
+uintptr_t _mllib_fn__str_at(uintptr_t argv) {
+  const uintptr_t *argv_b = (uintptr_t *) argv;
+  const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  const uintptr_t *s_v = (uintptr_t *) argv_a[4];
+  const int64_t idx = v_to_int(argv_b[4]);
+  const char *s = (const char *) (s_v + 2);
+  char c = s[idx];
+  decrement_boxed(argv);
+  return int_to_v(c);
 }

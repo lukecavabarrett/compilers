@@ -28,6 +28,8 @@ capture_set join_capture_set(capture_set &&c1, capture_set &&c2) {
 #define Tag_Tuple  0
 #define Tag_Fun 1
 #define Tag_Arg 2
+#define Tag_String 3
+
 uintptr_t uint_to_v(uint64_t x) {
   return (uintptr_t) ((x << 1) | 1);
 }
@@ -361,7 +363,7 @@ ir::lang::var identifier::ir_compile(ir_sections_t s) {
   }
 }
 ir::lang::var literal::ir_compile(ir_sections_t s) {
-  return s.main.declare_constant(this->value->to_value());
+  return value->ir_compile(s);
 }
 ir::lang::var constructor::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
@@ -972,7 +974,6 @@ void universal::global_unroll(std::ostream &os) {
   os << "mov qword [" << asm_name() << "], rax" << std::endl;
 }
 
-
 size_t universal::locally_unroll(std::ostream &os, size_t stack_pos) {
   ++stack_pos;
   stack_relative_pos = stack_pos;
@@ -1014,7 +1015,6 @@ void universal::ir_locally_unroll(ir::scope &s, ir::lang::var v) {
   s.push_back(instruction::assign{.dst = ir_var, .src = v});
   s.comment() << "local variable \"" << name << "\" is on " << ir_var;
 }
-
 
 void constructor::globally_register(global_map &m) {
   if (arg)arg->globally_register(m);
@@ -1194,7 +1194,6 @@ ir::lang::var tuple::ir_test_unroll(ir::scope &main, ir::lang::var v) {
   return main.ret;
 }
 
-
 size_t literal::test_locally_unroll(std::ostream &os,
                                     size_t stack_pos,
                                     size_t caller_stack_pos, std::string_view on_fail) {
@@ -1217,7 +1216,50 @@ namespace literal {
 uint64_t integer::to_value() const {
   return uint64_t((value << 1) | 1);
 }
-uint64_t boolean::to_value() const { return value ? 3 : 1; }
-uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
+ir::lang::var integer::ir_compile(ir_sections_t s) const {
+  return s.main.declare_constant(to_value());
 }
+uint64_t boolean::to_value() const { return value ? 3 : 1; }
+ir::lang::var boolean::ir_compile(ir_sections_t s) const {
+  return s.main.declare_constant(to_value());
+}
+ir::lang::var unit::ir_compile(ir_sections_t s) const {
+  return s.main.declare_constant(to_value());
+}
+uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
+
+ir::lang::var string::ir_compile(ir_sections_t s) const {
+  assert(value.size() % 8 == 0);
+  assert(value.size());
+  //Let's make a static block
+  static size_t id_factory = 0;
+  size_t id = ++id_factory;
+  std::string name("__string_literal_");
+  name.append(std::to_string(id)).append("__");
+  s.data << name << " dq 0, " << make_tag_size_d(Tag_String, value.size() / 8, 0) << "\n";
+  s.data << " db ";
+  bool is_string_open = false;
+  bool comma = false;
+  for (char c : value)
+    if (chars::is_escaped_in_asm_string_literal(c)) {
+      if (is_string_open)s.data << "\"";
+      is_string_open = false;
+      if (comma)s.data << ",";
+      comma = true;
+      s.data << int(c);
+    } else {
+      if (!is_string_open) {
+        if (comma)s.data << ",";
+        comma = true;
+        s.data << "\"";
+        is_string_open = true;
+      }
+      s.data << c;
+    }
+  if (is_string_open)s.data << "\"";
+  s.data << "\n";
+  return s.main.declare_global(name);
+}
+}
+
 }

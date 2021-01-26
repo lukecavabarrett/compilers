@@ -17,6 +17,13 @@ bool is_escaped_in_string_literal(char c) {
   if (c == '\\')return true;
   return false;
 }
+bool is_escaped_in_asm_string_literal(char c) {
+  switch (c) {
+    case ';':
+    case '!':return true;
+    default:return is_escaped_in_string_literal(c);
+  }
+}
 
 bool has_escaped_mnemonic(char c) {
   switch (c) {
@@ -50,7 +57,7 @@ char escaped_mnemonic(char c) {
   }
 }
 
-bool is_valid_mnemonic(char c){
+bool is_valid_mnemonic(char c) {
   switch (c) {
     case '\'':
     case '\"':
@@ -65,7 +72,7 @@ bool is_valid_mnemonic(char c){
     default: return false;
   }
 }
-char parse_mnemonic(char c){
+char parse_mnemonic(char c) {
   switch (c) {
     case '\'':return c;
     case '\"':return c;

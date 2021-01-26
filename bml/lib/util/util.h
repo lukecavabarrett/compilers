@@ -8,32 +8,29 @@
 #include <algorithm>
 #include <fstream>
 #include <streambuf>
-namespace ast::expression{
+namespace ast::expression {
 struct fun;
 }
 namespace util {
 
-
 struct direct_sections_t {
   std::ostream &data, &text, &main;
-  ast::expression::fun* def_fun;
-  direct_sections_t(const direct_sections_t&) = default;
-  direct_sections_t(std::ostream& d, std::ostream& t, std::ostream& m, ast::expression::fun* df = nullptr) : data(d), text(t), main(m), def_fun(df) {}
-  direct_sections_t with_main(std::ostream& os, ast::expression::fun* df)  {
+  ast::expression::fun *def_fun;
+  direct_sections_t(const direct_sections_t &) = default;
+  direct_sections_t(std::ostream &d, std::ostream &t, std::ostream &m, ast::expression::fun *df = nullptr)
+      : data(d), text(t), main(m), def_fun(df) {}
+  direct_sections_t with_main(std::ostream &os, ast::expression::fun *df) {
     return direct_sections_t(data, text, os, df);
   }
-  direct_sections_t with_main(std::ostream& os)  {
+  direct_sections_t with_main(std::ostream &os) {
     return direct_sections_t(data, text, os, def_fun);
   }
 };
 
-
-
-
 std::string load_file(std::string_view path);
 
 class formatter {
- public:
+public:
   formatter() {}
   ~formatter() {}
 
@@ -51,7 +48,7 @@ class formatter {
   };
   std::string operator>>(ConvertToString) { return stream_.str(); }
 
- private:
+private:
   std::stringstream stream_;
 
   formatter(const formatter &);
@@ -80,17 +77,16 @@ bool is_in(const T &v, std::initializer_list<T> lst) {
 template<class... Ts>
 struct overloaded : Ts ... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
-namespace chars{
+namespace chars {
 
 bool is_escaped_in_string_literal(char c);
+bool is_escaped_in_asm_string_literal(char c);
 bool has_escaped_mnemonic(char c);
 char escaped_mnemonic(char c);
 bool is_valid_mnemonic(char c);
 char parse_mnemonic(char c);
 }
 }
-
-
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)

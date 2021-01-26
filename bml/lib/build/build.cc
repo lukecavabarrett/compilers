@@ -1,20 +1,20 @@
 #include <build.h>
 
-
-
-
-struct ir_registerer_t{
+struct ir_registerer_t {
   template<size_t Id>
-  void add(std::string_view external_name,size_t args,std::string_view name, std::initializer_list<std::string_view> aliases={}){
+  void add(std::string_view external_name,
+           size_t args,
+           std::string_view name,
+           std::initializer_list<std::string_view> aliases = {}) {
     static ast::matcher::universal m(name);
-    data << "extern " << external_name <<" \n";
+    data << "extern " << external_name << " \n";
     m.ir_globally_register(globals);
     m.ir_allocate_globally_funblock(data, args, external_name);
     m.use_as_immediate = m.top_level = true;
-    for(std::string_view alias : aliases)
+    for (std::string_view alias : aliases)
       globals.try_emplace(alias, &m); // alias maps to the same
   }
-  ast::global_map& globals;
+  ast::global_map &globals;
   std::ostream &data;
 };
 ast::global_map make_ir_data_section(std::ostream &target) {
@@ -23,25 +23,30 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   target << "section .data\n";
   target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value, malloc, json_debug\n";
 
-  ir_registerer_t ir_registerer{.globals=globals,.data=target};
+  ir_registerer_t ir_registerer{.globals=globals, .data=target};
 
 #define register ir_registerer.add<__COUNTER__>
 
-  register("_mllib_fn__int_add",2,"__binary_op__PLUS__");
-  register("_mllib_fn__int_sub",2,"__binary_op__MINUS__");
-  register("_mllib_fn__int_mul",2,"__binary_op__STAR__");
-  register("_mllib_fn__int_div",2,"__binary_op__SLASH__");
-  register("_mllib_fn__int_neg",1,"__unary_op__MINUS__");
-  register("_mllib_fn__int_eq",2,"__binary_op__EQUAL__");
-  register("_mllib_fn__int_lt",2,"__binary_op__LESS_THAN__");
-  register("_mllib_fn__int_leq",2,"__binary_op__LESS_EQUAL_THAN__");
-  register("_mllib_fn__int_gt",2,"__binary_op__GREATER_THAN__");
-  register("_mllib_fn__int_geq",2,"__binary_op__GREATER_EQUAL_THAN__");
-  register("_mllib_fn__int_print",1,"print_int");
-  register("_mllib_fn__int_println",1,"println_int");
-  register("_mllib_fn__int_fprintln",2,"fprintln_int");
-  register("_mllib_fn__int_scan",1,"scan_int");
-  register("_mllib_fn__t_deep_copy",1,"deep_copy");
+  register("_mllib_fn__int_add", 2, "__binary_op__PLUS__");
+  register("_mllib_fn__int_sub", 2, "__binary_op__MINUS__");
+  register("_mllib_fn__int_mul", 2, "__binary_op__STAR__");
+  register("_mllib_fn__int_div", 2, "__binary_op__SLASH__");
+  register("_mllib_fn__int_neg", 1, "__unary_op__MINUS__");
+  register("_mllib_fn__int_eq", 2, "__binary_op__EQUAL__");
+  register("_mllib_fn__int_lt", 2, "__binary_op__LESS_THAN__");
+  register("_mllib_fn__int_leq", 2, "__binary_op__LESS_EQUAL_THAN__");
+  register("_mllib_fn__int_gt", 2, "__binary_op__GREATER_THAN__");
+  register("_mllib_fn__int_geq", 2, "__binary_op__GREATER_EQUAL_THAN__");
+  register("_mllib_fn__int_print", 1, "print_int");
+  register("_mllib_fn__int_println", 1, "println_int");
+  register("_mllib_fn__int_fprintln", 2, "fprintln_int");
+  register("_mllib_fn__int_scan", 1, "scan_int");
+  register("_mllib_fn__str_print", 1, "print_str");
+  register("_mllib_fn__str_fprint", 2, "fprint_str");
+  register("_mllib_fn__str_length", 1, "strlen");
+  register("_mllib_fn__chr_print", 1, "print_chr");
+  register("_mllib_fn__str_at", 2, "str_at");
+  register("_mllib_fn__t_deep_copy", 1, "deep_copy");
 
 #undef register
 
@@ -53,6 +58,20 @@ ast::global_map make_ir_data_section(std::ostream &target) {
     mf.ir_allocate_globally_funblock(target, 1, "match_failed_fun");
     mf.use_as_immediate = mf.top_level = true;
     target << "__throw__unmatched__ equ " << mf.ir_asm_name() << "\n";
+  }
+  //IO
+  //TODO-someday: use more constexpr representation for stderr, stdout
+  {
+    static ast::matcher::universal mf("stdout");
+    mf.ir_globally_register(globals);
+    mf.use_as_immediate = mf.top_level = true;
+    target << mf.ir_asm_name() << " equ 3" << "; stdout\n";
+  }
+  {
+    static ast::matcher::universal mf("stderr");
+    mf.ir_globally_register(globals);
+    mf.use_as_immediate = mf.top_level = true;
+    target << mf.ir_asm_name() << " equ 5" << "; stderr\n";
   }
 
   return globals;
@@ -140,34 +159,33 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
   }
 }
 
-struct direct_registerer_t{
+struct direct_registerer_t {
   template<size_t Id>
-  void add(std::string_view name, std::initializer_list<std::string_view> aliases={}){
+  void add(std::string_view name, std::initializer_list<std::string_view> aliases = {}) {
     static ast::matcher::universal m(name);
 
     m.use_as_immediate = m.top_level = true;
     globals.try_emplace(name, &m);
-    for(std::string_view alias : aliases)
+    for (std::string_view alias : aliases)
       globals.try_emplace(alias, &m);
   }
-  ast::global_map& globals;
+  ast::global_map &globals;
 };
 void build_direct(std::string_view s, std::ostream &target) {
 
   parse::tokenizer tk(s);
   ast::global_map globals;
 
-
   direct_registerer_t direct_registerer{.globals=globals};
 
 #define register direct_registerer.add<__COUNTER__>
-  register("int_sum",{"__binary_op__PLUS__"});
-  register("int_sub",{"__binary_op__MINUS__"});
-  register("int_eq",{"__binary_op__EQUAL__"});
+  register("int_sum", {"__binary_op__PLUS__"});
+  register("int_sub", {"__binary_op__MINUS__"});
+  register("int_eq", {"__binary_op__EQUAL__"});
   register("print_int");
   register("println_int");
-  register("int_le",{"__binary_op__LESS_THAN__"});
-  register("int_negate",{"__unary_op__MINUS__"});
+  register("int_le", {"__binary_op__LESS_THAN__"});
+  register("int_negate", {"__unary_op__MINUS__"});
 #undef register
 
   ast::constr_map constr_map;
@@ -233,7 +251,7 @@ void build_direct(std::string_view s, std::ostream &target) {
         resolve_global_free_vars(std::move(fv), globals);
         auto cg = e->capture_group();
         assert(cg.empty());
-        e->compile(util::direct_sections_t(data_section, text_section, main_section),0);
+        e->compile(util::direct_sections_t(data_section, text_section, main_section), 0);
       } catch (const util::error::message &e) {
         e.print(std::cout, s, "source.ml");
         throw std::runtime_error("compilation error");

@@ -212,7 +212,7 @@ struct identifier : public t {
   free_vars_t free_vars() final;
   const matcher::universal *definition_point;
   explicit identifier(std::string_view n);
-  explicit identifier(std::string_view n,std::string_view loc);
+  explicit identifier(std::string_view n, std::string_view loc);
   capture_set capture_group() final;
   std::string_view name;
   void compile(direct_sections_t s, size_t stack_pos) final;
@@ -525,7 +525,7 @@ struct tuple : public t {
                              size_t stack_pos,
                              size_t caller_stack_pos,
                              std::string_view on_fail) final;
-  ir::lang::var ir_test_unroll(ir::scope &main, ir::lang::var v) final ;
+  ir::lang::var ir_test_unroll(ir::scope &main, ir::lang::var v) final;
 TO_TEXP(args);
 };
 
@@ -535,29 +535,34 @@ namespace literal {
 struct t : public texp_of_t {
   virtual ~t() = default;
   virtual uint64_t to_value() const = 0;
+  virtual ir::lang::var ir_compile(ir_sections_t) const = 0;
 };
 struct integer : public t {
   int64_t value;
   integer(int64_t value) : value(value) {}
   uint64_t to_value() const final;
+  ir::lang::var ir_compile(ir_sections_t) const final;
 TO_TEXP(value)
 };
 struct boolean : public t {
   bool value;
   boolean(bool value) : value(value) {}
   uint64_t to_value() const final;
+  ir::lang::var ir_compile(ir_sections_t) const final;
 TO_TEXP(value)
 };
 struct unit : public t {
   unit() {}
   uint64_t to_value() const final { return 1; }
+  ir::lang::var ir_compile(ir_sections_t) const final;
 TO_TEXP_EMPTY()
 };
 struct string : public t {
   std::string value;
   string(std::string_view value) : value(value) {}
-  string(std::string&& value) : value(std::move(value)) {}
+  string(std::string &&value) : value(std::move(value)) {}
   uint64_t to_value() const final;
+  ir::lang::var ir_compile(ir_sections_t) const final;
 TO_TEXP(value)
 };
 }

@@ -66,7 +66,7 @@ void test_build_ir(std::string_view source, test_params tp) {
               << std::endl;
     tp.use_valgrind = false;
   }
-  if(tp.use_release_lib)compile_lib_release();
+  if (tp.use_release_lib)compile_lib_release();
   else compile_lib_debug();
 #define target  "/home/luke/CLionProjects/compilers/bml/output"
   std::ofstream oasm;
@@ -75,9 +75,10 @@ void test_build_ir(std::string_view source, test_params tp) {
   oasm.close();
 
   ASSERT_EQ(system("yasm -g dwarf2 -f elf64 " target ".asm -l " target ".lst -o " target ".o"), 0);
-  if(tp.use_release_lib)
+  if (tp.use_release_lib)
     ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt_fast.o -o " target), 0);
-  else ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
+  else
+    ASSERT_EQ(system("gcc -no-pie " target ".o /home/luke/CLionProjects/compilers/bml/lib/rt/rt.o -o " target), 0);
 
   int exit_code;
   if (tp.sandbox_timeout)
@@ -627,6 +628,32 @@ let repeat x n = repeat_ x n Empty;;
 repeat (make_deadspeaking_box 1729) 5;;
 )", {.expected_stdout = "1729\n1729\n1729\n1729\n1729\n1729\n"});
 
+}
+
+TEST(Build, StringLiteral) {
+  test_build(R"(
+(* ITER *)
+let rec iter_ f i n = if i=n then () else f i; iter_ f (i+1) n;;
+let iter f n = iter_ f 0 n;;
+
+(* PRINT_STRING *)
+let print_string s = iter (fun i -> print_chr (str_at s i)) (strlen s);;
+
+print_string "Hello, \t World!\n" ;;
+
+(* or, we can use the more efficient,
+   already implemented, print_str   *)
+
+print_str "Good morning, Mars!!!\n" ;;
+
+(* also on other files *)
+
+fprint_str stdout "This is on STDOUT!!!\n" ;;
+fprint_str stderr "This is on STDERR!!!\n" ;;
+
+)",
+             {.expected_stdout="Hello, \t World!\nGood morning, Mars!!!\nThis is on STDOUT!!!\n",
+                 .expected_stderr="This is on STDERR!!!\n"});
 }
 
 /*
