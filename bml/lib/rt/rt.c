@@ -9,6 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <time.h>
 
 #define Tag_Tuple  0
 #define Tag_Fun 1
@@ -117,6 +118,14 @@ void __json_debug(uintptr_t x, int depth) {
         __json_debug(v[2], depth + 1);
         v += 5;
         size -= 3;
+        assert(size == 0);
+      };
+        break;
+      case Tag_String: {
+        fputs("\"String\"", debug_stream);
+        fprintf(debug_stream, ", \"content\" : \"%s\"  : ", (const char*)(v+2));
+        v += size+2;
+        size = 0;
         assert(size == 0);
       };
         break;
@@ -513,6 +522,15 @@ uintptr_t _mllib_fn__t_deep_copy(uintptr_t argv) {
   return x;
 }
 
+uintptr_t _mllib_fn__time_print(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  time_t x = (time_t) (v_to_int(argv_b[4]));
+  const char* c_time_string = ctime(&x);
+  printf("%s", c_time_string);
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
 uintptr_t _mllib_fn__str_print(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uintptr_t *b = (uintptr_t *) argv_b[4];
@@ -529,7 +547,8 @@ uintptr_t _mllib_fn__str_fprint(uintptr_t argv) {
   const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
   int fd = v_to_int(argv_a[4]);
   const char *s = (const char *) (b + 2);
-  write(fd, s, strlen(s));
+  size_t len = strlen(s);
+  assert(write(fd, s, len)==len);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
@@ -601,4 +620,9 @@ uintptr_t _mllib_fn__fopen(uintptr_t argv) {
   }
   decrement_boxed(argv);
   return int_to_v(fd);
+}
+
+uintptr_t _mllib_fn__time_now(uintptr_t argv) {
+  decrement_boxed(argv);
+  return int_to_v(time(NULL));
 }

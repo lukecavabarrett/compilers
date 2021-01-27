@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include <parse/parse.h>
 #include <util/message.h>
 #include <build/build.h>
@@ -9,6 +10,8 @@ std::string load_file(const char *path) {
 }
 
 enum direct_test_t { NONE, COMPILE, LINK, RUN };
+typedef std::variant<std::string_view, ::testing::PolymorphicMatcher<testing::internal::MatchesRegexMatcher> >
+    expect_str_t;
 void test_build_direct(std::string_view source,
                        std::string_view expected_stdout,
                        int expected_exit_code = 0,
@@ -36,8 +39,8 @@ struct test_params {
   bool use_valgrind = false; // takes longer time
   bool sandbox_timeout = false;
   bool use_release_lib = false; // true for testing efficiency; false for debugging
-  std::string_view expected_stdout = "";
-  std::string_view expected_stderr = "";
+  expect_str_t expected_stdout = "";
+  expect_str_t expected_stderr = "";
   int expected_exit_code = 0;
 };
 
@@ -87,8 +90,14 @@ void test_build_ir(std::string_view source, test_params tp) {
     exit_code =
         WEXITSTATUS(system("/usr/bin/valgrind  --tool=memcheck --quiet " " --log-file=" target ".valgrind.log " " --gen-suppressions=all --leak-check=full --leak-resolution=med --track-origins=yes --vgdb=no " target " 2> " target ".stderr " " 1> " target ".stdout"));
   else exit_code = WEXITSTATUS(system(target " 2> " target ".stderr 1> " target ".stdout"));
-  EXPECT_EQ(load_file(target ".stdout"), tp.expected_stdout);
-  EXPECT_EQ(load_file(target ".stderr"), tp.expected_stderr);
+  std::visit(util::overloaded{
+      [](std::string_view expected_stdout) { EXPECT_EQ(load_file(target ".stdout"), expected_stdout); },
+      [](const auto &expected_stdout) { EXPECT_THAT(load_file(target ".stdout"), expected_stdout); }
+  }, tp.expected_stdout);
+  std::visit(util::overloaded{
+      [](std::string_view expected_stderr) { EXPECT_EQ(load_file(target ".stderr"), expected_stderr); },
+      [](const auto &expected_stderr) { EXPECT_THAT(load_file(target ".stderr"), expected_stderr); }
+  }, tp.expected_stderr);
   if (tp.use_valgrind)EXPECT_EQ(load_file(target ".valgrind.log"), "");
   EXPECT_EQ(exit_code, tp.expected_exit_code);
 #undef target
@@ -96,7 +105,12 @@ void test_build_ir(std::string_view source, test_params tp) {
 
 void test_build(std::string_view source,
                 test_params tp) {
-  test_build_direct(source, tp.expected_stdout, tp.expected_exit_code, tp.expected_stderr, tp.direct_test);
+  if (tp.direct_test != direct_test_t::NONE)
+    test_build_direct(source,
+                      std::get<0>(tp.expected_stdout),
+                      tp.expected_exit_code,
+                      std::get<0>(tp.expected_stderr),
+                      tp.direct_test);
   test_build_ir(source, tp);
 }
 
@@ -656,23 +670,23 @@ fprint_str stderr "This is on STDERR!!!\n" ;;
                  .expected_stderr="This is on STDERR!!!\n"});
 }
 
-TEST(Build,WritingFile){
+TEST(Build, WritingFile) {
   test_build(R"(
 
 let fd = fopen "log.txt" "w" ;;
 fprint_str fd "Hello, logging!\n" ;;
 fclose fd ;;
 
-)",{});
+)", {});
 }
 
-TEST(Build,AutoCloseFile){
-static constexpr std::string_view source = R"(
+TEST(Build, AutoCloseFile) {
+  static constexpr std::string_view source = R"(
 (* First, define the library for the autoclosefile.
     We don't have modules yet, so we'll just prepend
   acf_ to the functions of this "module" for clarity.*)
 
-(*Module Auto_close_file *)
+(* Module Auto_close_file *)
 
 (* These two should be not exposed *)
 type acf_t = | Fd of int;;
@@ -700,7 +714,20 @@ test ();;
 test () (Int 1729) (Str "As long as we use it, the file is still alive!\n");;
 
 )";
-test_build(source,{});
+  test_build(source, {});
+}
+
+TEST(Build, Time) {
+  static constexpr std::string_view source = R"(
+
+  print_time (now ());;
+
+)";
+  time_t t = time(NULL);
+  sleep(2);
+  std::string exp(ctime(&t));
+  exp[exp.size()-8] = exp[exp.size()-7] = '.';
+  test_build(source, {.use_release_lib=true, .expected_stdout = ::testing::MatchesRegex(exp)});
 }
 
 /*

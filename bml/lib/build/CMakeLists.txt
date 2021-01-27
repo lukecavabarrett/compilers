@@ -12,4 +12,4 @@ target_compile_features(build PRIVATE cxx_std_17)
 
 
 add_executable(build_test build_test.cc)
-target_link_libraries(build_test gtest gtest_main util parse build ir)
+target_link_libraries(build_test gtest gtest_main gmock util parse build ir)

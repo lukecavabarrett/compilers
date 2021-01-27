@@ -48,6 +48,8 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   register("_mllib_fn__str_at", 2, "str_at");
   register("_mllib_fn__fopen", 2, "fopen");
   register("_mllib_fn__fclose", 1, "fclose");
+  register("_mllib_fn__time_print", 1, "print_time");
+  register("_mllib_fn__time_now", 1, "now");
   register("_mllib_fn__t_deep_copy", 1, "deep_copy");
 
 #undef register
