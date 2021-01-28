@@ -724,7 +724,6 @@ TEST(Build, Time) {
 
 )";
   time_t t = time(NULL);
-  sleep(2);
   std::string exp(ctime(&t));
   exp[exp.size()-8] = exp[exp.size()-7] = '.';
   test_build(source, {.use_release_lib=true, .expected_stdout = ::testing::MatchesRegex(exp)});

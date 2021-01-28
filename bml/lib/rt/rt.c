@@ -531,6 +531,17 @@ uintptr_t _mllib_fn__time_print(uintptr_t argv) {
   return uint_to_v(0);
 }
 
+uintptr_t _mllib_fn__time_fprint(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  int fd = v_to_int(argv_a[4]);
+  time_t t = (time_t) (v_to_int(argv_b[4]));
+  const char* c_time_string = ctime(&t);
+  dprintf(fd,"%s", c_time_string);
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
 uintptr_t _mllib_fn__str_print(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   uintptr_t *b = (uintptr_t *) argv_b[4];
