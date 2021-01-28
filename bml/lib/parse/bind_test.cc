@@ -29,7 +29,7 @@ TEST(Bind, Expression2) {
   auto tks = parse::tokenizer(source);
   auto ast = ast::definition::parse(tks);
   auto fv1 = ast->free_vars();
-  EXPECT_EQ(util::texp::make_texp(fv1)->to_string(), "{'-' : [ast::expression::identifier{name : '-'}, ast::expression::identifier{name : '-'}]}");
+  EXPECT_EQ(util::texp::make_texp(fv1)->to_string(), "{'__binary_op__MINUS__' : [ast::expression::identifier{name : '__binary_op__MINUS__'}, ast::expression::identifier{name : '__binary_op__MINUS__'}]}");
 }
 
 TEST(Bind, Expression3) {
@@ -97,8 +97,8 @@ TEST(Bind, RightCaptureSet) {
   EXPECT_EQ(d.defs.size(), 2);
   const ast::expression::fun &even = *dynamic_cast<const ast::expression::fun *>(d.defs.at(0).e.get());
   const ast::expression::fun &odd = *dynamic_cast<const ast::expression::fun *>(d.defs.at(1).e.get());
-  EXPECT_EQ(util::texp::make_texp(even.captures)->to_string(), "[ast::matcher::universal{name : 'odd'}, ast::matcher::universal{name : 'is_zero'}, ast::matcher::universal{name : 'prev'}]");
-  EXPECT_EQ(util::texp::make_texp(odd.captures)->to_string(), "[ast::matcher::universal{name : 'even'}, ast::matcher::universal{name : 'is_zero'}, ast::matcher::universal{name : 'prev'}]");
+  EXPECT_EQ(util::texp::make_texp(even.captures)->to_string(), "[ast::matcher::universal{name : 'is_zero'}, ast::matcher::universal{name : 'prev'}, ast::matcher::universal{name : 'odd'}]");
+  EXPECT_EQ(util::texp::make_texp(odd.captures)->to_string(), "[ast::matcher::universal{name : 'is_zero'}, ast::matcher::universal{name : 'prev'}, ast::matcher::universal{name : 'even'}]");
 }
 
 TEST(Bind, CaptureSet) {
@@ -106,10 +106,10 @@ TEST(Bind, CaptureSet) {
   auto tks = parse::tokenizer(source);
   auto ast = ast::definition::parse(tks);
   auto fv = ast->free_vars();
-  EXPECT_EQ(util::texp::make(fv)->to_string(), "{'+' : [ast::expression::identifier{name : '+'}]}");
+  EXPECT_EQ(util::texp::make(fv)->to_string(),  "{'__binary_op__PLUS__' : [ast::expression::identifier{name : '__binary_op__PLUS__'}]}");
   ast::matcher::universal plus("+");
   plus.use_as_immediate = plus.top_level = true;
-  fv.at("+").front()->definition_point = &plus;
+  fv.at("__binary_op__PLUS__").front()->definition_point = &plus;
   ast::matcher::universal& iota_name = *dynamic_cast<ast::matcher::universal*>(ast->defs.at(0).name.get());
   iota_name.top_level = iota_name.use_as_immediate = true;
   auto cs = ast->capture_group();
@@ -121,7 +121,6 @@ TEST(Bind, CaptureSet) {
           dynamic_cast<ast::expression::constructor *>(iota.body.get())->arg.get()
           )->args.at(1).get());
   EXPECT_EQ(inner.captures.size(),1);
-
 }
 
 }

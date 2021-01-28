@@ -1,6 +1,5 @@
-#include <ast.h>
+#include <ast/ast.h>
 #include <util/sexp.h>
-#include <parse.h>
 
 namespace ast {
 
