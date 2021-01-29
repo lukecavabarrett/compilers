@@ -419,7 +419,7 @@ extern printf, malloc, exit, print_debug, _mllib_fn__int_add, apply_fn, decremen
 
   oasm << "main:\n";
   oasm << "sub rsp, 8\n";
-  //load args
+  //load n_args
   switch (params.call_style) {
 
     case as_args: {
@@ -809,10 +809,10 @@ return block;
 TEST(Memory, CallApplyFn) {
   // apply2 : ('a -> 'b -> 'c) -> 'a -> 'b -> 'c = <fun>
   std::string_view source = R"(
-apply2(args) {
-f = args[2];
-x1 = args[3];
-x2 = args[4];
+apply2(n_args) {
+f = n_args[2];
+x1 = n_args[3];
+x2 = n_args[4];
 y1 = apply_fn(f,x1);
 y2 = apply_fn(y1,x2);
 return y2;
@@ -826,15 +826,15 @@ return y2;
 TEST(Recursive, ListLength) {
   using build_object::tvar;
   std::string_view source = R"(
-length(args) {
-  x = args[4];
+length(n_args) {
+  x = n_args[4];
   one = 1;
 
   one_v = int_to_v(one);
 
   test(x,one);
   ans_v = if (jne) then {
-    this_f = args[2];
+    this_f = n_args[2];
     cnt = x[2];
     tl = cnt[3];
     tl_len_v = apply_fn(this_f,tl);
@@ -866,15 +866,15 @@ TEST(Recursive, ListLength_tailrecursive) {
 
 length_tl(acc_args) {
   acc = acc_args[4];
-  args = acc_args[2];
-  x = args[4];
+  n_args = acc_args[2];
+  x = n_args[4];
   one = 1;
 
   one_v = int_to_v(one);
 
   test(x,one);
   ans_v = if (jne) then {
-    this_f = args[2];
+    this_f = n_args[2];
     cnt = x[2];
     tl = cnt[3];
     two = 2;
@@ -889,8 +889,8 @@ length_tl(acc_args) {
   return ans_v;
 }
 
-length(args) {
-  list = args[4];
+length(n_args) {
+  list = n_args[4];
   zero_v = 1;
   fun = __fun_block_length_tl__;
   fl = apply_fn(fun, list);
@@ -918,15 +918,15 @@ TEST(Recursive, ListLength_tailrecursive_annotated) {
 
 length_tl(acc_args : non_trivial) {
   acc : unboxed = acc_args[4];
-  args : non_trivial = acc_args[2];
-  x : non_global = args[4];
+  n_args : non_trivial = acc_args[2];
+  x : non_global = n_args[4];
   one : trivial = 1;
 
   one_v : trivial = int_to_v(one);
 
   test(x,one);
   ans_v : unboxed = if (jne) then {
-    this_f : global = args[2];
+    this_f : global = n_args[2];
     cnt : non_trivial = x[2];
     tl : non_global = cnt[3];
     two : trivial = 2;
@@ -941,8 +941,8 @@ length_tl(acc_args : non_trivial) {
   return ans_v;
 }
 
-length(args : non_trivial) {
-  list = args[4];
+length(n_args : non_trivial) {
+  list = n_args[4];
   zero_v = 1;
   fun = __fun_block_length_tl__;
   fl = apply_fn(fun, list);
@@ -1061,16 +1061,16 @@ test_function (x : trivial) {
 
 TEST(Memory, DestroyCallDestructor) {
   static constexpr std::string_view source = R"(
-print_box (args : non_trivial) {
-  boxed_int : boxed = args[4];
+print_box (n_args : non_trivial) {
+  boxed_int : boxed = n_args[4];
   pint = __fun_block__mllib_fn__int_println__;
   x : trivial = boxed_int[2];
   unit : trivial = apply_fn(pint,x);
   return unit;
 }
 
-make_epitaffable_box(args : non_trivial) {
-  x : trivial = args[4];
+make_epitaffable_box(n_args : non_trivial) {
+  x : trivial = n_args[4];
   tuple : non_trivial = malloc(4);
   c3 = 3;
   c2 = 2;

@@ -99,7 +99,7 @@ struct tuple : public t {
   tuple(expression::ptr &&x) { ts.push_back(std::move(x)); }
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
 TO_TEXP(ts);
-};
+}; //not really a valid type-expression per se, but used in construction
 struct constr : public t {
   ptr x, f;
   constr(ptr &&xx, ptr &&ff) : x(std::move(xx)), f(std::move(ff)) { loc = itr_sv(x->loc.begin(), f->loc.end()); }

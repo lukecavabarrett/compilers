@@ -328,7 +328,7 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   ++this_stack_pos;
   this_fun << "mov r12, rdi\n";
   bool should_skip = false;
-  // iterate the args in reverse order
+  // iterate the n_args in reverse order
   for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
     if (should_skip)this_fun << "mov r12, qword [r12+16]\n";
     should_skip = true;
@@ -343,7 +343,7 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   body->compile(s.with_main(this_fun, this), this_stack_pos);
 
   if (this_stack_pos > 1) {
-    this_fun << "add rsp, " << (8 * (this_stack_pos - 1)) << " ; popping fun args \n";
+    this_fun << "add rsp, " << (8 * (this_stack_pos - 1)) << " ; popping fun n_args \n";
     this_stack_pos = 1;
   }
 
@@ -562,9 +562,9 @@ std::string fun::ir_compile_global(ir_sections_t s) {
   var arg_block;
   f.args = {arg_block};
   f.name = name;
-  //read unroll args onto variables
+  //read unroll n_args onto variables
   bool should_skip = false;
-  // iterate the args in reverse order
+  // iterate the n_args in reverse order
   for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
     if (should_skip)arg_block = f.declare_assign(arg_block[2]);
     should_skip = true;
@@ -699,7 +699,7 @@ void t::ir_compile_global(ir_sections_t s) {
       var tuple_addr = s.main.declare_global(name->ir_asm_name());
       assert(name->use_as_immediate);
       size_t i = 0;
-      for (auto &e : e->args) {
+      for (auto &e : e->n_args) {
         auto v = e->ir_compile(s);
         s.main.push_back(instruction::write_uninitialized_mem{.base = tuple_addr, .block_offset = i + 2, .src = v});
         ++i;
@@ -748,7 +748,7 @@ void t::compile_global(direct_sections_t s) {
       name->globally_allocate_tupleblock(s.data, e->args.size());
       assert(name->use_as_immediate);
       size_t i = 0;
-      for (auto &e : e->args) {
+      for (auto &e : e->n_args) {
         e->compile(s, 0);
         s.main << "mov qword[" << name->asm_name();
         if (i)s.main << "+" << (8 * i);

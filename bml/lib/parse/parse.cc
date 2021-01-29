@@ -702,7 +702,7 @@ ptr parse(tokenizer &tk) {
     auto m = expression::parse(tk);
     std::vector<param::ptr> params;
     if (dynamic_cast<expression::constr *>(m.get())) {
-      //TODO: def->args := m.x, m := m.f
+      //TODO: def->n_args := m.x, m := m.f
       std::unique_ptr<expression::constr> c(dynamic_cast<expression::constr *>(m.release()));
       m.reset(c->f.release());
       if (dynamic_cast<expression::identifier *>(c->x.get())) {
@@ -760,7 +760,7 @@ ptr parse(tokenizer &tk) {
       fundef->name.reset(dynamic_cast<matcher::universal *>(m.release()));
       while (tk.peek() != EQUAL) {
         auto m = matcher::parse(tk);
-        fundef->args.push_back(std::move(m));
+        fundef->n_args.push_back(std::move(m));
       }
       tk.expect_pop(EQUAL);
       auto e = expression::parse(tk);
