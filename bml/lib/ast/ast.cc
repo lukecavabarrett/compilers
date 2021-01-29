@@ -131,7 +131,7 @@ capture_set identifier::capture_group() {
   if (!definition_point) {
     std::string_view n = name;
   }
-  if (!definition_point)THROW_INTERNAL_ERROR;
+  if (!definition_point)THROW_INTERNAL_ERROR
   if (definition_point->top_level) return {};
   return {definition_point};
 }
@@ -151,7 +151,7 @@ capture_set tuple::capture_group() {
   return fv;
 }
 capture_set fun_app::capture_group() { return join_capture_set(f->capture_group(), x->capture_group()); }
-capture_set destroy::capture_group() { return join_capture_set(obj->capture_group(), d->capture_group());; }
+capture_set destroy::capture_group() { return join_capture_set(obj->capture_group(), d->capture_group()); }
 capture_set seq::capture_group() { return join_capture_set(a->capture_group(), b->capture_group()); }
 capture_set match_with::capture_group() {
   capture_set cs = what->capture_group();
@@ -228,7 +228,7 @@ void tuple::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "push r12\n";
   ++stack_pos;
   s.main << "mov edi, " << std::to_string(args.size() * 8) << "\n"
-         << "call malloc\n" << "mov r12, rax\n";;
+         << "call malloc\n" << "mov r12, rax\n";
   for (int i = 0; i < args.size(); ++i) {
     args.at(i)->compile(s, stack_pos);
     s.main << "mov qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "], rax\n";
@@ -247,7 +247,7 @@ void fun_app::compile(direct_sections_t s, size_t stack_pos) {
   s.main << "mov rsi, rax\n"
             "call apply_fn\n";
 }
-void destroy::compile(direct_sections_t s, size_t stack_pos) { THROW_UNIMPLEMENTED; }
+void destroy::compile(direct_sections_t s, size_t stack_pos) { THROW_UNIMPLEMENTED }
 void seq::compile(direct_sections_t s, size_t stack_pos) {
   a->compile(s, stack_pos);
   b->compile(s, stack_pos);
@@ -328,7 +328,7 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   ++this_stack_pos;
   this_fun << "mov r12, rdi\n";
   bool should_skip = false;
-  // iterate the n_args in reverse order
+  // iterate the args in reverse order
   for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
     if (should_skip)this_fun << "mov r12, qword [r12+16]\n";
     should_skip = true;
@@ -343,7 +343,7 @@ std::string fun::compile_global(direct_sections_t s, std::string_view name_hint)
   body->compile(s.with_main(this_fun, this), this_stack_pos);
 
   if (this_stack_pos > 1) {
-    this_fun << "add rsp, " << (8 * (this_stack_pos - 1)) << " ; popping fun n_args \n";
+    this_fun << "add rsp, " << (8 * (this_stack_pos - 1)) << " ; popping fun args \n";
     this_stack_pos = 1;
   }
 
@@ -382,7 +382,7 @@ ir::lang::var constructor::ir_compile(ir_sections_t s) {
     return s.main.declare_constant(definition_point->tag);
   }
 }
-ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) {
+ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) const {
   using namespace ir::lang;
   assert(definition_point->tag >= 5);
   assert(definition_point->tag & 1);
@@ -483,7 +483,7 @@ ir::lang::var destroy::ir_compile(ir_sections_t s) {
   if (auto *c = dynamic_cast<constructor *>(  obj.get());c) {
     return c->ir_compile_with_destructor(s, d->ir_compile(s));
   }
-  THROW_INTERNAL_ERROR; //cannot have destructor on a non boxed
+  THROW_INTERNAL_ERROR //cannot have destructor on a non boxed
 }
 ir::lang::var seq::ir_compile(ir_sections_t s) {
   a->ir_compile(s);
@@ -562,9 +562,9 @@ std::string fun::ir_compile_global(ir_sections_t s) {
   var arg_block;
   f.args = {arg_block};
   f.name = name;
-  //read unroll n_args onto variables
+  //read unroll args onto variables
   bool should_skip = false;
-  // iterate the n_args in reverse order
+  // iterate the args in reverse order
   for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
     if (should_skip)arg_block = f.declare_assign(arg_block[2]);
     should_skip = true;
@@ -589,7 +589,7 @@ identifier::identifier(std::string_view n, std::string_view loc) : t(loc), name(
 
 literal::literal(ast::literal::ptr &&v) : value(std::move(v)) {}
 
-constructor::constructor(std::string_view n) : name(n) {}
+constructor::constructor(std::string_view n) : name(n), definition_point(nullptr) {}
 
 if_then_else::if_then_else(ptr &&condition, ptr &&true_branch, ptr &&false_branch)
     : condition(std::move(condition)), true_branch(std::move(true_branch)), false_branch(std::move(false_branch)) {}
@@ -686,27 +686,27 @@ void t::ir_compile_global(ir_sections_t s) {
       dynamic_cast<matcher::universal *>(def.name.get())->use_as_immediate = true;
     }
   for (auto &def : defs) {
-    matcher::universal *name = dynamic_cast<matcher::universal *>(def.name.get());
+    auto *name = dynamic_cast<matcher::universal *>(def.name.get());
     if (name && def.is_fun()) {
-      expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
+      auto *f = dynamic_cast<expression::fun *>(def.e.get());
       assert(f->captures.empty());
       std::string text_ptr = f->ir_compile_global(s);
       name->ir_allocate_globally_funblock(s.data, f->args.size(), text_ptr);
     } else if (name && def.is_tuple()) {
 
-      expression::tuple *e = dynamic_cast<expression::tuple *>(def.e.get());
-      name->ir_allocate_global_tuple(s.data, e->args.size());
+      auto *tuple_expr = dynamic_cast<expression::tuple *>(def.e.get());
+      name->ir_allocate_global_tuple(s.data, tuple_expr->args.size());
       var tuple_addr = s.main.declare_global(name->ir_asm_name());
       assert(name->use_as_immediate);
       size_t i = 0;
-      for (auto &e : e->n_args) {
+      for (auto &e : tuple_expr->args) {
         auto v = e->ir_compile(s);
         s.main.push_back(instruction::write_uninitialized_mem{.base = tuple_addr, .block_offset = i + 2, .src = v});
         ++i;
       }
     } else if (name && def.is_constr()) {
 
-      expression::constructor *e = dynamic_cast<expression::constructor *>(def.e.get());
+      auto *e = dynamic_cast<expression::constructor *>(def.e.get());
       if (e->arg) {
         name->ir_allocate_global_constrblock(s.data, *e->definition_point);
         assert(name->use_as_immediate);
@@ -737,18 +737,18 @@ void t::compile_global(direct_sections_t s) {
       dynamic_cast<matcher::universal *>(def.name.get())->use_as_immediate = true;
     }
   for (auto &def : defs) {
-    matcher::universal *name = dynamic_cast<matcher::universal *>(def.name.get());
+    auto *name = dynamic_cast<matcher::universal *>(def.name.get());
     if (name && def.is_fun()) {
-      expression::fun *f = dynamic_cast<expression::fun *>(def.e.get());
+      auto *f = dynamic_cast<expression::fun *>(def.e.get());
       assert(f->captures.empty());
       std::string text_ptr = f->compile_global(s, name->name);
       name->globally_allocate_funblock(f->args.size(), s.data, text_ptr);
     } else if (name && def.is_tuple()) {
-      expression::tuple *e = dynamic_cast<expression::tuple *>(def.e.get());
-      name->globally_allocate_tupleblock(s.data, e->args.size());
+      auto *tuple_expr = dynamic_cast<expression::tuple *>(def.e.get());
+      name->globally_allocate_tupleblock(s.data, tuple_expr->args.size());
       assert(name->use_as_immediate);
       size_t i = 0;
-      for (auto &e : e->n_args) {
+      for (auto &e : tuple_expr->args) {
         e->compile(s, 0);
         s.main << "mov qword[" << name->asm_name();
         if (i)s.main << "+" << (8 * i);
@@ -756,7 +756,7 @@ void t::compile_global(direct_sections_t s) {
         ++i;
       }
     } else if (name && def.is_constr()) {
-      expression::constructor *e = dynamic_cast<expression::constructor *>(def.e.get());
+      auto *e = dynamic_cast<expression::constructor *>(def.e.get());
       if (e->arg) {
         name->globally_allocate_constrblock(s.data, *e->definition_point);
         assert(name->use_as_immediate);
@@ -924,7 +924,7 @@ void universal::globally_allocate_tupleblock(std::ostream &os, size_t tuple_size
     if (comma)os << ", ";
     comma = true;
     os << "0";
-  };
+  }
   os << "\n";
 }
 
@@ -1225,11 +1225,11 @@ ir::lang::var boolean::ir_compile(ir_sections_t s) const {
 ir::lang::var unit::ir_compile(ir_sections_t s) const {
   return s.main.declare_constant(to_value());
 }
-uint64_t string::to_value() const { THROW_UNIMPLEMENTED; }
+uint64_t string::to_value() const { THROW_UNIMPLEMENTED }
 
 ir::lang::var string::ir_compile(ir_sections_t s) const {
   assert(value.size() % 8 == 0);
-  assert(value.size());
+  assert(!value.empty());
   //Let's make a static block
   static size_t id_factory = 0;
   size_t id = ++id_factory;

@@ -971,7 +971,7 @@ void context_t::make_both_non_mem(var v1, var v2, std::ostream &os) {
   assert_consistency();
   assert(!is_mem(v1) && !is_mem(v2));
 }
-//the n_args are MOVED. If you want to preserve them, don't pass them here but fill them later with declare_copy
+//the args are MOVED. If you want to preserve them, don't pass them here but fill them later with declare_copy
 void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args, std::ostream &os) {
   assert_consistency();
 
@@ -985,7 +985,7 @@ void context_t::return_clean(const std::vector<std::pair<var, register_t>> &args
     var_target[v] = r;
     reg_target[r] = v;
   }
-  //assert(vars.size() == n_args.size()); // there shouldn't be more living variables //TODO: verify statement
+  //assert(vars.size() == args.size()); // there shouldn't be more living variables //TODO: verify statement
 
 
   //Step 1. restore nonvolatiles

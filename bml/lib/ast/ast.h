@@ -12,7 +12,7 @@
 #include <cassert>
 #include <ir/lang.h>
 #include <ir/ir.h>
-
+#include <types/types.h>
 namespace ast {
 using namespace util;
 typedef texp::texp_of_t texp_of_t;
@@ -230,7 +230,7 @@ struct constructor : public t {
   type::definition::single_variant::constr *definition_point;
   void compile(direct_sections_t s, size_t stack_pos) final;
   ir::lang::var ir_compile(ir_sections_t) final;
-  ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d);
+  ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d) const;
   void bind(const constr_map &cm) final;
 TO_TEXP(name, arg);
 };

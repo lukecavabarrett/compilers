@@ -10,7 +10,7 @@
 /* TYPES */
 /*
 PE = possibly empty
-// typeconstr:
+// type_function (from monotypes^n -> monotypes)
       they have a unique name:string, and a n_args:int
       we can identify one by writing name/n_args
 
@@ -60,20 +60,19 @@ void multi_emplace(std::vector<V> &vec, T1 &&t1, Types &&... args) {
 }
 }
 //declaration of structs
-namespace type_constr {
+namespace type_function {
 struct t;
 struct primitive;// : public t;
 struct variant;// : public t;
 }
 namespace type_expr {
 struct t;
-typedef std::unique_ptr<t> ptr;
 struct variable;// : public t;
 struct constr;// : public t;
 }
 
 //definition of structs, declaration of methods (and definition of some)
-namespace type_constr {
+namespace type_function {
 
 template<typename T>
 struct c {
@@ -149,7 +148,7 @@ struct variant : public t {
     }
     const size_t tag_id;
     const std::string_view name;
-    std::vector<type_expr::ptr> args;//PE
+    std::vector<type_expr::t> args;//PE
     template<typename... TExprs>
     /*TODO-C++20: constexpr*/ constr(std::string_view name,TExprs&& ... texprs) : tag_id(fresh_id()),name(name){
       util::multi_emplace(args,std::forward<TExprs &&>(texprs)...);
@@ -175,67 +174,40 @@ template<typename... Constructors>
 
 }
 namespace type_expr {
-typedef type_constr::tree<size_t> tree;
-struct t {
-  virtual void poly_normalize_(std::unordered_map<size_t, size_t> &) = 0;
-  size_t poly_normalize() {
-    std::unordered_map<size_t, size_t> relabel;
-    poly_normalize_(relabel);
-    return relabel.size();
-  };
-  virtual void print(std::ostream &os) const = 0;
-  virtual ptr copy() const = 0;
-  virtual tree to_tree_subs(const std::vector<tree>& subs) const= 0;
-};
-struct variable : public t {
+typedef type_function::tree<size_t> tree;
+
+struct variable {
   size_t id;
   variable(size_t id) : id(id) {}
-  ptr copy() const final {
-    return std::make_unique<variable>(id);
-  }
-  tree to_tree_subs(const std::vector<tree>& subs) const final{
-    assert(id<subs.size());
-    return subs.at(id);
-  }
-
-  void poly_normalize_(std::unordered_map<size_t, size_t> &relabel) final {
-    id = relabel.try_emplace(id, relabel.size()).first->second;
-  }
-  void print(std::ostream &os) const final {
+  void print(std::ostream &os) const  {
     if (id < 26)os << '\'' << char('a' + id);
     else os << "'_" << id;
   }
-  static type_expr::ptr make(size_t id) {
-    return std::make_unique<variable>(id);
-  }
 };
-struct constr : public t {
-  const type_constr::t *constructor;
-  std::vector<ptr> args; //args.size()==constructor->n_args
-  constr(const type_constr::t *constructor, std::vector<ptr> &&args) : constructor(constructor), args(std::move(args)) {
+struct constr {
+  const type_function::t *constructor;
+  std::vector<t> args; //args.size()==constructor->n_args
+  constr(const type_function::t *constructor, std::vector<t> &&args) : constructor(constructor), args(std::move(args)) {
     assert(this->args.size() == constructor->n_args);
   }
-  ptr copy() const final {
-    std::vector<ptr> args_copy; args_copy.reserve(args.size());
-    for(const ptr& t : args)args_copy.emplace_back(t->copy());
-    return std::make_unique<constr>(constructor,std::move(args_copy));
-  }
-  tree to_tree_subs(const std::vector<tree>& subs) const final{
-    type_constr::c<size_t> w;
-    w.constr = constructor;
-    for(const auto &p : args)w.args.emplace_back(p->to_tree_subs(subs));
-    return w;
-  }
-  void poly_normalize_(std::unordered_map<size_t, size_t> &relabel) final {
-    for (ptr &p : args)p->poly_normalize_(relabel);
-  }
-  void print(std::ostream &os) const final {
+
+  void print(std::ostream &os) const {
     return constructor->print_with_args(args, os);
   }
 };
+struct t : public std::variant<variable,constr> {
+  typedef std::variant<variable,constr> base;
+  using base::base;
+  void print(std::ostream &os) const {
+    std::visit(util::overloaded{
+      [&os](variable v){v.print(os);},
+      [&os](const constr& c){c.print(os);}
+      },*static_cast<const base *>(this));
+  };
+};
 }
 //definition of remaining methods
-namespace type_constr {
+namespace type_function {
 
 static /*TODO-C++20: constexpr*/ variant tc_option("option",1,variant::constr("None"),variant::constr("Some",type_expr::variable::make(0)));
 const variant& __make_tc_list(){
@@ -314,7 +286,7 @@ std::ostream& operator<<(std::ostream& os, const type_expr::ptr& p){
 // 4. add typecheck to build pass
 
 void test_types() {
-  const type_constr::t &c = type_constr::tc_tuple(3);
+  const type_function::t &c = type_function::tc_tuple(3);
   std::cout << c.name << "/" << c.n_args << std::endl;
   static constexpr auto &make = type_expr::variable::make;
   type_expr::ptr f = make(3);
@@ -323,7 +295,7 @@ void test_types() {
   f->poly_normalize();
   f->print(std::cout);
   std::cout << std::endl;
-  type_expr::ptr t = c(make(7), make(2), c(type_constr::tc_fun(make(2), make(7)), make(7), type_constr::tc_string()));
+  type_expr::ptr t = c(make(7), make(2), c(type_function::tc_fun(make(2), make(7)), make(7), type_function::tc_string()));
   t->print(std::cout);
   std::cout << std::endl;
   t->poly_normalize();
@@ -334,7 +306,7 @@ void test_types() {
 
 /* INFERENCE */
 
-typedef type_constr::t constr;
+typedef type_function::t constr;
 struct arena {
   typedef size_t id_t;
   struct boss_node {
@@ -377,11 +349,11 @@ struct arena {
     return nodes.size() - 1;
   }
 
-  id_t construct(const type_constr::tree<id_t> &i) {
+  id_t construct(const type_function::tree<id_t> &i) {
 
     return std::visit(util::overloaded{
         [](id_t id) -> id_t { return id; },
-        [&](const type_constr::c<id_t> &c) -> id_t {
+        [&](const type_function::c<id_t> &c) -> id_t {
           std::vector<id_t> args;
           for (const auto &x : c.args)args.push_back(construct(x));
           nodes.emplace_back(boss_node{.id = nodes.size(), .rank=0, .def=c.constr, .args=std::move(args)});
@@ -407,7 +379,7 @@ struct arena {
 
     if (b.def->n_args == 0) {
       std::cout << b.def->name;
-    } else if (b.def == &type_constr::tc_fun) {
+    } else if (b.def == &type_function::tc_fun) {
       // special case for c_function
       std::cout << "(";
       print_(boss(b.args[0]), names);
@@ -506,7 +478,7 @@ struct arena {
   }
 
 };
-using namespace type_constr;
+using namespace type_function;
 
 void test1() {
   arena a;
