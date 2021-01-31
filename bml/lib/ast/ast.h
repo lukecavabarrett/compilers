@@ -68,10 +68,7 @@ struct locable {
 };
 
 namespace type {
-//TODO: take this decision: should we parse directly in the type format?
-// maybe not
-// type ifun = | F of int -> int ;; this yield synax error - in fact int * int -> int parse as (int * int) -> int
-// for parsing a constructor we simply start the parse UNDER ->, * (only using paretheses we can parse ->, *)
+
 namespace expression {
 
 struct t : public locable, public texp_of_t {
