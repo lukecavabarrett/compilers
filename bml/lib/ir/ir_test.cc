@@ -963,8 +963,6 @@ length(args : non_trivial) {
   }
 }
 
-//TODO: ApplyList, ListSum
-
 TEST(IO, Stdout) {
   test_ir_build("", {42}, {
       .test_function = "_mllib_fn__int_println",
