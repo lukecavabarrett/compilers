@@ -13,9 +13,9 @@ typedef std::variant<std::string_view, ::testing::PolymorphicMatcher<testing::in
     expect_str_t;
 
 struct test_params {
-  bool use_valgrind = true; // takes longer time
+  bool use_valgrind = false; // takes longer time
   bool sandbox_timeout = false;
-  bool use_release_lib = false; // true for testing efficiency; false for debugging
+  bool use_release_lib = true; // true for testing efficiency; false for debugging
   expect_str_t expected_stdout = "";
   expect_str_t expected_stderr = "";
   int expected_exit_code = 0;
@@ -80,7 +80,6 @@ void test_build(std::string_view source, test_params tp) {
 #undef target
 }
 
-
 TEST(Build, EmptyProgram) {
   test_build("", {});
 }
@@ -98,37 +97,37 @@ TEST(Build, Expression0) {
   constexpr std::string_view source = "let answer = 42;;"
                                       "print_int 42;;\n"
                                       "print_int answer;;\n";
-  test_build(source, { .expected_stdout = "42 42 "});
+  test_build(source, {.expected_stdout = "42 42 "});
 
 }
 
 TEST(Build, Expression0_1) {
   constexpr std::string_view source = "println_int (10+20);;\n";
-  test_build(source, { .expected_stdout = "30\n"});
+  test_build(source, {.expected_stdout = "30\n"});
 }
 
 TEST(Build, Expression0_2) {
   constexpr std::string_view source = "let cond = false;;\n"
                                       "println_int (if cond then 42 else 1729);;\n";
-  test_build(source, { .expected_stdout = "1729\n"});
+  test_build(source, {.expected_stdout = "1729\n"});
 }
 
 TEST(Build, Expression0_3) {
   constexpr std::string_view source = "let a_pair = (92, 54) ;;\n"
                                       "let (x,y) = a_pair;;\n"
                                       "print_int x; print_int y;;\n";
-  test_build(source, { .expected_stdout = "92 54 "});
+  test_build(source, {.expected_stdout = "92 54 "});
 }
 
 TEST(Build, Expression0_4) {
   constexpr std::string_view source = "print_int (if 107 = 106 then 10 else 12);;\n";
-  test_build(source, { .expected_stdout = "12 "});
+  test_build(source, {.expected_stdout = "12 "});
 }
 
 TEST(Build, PartialApplication) {
   constexpr std::string_view source = "let s100 = (+) 100;;\n"
                                       "print_int (s100 54);;\n";
-  test_build(source, { .expected_stdout = "154 "});
+  test_build(source, {.expected_stdout = "154 "});
 }
 
 TEST(Build, Expression0_5) {
@@ -136,7 +135,7 @@ TEST(Build, Expression0_5) {
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = (+) 100 ;;\n"
                                       "print_int (sum_100 54);;";
-  test_build(source, { .expected_stdout = "154 "});
+  test_build(source, {.expected_stdout = "154 "});
 }
 
 TEST(Build, Expression1) {
@@ -148,7 +147,7 @@ TEST(Build, Expression1) {
                                       "let (x,y) = a_pair;;\n"
                                       "let sum_100 = (+) 100 ;;\n"
                                       "print_int (sum_100 (if 107=106 then x else y)) ;;\n";
-  test_build(source, { .expected_stdout = "154 "});
+  test_build(source, {.expected_stdout = "154 "});
 
 }
 
@@ -156,27 +155,27 @@ TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
                                       "let y = g (+) 10;;\n"
                                       "print_int y;;";
-  test_build(source, { .expected_stdout = "11 "});
+  test_build(source, {.expected_stdout = "11 "});
 }
 
 TEST(Build, Expression3) {
   constexpr std::string_view source = "let twice x = x + x ;;\n"
                                       "let ans = 45 + 25 - 93 + (twice (97 + 21));;\n"
                                       "print_int ans;;";
-  test_build(source, { .expected_stdout = "213 "});
+  test_build(source, {.expected_stdout = "213 "});
 }
 
 TEST(Build, Expression4) {
   test_build("let f x () = print_int x ;;\n"
              "let g = f 42;;\n"
-             "g ();;", { .expected_stdout = "42 "});
+             "g ();;", {.expected_stdout = "42 "});
 }
 
 TEST(Build, BoollLiterals) {
   test_build(R"(
     println_int (if true then 42 else 55);;
     println_int (if false then 42 else 55);;
-  )", { .expected_stdout = "42\n55\n"});
+  )", {.expected_stdout = "42\n55\n"});
 }
 
 TEST(Build, Constructor) {
@@ -185,20 +184,20 @@ TEST(Build, Constructor) {
              "let Some 13 = some13;;\n"
              "let Some x = some13;;\n"
              "let More (y,z) = more42_56;;\n"
-             "print_int x; print_int y; println_int z;;\n", { .expected_stdout = "13 42 56\n"});
+             "print_int x; print_int y; println_int z;;\n", {.expected_stdout = "13 42 56\n"});
 }
 
 TEST(Build, SomeAddition) {
   test_build("type int_option = | Some of int ;;\n"
              "let some_add (Some x) (Some y) (Some z) = Some (x+y+z);;\n"
              "let Some ans = some_add (Some 10) (Some 100) (Some 1);;\n"
-             "print_int ans;;\n", { .expected_stdout = "111 "});
+             "print_int ans;;\n", {.expected_stdout = "111 "});
 }
 
 TEST(Build, OptionMapSome) {
   test_build("type int_option = | None | Some of int ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
-             "let _ = option_map print_int (Some 42);;\n", { .expected_stdout = "42 "});
+             "let _ = option_map print_int (Some 42);;\n", {.expected_stdout = "42 "});
 
 }
 
@@ -212,24 +211,41 @@ TEST(Build, OptionMapError) {
   test_build("type int_option = | None | Some of int | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
              "let _ = option_map print_int Another;;\n",
-             { .expected_stderr = "match failed\n", .expected_exit_code=1});
+             {.expected_stderr = "match failed\n", .expected_exit_code=1});
+}
+
+TEST(Build, BigConstrPrinting) {
+  test_build(R"(
+type t = | A of int * unit * bool ;;
+let make () = (A (3,(),true)) ~> (fun _ -> print_str "Destroyed!\n" );;
+let fst (A(x,_,_)) = x;;
+make () |> fst |> println_int ;;
+)", {.expected_stdout = "Destroyed!\n3\n", .expected_exit_code=0});
+  test_build(R"(
+type t = | A of int * unit * bool ;;
+let make () = (A (3,(),true)) ~> (fun _ -> print_str "Destroyed!\n" );;
+let fst (A(x,_,_)) = x;;
+let abc = make ();;
+println_int (fst abc) ;;
+(* globals don't get destroyed - for now *)
+)", {.expected_stdout = "3\n", .expected_exit_code=0});
 }
 
 TEST(Build, ApplyTwice) {
   test_build("let apply_twice f x = f (f x);;\n"
              "let plus_two = apply_twice (fun x -> x + 1);;\n"
-             "print_int (plus_two 40);;\n", { .expected_stdout = "42 "});
+             "print_int (plus_two 40);;\n", {.expected_stdout = "42 "});
 }
 
 TEST(Build, ApplyTwiceOnSteroids) {
   test_build("let apply_twice f x = f (f x);;\n"
-             "print_int (apply_twice apply_twice (fun x -> x + 1) 0);;\n", { .expected_stdout = "4 "});
+             "print_int (apply_twice apply_twice (fun x -> x + 1) 0);;\n", {.expected_stdout = "4 "});
 }
 
 TEST(Build, FnCompose) {
   test_build("let fn_compose g f x = g (f x);;\n"
              "print_int (fn_compose (fun x -> x+x) (fun x -> x + 1) 12);;\n",
-             { .expected_stdout = "26 "});
+             {.expected_stdout = "26 "});
 }
 
 TEST(Build, OptionMap) {
@@ -237,7 +253,7 @@ TEST(Build, OptionMap) {
              "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;"
              "let Some ans = maybe_add (Some 10) 1;;\n"
-             "print_int ans;;\n", { .expected_stdout = "11 "});
+             "print_int ans;;\n", {.expected_stdout = "11 "});
 }
 
 TEST(Build, MaybeAdditionNested) {
@@ -246,7 +262,7 @@ TEST(Build, MaybeAdditionNested) {
              "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
              "let maybe_sum x y = option_map (maybe_add y) x;;\n"
              "let Some (Some ans) = maybe_sum (Some 10) (Some 100);;\n"
-             "print_int ans;;\n", { .expected_stdout = "110 "});
+             "print_int ans;;\n", {.expected_stdout = "110 "});
 }
 
 TEST(Build, MaybeAdditionCorrect) {
@@ -260,7 +276,7 @@ TEST(Build, MaybeAdditionCorrect) {
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
              "let _ = maybe_print (maybe_sum (None) (None));;\n",
-             { .expected_stdout = "110 -1 -1 -1 "});
+             {.expected_stdout = "110 -1 -1 -1 "});
 }
 
 TEST(Build, MaybeAdditionWithCapture) {
@@ -273,13 +289,13 @@ TEST(Build, MaybeAdditionWithCapture) {
              "let _ = test_sum (Some 10) (Some 100);;\n"
              "let _ = test_sum (None) (Some 100);;\n"
              "let _ = test_sum (Some 10) (None);;\n"
-             "let _ = test_sum (None) (None);;\n", { .expected_stdout = "110 -1 -1 -1 "});
+             "let _ = test_sum (None) (None);;\n", {.expected_stdout = "110 -1 -1 -1 "});
 }
 
 TEST(Build, LetExpression) {
   test_build("let play_with x = print_int x; (let y = x + x in y);;\n"
              "let ans = play_with 10;;"
-             "print_int ans;;", { .expected_stdout = "10 20 "});
+             "print_int ans;;", {.expected_stdout = "10 20 "});
 }
 
 TEST(Build, Malloc) {
@@ -291,7 +307,7 @@ TEST(Build, Malloc) {
 TEST(Build, CaptureX) {
   test_build("let plus_x x = (fun y -> x + y);;\n"
              "let plus_3 = plus_x 3;;\n"
-             "print_int (plus_3 4);;", { .expected_stdout = "7 "});
+             "print_int (plus_3 4);;", {.expected_stdout = "7 "});
 }
 
 TEST(Build, CaptureMaybeSum) {
@@ -304,28 +320,28 @@ TEST(Build, CaptureMaybeSum) {
              "let _ = maybe_print (maybe_sum (None) (Some 100));;\n"
              "let _ = maybe_print (maybe_sum (Some 10) (None));;\n"
              "let _ = maybe_print (maybe_sum (None) (None));;\n",
-             { .expected_stdout = "110 -1 -1 -1 "});
+             {.expected_stdout = "110 -1 -1 -1 "});
 }
 
 TEST(Build, LongSum) {
   test_build("let long_sum a b c d e f g h i j k = a+b+c+d+e+f+g+h+i+j+k;;\n"
              "let ans = long_sum 1 2 3 4 5 6 7 8 9 10 11;;\n"
-             "print_int ans ;;", { .expected_stdout = "66 "});
+             "print_int ans ;;", {.expected_stdout = "66 "});
 }
 
 TEST(Build, DeepCapture) {
   test_build("let deep_capture x = fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> fun () -> x ;;"
              "      print_int (deep_capture 1729 () () () () () () ());;",
-             { .expected_stdout = "1729 "});
+             {.expected_stdout = "1729 "});
 }
 
-TEST(Build,ConstructorMatchers){
+TEST(Build, ConstructorMatchers) {
   test_build(R"(
 type t = | A of int | B of (int * int) | C of int * int ;;
 let f x = match x with
 | C (x,y) -> 100 + x + y;;
 println_int (f (C (1,2)));;
-)",{.expected_stdout="103\n"});
+)", {.expected_stdout="103\n"});
 }
 
 TEST(Build, ManyMatchers) {
@@ -349,14 +365,14 @@ TEST(Build, ManyMatchers) {
              "g (Tuple (1000,Void));;\n"
              "g (Tuple (1000,Int 100));;\n"
              "g (Tuple (1000,Tuple(10000, Tuple(100,Void))));;\n"
-             "g (Tuple (1000,Void));;\n", { .expected_stdout = "0 1 2 3 4 1005 1106 11107 1005 "});
+             "g (Tuple (1000,Void));;\n", {.expected_stdout = "0 1 2 3 4 1005 1106 11107 1005 "});
 }
 
 TEST(Build, DeepMatchers) {
   test_build("let f ((x,y),z) = x + y + z;;\n"
-             "print_int (f ((1,10),100));;\n", { .expected_stdout = "111 "});
+             "print_int (f ((1,10),100));;\n", {.expected_stdout = "111 "});
   test_build("let f (((((a,b),c),d),e),f) = a+b+c+d+e+f ;;\n"
-             "print_int (f  (((((1,2),4),8),16),32) );;\n", { .expected_stdout = "63 "});
+             "print_int (f  (((((1,2),4),8),16),32) );;\n", {.expected_stdout = "63 "});
 }
 
 TEST(Build, MatchersTheRevenge) {
@@ -366,7 +382,7 @@ TEST(Build, MatchersTheRevenge) {
              "| Triple ((x,y),z) -> x + y + z;;\n"
              "let g x = print_int (f x);;\n"
              "g Null;;\n"
-             "g (Triple ((1,10),100));;\n", { .expected_stdout = "0 111 "});
+             "g (Triple ((1,10),100));;\n", {.expected_stdout = "0 111 "});
 }
 
 TEST(Build, ListUtils1) {
@@ -374,7 +390,7 @@ TEST(Build, ListUtils1) {
              "let rec length l = match l with\n"
              "| Null -> 0\n"
              "| Cons (_,xs) -> (length xs) + 1;;\n"
-             "print_int (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", { .expected_stdout = "3 "});
+             "print_int (length  (  Cons(1,Cons(2,Cons(3,Null))) ) );;", {.expected_stdout = "3 "});
 }
 
 TEST(Build, ListUtils2) {
@@ -382,9 +398,9 @@ TEST(Build, ListUtils2) {
              "let rec print_list l = match l with\n"
              "| Null -> ()\n"
              "| Cons (x,xs) -> print_int x; print_list xs;;\n"
-             "print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", { .expected_stdout = "1 2 3 "});
+             "print_list  (Cons(1,Cons(2,Cons(3,Null)))) ;;", {.expected_stdout = "1 2 3 "});
 }
-/*
+
 TEST(Build, InfiniteList) {
   test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
              "let rec length l = match l with\n"
@@ -392,12 +408,8 @@ TEST(Build, InfiniteList) {
              "| Cons (_,xs) -> (length xs) + 1;;\n"
              "let rec a = Cons(1,a);;\n"
              "print_int (length a) ;;",
-             "",
-             direct_test_t::RUN,
-             139,
-             "timeout: the monitored command dumped core\nSegmentation fault\n");
+             {.sandbox_timeout=true, .expected_stdout = "", .expected_stderr = "timeout: the monitored command dumped core\nSegmentation fault\n", .expected_exit_code = 139});
 }
- */
 
 TEST(Build, TakeFromInfiniteList) {
   test_build("type 'a list = | Null | Cons of 'a * 'a list;;\n"
@@ -410,7 +422,7 @@ TEST(Build, TakeFromInfiniteList) {
              "let rec a = Cons(1,a);;\n"
              " print_list (take a 4) ;;\n"
              "let rec b = Cons(2,c) and c = Cons(3,b);;\n"
-             " print_list (take b 8) ;;", { .expected_stdout =  "1 1 1 1 2 3 2 3 2 3 2 3 "});
+             " print_list (take b 8) ;;", {.expected_stdout =  "1 1 1 1 2 3 2 3 2 3 2 3 "});
 
 }
 
@@ -440,7 +452,7 @@ TEST(Build, TortoiseAndHare_Numbers) {
       floyd_algo
 
       "let (lam,mu) = floyd (fun x -> match x with | 10 -> 5 | x -> x+1) 0;;\n"
-      "print_int lam; print_int mu;;\n", { .expected_stdout = "6 5 "});
+      "print_int lam; print_int mu;;\n", {.expected_stdout = "6 5 "});
 }
 
 TEST(Build, TortoiseAndHare_Simple) {
@@ -454,7 +466,7 @@ TEST(Build, TortoiseAndHare_Simple) {
 
       "let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;\n"
 
-      "list_examine_cycle c;;", { .expected_stdout = "2 4 "});
+      "list_examine_cycle c;;", {.expected_stdout = "2 4 "});
 }
 
 TEST(Build, SmallComparison) {
@@ -462,7 +474,7 @@ TEST(Build, SmallComparison) {
  print_int (3 < 4);;
     print_int (3 < 3);;
     println_int (3 < 2);;
-)", { .expected_stdout = "1 0 0\n"});
+)", {.expected_stdout = "1 0 0\n"});
 }
 
 TEST(Build, IntComparison) {
@@ -481,7 +493,7 @@ TEST(Build, IntComparison) {
 
     println_int ((-54) < (-53));;
 
-)", { .expected_stdout = "1 0 0\n0 0 1\n0 0 1\n1\n"});
+)", {.expected_stdout = "1 0 0\n0 0 1\n0 0 1\n1\n"});
 }
 
 TEST(Build, Stream) {
@@ -522,7 +534,7 @@ TEST(Build, Stream) {
 
   (* let not_divisibly_by d n = not ((n mod d) = 0) ;; *)
 
-                      )", { .expected_stdout =
+                      )", {.expected_stdout =
   "42 43 44 45 46 47 48 49 50 51 52\n"
   "85 87 89 91 93 95 97 99 101 103 105\n"
   "51 52 53 54 55 56 57 58 59 60 61\n"
@@ -702,7 +714,7 @@ TEST(Build, Time) {
 )";
   time_t t = time(NULL);
   std::string exp(ctime(&t));
-  exp[exp.size()-8] = exp[exp.size()-7] = '.';
+  exp[exp.size() - 8] = exp[exp.size() - 7] = '.';
   test_build(source, {.use_release_lib=true, .expected_stdout = ::testing::MatchesRegex(exp)});
 }
 
