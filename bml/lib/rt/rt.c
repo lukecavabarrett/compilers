@@ -601,7 +601,6 @@ uintptr_t _mllib_fn__fopen(uintptr_t argv) {
   const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
   const char *path = (const char *)((uintptr_t*)(argv_a[4])+2);
   const char *mode = (const char *)((uintptr_t*)(argv_b[4])+2);
-  //TODO: build mode
   int flag = 0;
   bool r = false, w = false;
   for(const char *c = mode; *c; ++c){
