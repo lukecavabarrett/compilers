@@ -10,7 +10,6 @@
 // - increment_value would be much more efficient if inlined
 // - delete unused variables
 
-// TODO: optional: is there a way to override the ostream for doing (for instance) putting ";" before evry line?
 namespace ir::lang {
 namespace {
 
