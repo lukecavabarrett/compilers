@@ -48,7 +48,7 @@ void test_build(std::string_view source, test_params tp) {
   }
   if (tp.use_release_lib)compile_lib_release();
   else compile_lib_debug();
-#define target  "/home/luke/CLionProjects/compilers/bml/output"
+#define target  "/home/luke/CLionProjects/compilers/cmake-build-debug/output"
   std::ofstream oasm;
   oasm.open(target ".asm");
   ASSERT_NO_THROW(build_ir(source, oasm));
