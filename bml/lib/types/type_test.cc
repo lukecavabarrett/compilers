@@ -13,7 +13,6 @@ TEST(Type, Print1) {
   });
   (s << t);
   EXPECT_EQ(s.str(), "int -> int -> int");
-  //TODO: have this to be printed as "int -> int -> int"
 }
 
 TEST(Type, Print1b) {
@@ -61,5 +60,4 @@ TEST(Type, Print2) {
   });
   (s << t);
   EXPECT_EQ(s.str(), "int * (int -> int) * ('a * 'b)");
-  //TODO: have this to be printed as "int -> int -> int"
 }
