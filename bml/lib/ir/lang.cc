@@ -129,12 +129,10 @@ void tokenizer::write_head() {
 
 }
 void tokenizer::expect_pop(token_type t) {
-  //TODO: make better error
   expect_peek(t);
   write_head();
 }
 void tokenizer::expect_peek(token_type t) {
-  //TODO: make better error
   if (head.type != t) {
     throw error::expected_token_found_another(token_type_to_string(t), head.sv);
   }
