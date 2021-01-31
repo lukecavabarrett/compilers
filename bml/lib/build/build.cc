@@ -82,10 +82,6 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   return globals;
 }
 
-type::expression::t from_ast_type_expression(const ast::type::expression::ptr& p,const std::unordered_map<std::string_view,size_t>& vars_map,const type::type_map &type_map){
-  THROW_UNIMPLEMENTED
-}
-
 void record_typedef(type::constr_map &constr_map,
                     std::vector<type::function::variant::ptr> &variants,
                     type::type_map &type_map,
