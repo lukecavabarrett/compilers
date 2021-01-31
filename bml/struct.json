@@ -1,5 +1,0 @@
-ast:: definition:: t{
-  rec: false,  defs: [
-ast:: definition:: def{
-name: ast:: matcher:: universal_matcher{name: 'play_with'},
-e: ast:: expression:: fun{args: [ast:: matcher:: universal_matcher{name: 'x'}], body: ast:: expression:: seq{a: ast:: expression:: fun_app{f: ast:: expression:: identifier{name: 'int_print', uintptr_t(this): 94914012784096},  x: ast:: expression:: identifier{name: 'x', uintptr_t(this): 94914012784032}},  b: ast:: expression:: let_in{d: ast:: definition:: t{rec: false, defs: [ast:: definition:: def{name: ast:: matcher:: universal_matcher{name: 'y'}, e: ast:: expression:: fun_app{f: ast:: expression:: fun_app{f: ast:: expression:: identifier{name: '+', uintptr_t(this): 94914012809392}, x: ast:: expression::identifier{name: 'x', uintptr_t(this): 94914012809264}}, x: ast:: expression::identifier{name: 'x', uintptr_t(this): 94914012809328}}}]}, e: ast:: expression::identifier{name: 'y', uintptr_t(this): 94914012809616}}}}}]}

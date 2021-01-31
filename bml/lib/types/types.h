@@ -6,6 +6,7 @@
 #include <cassert>
 #include <variant>
 #include <iostream>
+#include <memory>
 
 namespace type {
 
@@ -15,6 +16,7 @@ struct t;
 
 namespace function {
 struct t;
+typedef std::unique_ptr<t> ptr;
 }
 
 namespace function {
@@ -57,8 +59,10 @@ struct variant : public t {
     const std::string_view name;
     std::vector<expression::t> args;//PE
     const variant *parent_tf = nullptr;
+    constr(std::string_view name, const variant* parent_tf) : tag_id(fresh_id()), name(name), parent_tf(parent_tf) {}
   };
   std::vector<constr> constructors; //PE
+  using t::t;
   variant(std::string_view name, size_t n, std::vector<constr> &&cs) : t(name, n),
                                                                        constructors(std::move(cs)) { __own_constructors(); }
 private:
@@ -68,6 +72,7 @@ public:
   variant(variant&& v) : t(std::move(v)), constructors(std::move(v.constructors)) {__own_constructors();}
   void print_with_args(const std::vector<expression::t> &args,
                        std::ostream &os) const final;
+  typedef std::unique_ptr<variant> ptr;
 };
 
 }
@@ -100,6 +105,10 @@ private:
   void execute_poly_normalize(std::unordered_map<size_t, size_t> &relabel) const;
 };
 }
+
+typedef std::unordered_map<std::string_view, const function::variant::constr *> constr_map;
+typedef std::unordered_map<std::string_view, const function::t *> type_map;
+type_map make_default_type_map();
 
 }
 

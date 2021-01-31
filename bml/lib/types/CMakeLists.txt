@@ -11,4 +11,4 @@ target_link_libraries(types PRIVATE util ir)
 target_compile_features(types PRIVATE cxx_std_17)
 
 add_executable(type_test type_test.cc)
-target_link_libraries(type_test gtest gtest_main gmock util types parse)
+target_link_libraries(type_test gtest gtest_main gmock util types)

@@ -5,9 +5,10 @@
 
 void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m);
 
-void build_direct(std::string_view s, std::ostream &target);
-
-
+struct build_params {
+  std::ostream& print_ir;
+  std::ostream& print_compiled_signature;
+};
 void build_ir(std::string_view s, std::ostream &target, std::string_view filename = "source.ml");
 /*
  IDEA for tests:

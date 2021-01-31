@@ -5,7 +5,7 @@ namespace type {
 
 namespace function {
 
-tf_tuple_t &tc_tuple(size_t n) {
+tf_tuple_t &tf_tuple(size_t n) {
   static std::unordered_map<size_t, tf_tuple_t> tuples;
   return tuples.try_emplace(n, tf_tuple_t(n)).first->second;
 }
@@ -34,22 +34,33 @@ void primitive::print_with_args(const std::vector<expression::t> &args, std::ost
 }
 void tf_fun_t::print_with_args(const std::vector<expression::t> &args, std::ostream &os) const {
   assert(args.size() == 2);
-  os << "(";
-  args[0].print(os);
+  if(std::holds_alternative<expression::application>(args[0])){
+    const auto& ap = std::get<expression::application>(args[0]);
+    const bool sq(dynamic_cast<const tf_fun_t*>(ap.f));
+    if(sq)os<<"(";
+    ap.print(os);
+    if(sq)os<<")";
+  }
+  else args[0].print(os);
   os << " -> ";
   args[1].print(os);
-  os << ")";
+
 }
 void tf_tuple_t::print_with_args(const std::vector<expression::t> &args, std::ostream &os) const {
   assert(args.size() >= 2);
-  os << "(";
   bool comma = false;
   for (const auto &p : args) {
     if (comma)os << " * ";
     comma = true;
-    p.print(os);
+    if(std::holds_alternative<expression::application>(p)){
+      const auto& ap = std::get<expression::application>(p);
+      const bool sq(dynamic_cast<const tf_fun_t*>(ap.f) || dynamic_cast<const tf_tuple_t*>(ap.f));
+      if(sq)os<<"(";
+      ap.print(os);
+      if(sq)os<<")";
+    } else p.print(os);
   }
-  os << ")";
+
 }
 }
 
@@ -102,6 +113,14 @@ void t::execute_poly_normalize(std::unordered_map<size_t, size_t> &relabel) cons
 }
 }
 
+type_map make_default_type_map() {
+  type_map m;
+  using namespace function;
+  for(const primitive& p : {tf_int,tf_bool,tf_file,tf_string,tf_time,tf_unit}){
+    m.try_emplace(p.name,&p);
+  }
+  return m;
+}
 }
 
 std::ostream &operator<<(std::ostream &os, const type::expression::t &t) {

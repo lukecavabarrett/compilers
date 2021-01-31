@@ -98,7 +98,7 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &
    Parse something of the form
    A -> A
    A op2 B op1 C ->  Lr( A , Lr(B,C) )
-   */
+  */
   auto l = sub_method(tk);
   if (!sep::has_sep(tk))return l;
   auto sepr = sep::consume_sep(tk);
@@ -137,7 +137,7 @@ void tokenizer::write_head() {
         to_parse.remove_prefix(2);
       } else to_parse.remove_prefix(1);
     }
-    if (nested_comment)throw parse::error::report_token( start_comment, "Begin of comment "," is unmatched.");
+    if (nested_comment)throw parse::error::report_token(start_comment, "Begin of comment ", " is unmatched.");
     return write_head();
   }
   for (const auto&[p, t] : tokens_map)
@@ -151,13 +151,16 @@ void tokenizer::write_head() {
     //string literal
     size_t i = 1;
     bool previous_slash = false;
-    while (i < to_parse.size() && to_parse[i]!=10 && (to_parse[i] != '\"' || previous_slash)){
-      if(!previous_slash && to_parse[i]=='\\')previous_slash=true;
+    while (i < to_parse.size() && to_parse[i] != 10 && (to_parse[i] != '\"' || previous_slash)) {
+      if (!previous_slash && to_parse[i] == '\\')previous_slash = true;
       else previous_slash = false;
       ++i;
     }
-    if (i == to_parse.size())throw parse::error::report_token(to_parse,"string literal", " is not terminated.");
-    if (to_parse[i]==10)throw parse::error::report_token(std::string_view(to_parse.begin(),i),"string literal", " is not terminated.");
+    if (i == to_parse.size())throw parse::error::report_token(to_parse, "string literal", " is not terminated.");
+    if (to_parse[i] == 10)
+      throw parse::error::report_token(std::string_view(to_parse.begin(), i),
+                                       "string literal",
+                                       " is not terminated.");
     i += 1;
     head = token{.sv=std::string_view(to_parse.begin(), i), .type=LITERAL};
     to_parse.remove_prefix(i);
@@ -297,7 +300,7 @@ ptr make_prefix_app(ptr &&arg, token t) {
 
 ptr make_fun_constr_app(ptr &&f, ptr &&x, bool) {
   if (constructor *c = dynamic_cast<constructor *>(f.get()); c) {
-    if (c->arg)throw parse::error::report_token(x->loc, "unexpected ", " too many argument for the constructor");
+    if (c->arg)throw parse::error::report_token(x->loc, "unexpected ", " this constructors expects no argument");
     c->arg = std::move(x);
     return std::move(f);
   } else return std::make_unique<fun_app>(std::move(f), std::move(x));
@@ -608,12 +611,69 @@ ptr parse(tokenizer &tk) {
 
 namespace type {
 namespace expression {
-
+// Type expressions have the following grammar:
+// type-expr = t0
+// t0 = t1 | t1 -> t0 ;;
+// t1 = t2 | t3 * t2 ;;
+// t2 = 'x | (t0) | t2 tf | (t0 [,t0]* )  tf ;;
 namespace {
 
 using namespace parse;
 
-ptr parse_i(tokenizer &tk);
+ptr parse_t0(tokenizer &tk);
+ptr parse_t1(tokenizer &tk);
+ptr parse_t2(tokenizer &tk);
+
+auto make_function(ptr &&p1, ptr &&p2, token) { return std::make_unique<function>(std::move(p1), std::move(p2)); };
+ptr parse_t0(tokenizer &tk) {
+  using namespace patterns;
+  return parse_fold_l<make_function, tk_sep<ARROW>, parse_t1>(tk);
+}
+ptr parse_t1(tokenizer &tk) {
+  using namespace patterns;
+  return parse_vec<product, &product::ts, tk_sep<STAR>, parse_t2>(tk);
+}
+ptr parse_t2(tokenizer &tk) {
+  tk.expect_peek_any_of({PARENS_OPEN, IDENTIFIER});
+  if (tk.peek() == PARENS_OPEN) {
+    tk.pop();
+    ptr p = parse_t0(tk);
+    tk.expect_peek_any_of({PARENS_CLOSE, COMMA});
+    if (tk.pop().type == PARENS_CLOSE) {
+      while (tk.peek() == IDENTIFIER) {
+        p = std::make_unique<application>(std::move(p), std::make_unique<identifier>(tk.pop().sv));
+      }
+      return p;
+    } else { // == COMMA
+      auto args = std::make_unique<tuple>(std::move(p));
+      args->ts.push_back(parse_t0(tk));
+      tk.expect_peek_any_of({PARENS_CLOSE, COMMA});
+      while (tk.peek() == COMMA) {
+        tk.pop();
+        args->ts.push_back(parse_t0(tk));
+        tk.expect_peek_any_of({PARENS_CLOSE, COMMA});
+      }
+      tk.expect_pop(PARENS_CLOSE);
+      //now we NEED to have a constructor
+      tk.expect_peek(IDENTIFIER); //If not, bad boi
+      p = std::make_unique<application>(std::move(args), std::make_unique<identifier>(tk.pop().sv));
+      while (tk.peek() == IDENTIFIER) {
+        p = std::make_unique<application>(std::move(p), std::make_unique<identifier>(tk.pop().sv));
+      }
+      return p;
+    }
+  } else {
+    tk.expect_peek(IDENTIFIER);
+    ptr p = std::make_unique<identifier>(tk.pop().sv);
+    while (tk.peek() == IDENTIFIER) {
+      p = std::make_unique<application>(std::move(p), std::make_unique<identifier>(tk.pop().sv));
+    }
+    return p;
+  }
+
+}
+}
+/*
 bool parse_i_first(token_type);
 ptr parse_c(tokenizer &tk);
 ptr parse_p(tokenizer &tk);
@@ -678,9 +738,9 @@ ptr parse_t(tokenizer &tk) {
 }
 
 }
-
+*/
 ptr parse(tokenizer &tk) {
-  return parse_t(tk);
+  return parse_t0(tk);
 }
 }
 
@@ -691,40 +751,43 @@ ptr parse(tokenizer &tk) {
   bool nonrec = false;
   if (tk.peek() == NONREC) {
     nonrec = true;
-    tk.expect_pop(REC);
+    tk.expect_pop(NONREC);
   }
   ptr defs = std::make_unique<t>();
   bool first = true;
   do {
     if (!first)tk.expect_pop(AND);
     if (first)first = false;
-    auto loc_start = tk.peek_sv().begin();
+    auto single_loc_start = tk.peek_sv().begin();
     auto m = expression::parse(tk);
     std::vector<param::ptr> params;
-    if (dynamic_cast<expression::constr *>(m.get())) {
+    if (dynamic_cast<expression::application *>(m.get())) {
       //TODO: def->args := m.x, m := m.f
-      std::unique_ptr<expression::constr> c(dynamic_cast<expression::constr *>(m.release()));
-      m.reset(c->f.release());
+      std::unique_ptr<expression::application> c(dynamic_cast<expression::application *>(m.release()));
+      m = std::move(c->f);
       if (dynamic_cast<expression::identifier *>(c->x.get())) {
         params.push_back(std::make_unique<param>(dynamic_cast<expression::identifier *>(c->x.get())->name));
       } else if (dynamic_cast<expression::tuple *>(c->x.get())) {
         for (expression::ptr &t : dynamic_cast<expression::tuple *>(c->x.get())->ts) {
           if (expression::identifier *i = dynamic_cast<expression::identifier *>(m.get()); i == nullptr) {
             THROW_UNIMPLEMENTED
+            //TODO: throw exception "not allowed"
           } else params.push_back(std::make_unique<param>(i->name));
         }
       } else {
         THROW_UNIMPLEMENTED
+        //TODO: throw exception "not allowed"
       }
     }
     if (dynamic_cast<expression::identifier *>(m.get()) == nullptr) {
       //TODO: throw some error
       THROW_UNIMPLEMENTED
     }
-
     std::string_view def_name = dynamic_cast<expression::identifier *>(m.get())->name;
+    //we got the name, now let's get the definition
     tk.expect_pop(EQUAL);
     if (tk.peek() == PIPE) {
+      //variant
       single_variant::ptr def = std::make_unique<single_variant>();
       def->params = std::move(params);
       def->name = def_name;
@@ -736,15 +799,20 @@ ptr parse(tokenizer &tk) {
         def->variants.back().name = tk.pop().sv;
         if (tk.peek() == OF) {
           tk.expect_pop(OF);
-          def->variants.back().type = expression::parse(tk);
+          def->variants.back().args.push_back(expression::parse_t2(tk));
+          while(tk.peek() == STAR){
+            tk.expect_pop(STAR);
+            def->variants.back().args.push_back(expression::parse_t2(tk));
+          }
+          if(tk.peek()==ARROW){
+            THROW_UNIMPLEMENTED //TODO: throw syntax error as this //type t = | A of int -> int ;; is not allowed
+          }
         }
       }
-      def->loc = itr_sv(loc_start,
-                        def->variants.back().type.operator bool() ? def->variants.back().type->loc.end()
-                                                                  : def->variants.back().name.end());
+      def->loc = itr_sv(single_loc_start,def->variants.back().args.empty()  ? def->variants.back().name.end() : def->variants.back().args.back()->loc.end());
       defs->defs.push_back(std::move(def));
-
     } else {
+      //texpr
       single_texpr::ptr def = std::make_unique<single_texpr>();
       def->params = std::move(params);
       def->name = def_name;
@@ -753,26 +821,6 @@ ptr parse(tokenizer &tk) {
       defs->defs.push_back(std::move(def));
     }
 
-
-    /*if (dynamic_cast<matcher::universal *>(m.get()) && tk.peek() != EQUAL) {
-      //function definition
-      function::ptr fundef = std::make_unique<function>();
-      fundef->name.reset(dynamic_cast<matcher::universal *>(m.release()));
-      while (tk.peek() != EQUAL) {
-        auto m = matcher::parse(tk);
-        fundef->args.push_back(std::move(m));
-      }
-      tk.expect_pop(EQUAL);
-      auto e = expression::parse(tk);
-      fundef->body = std::move(e);
-      fundef->loc = itr_sv(fundef->name->loc.begin(), fundef->body->loc.end());
-      defs->defs.push_back(std::move(fundef));
-    } else {
-      //value binding
-      tk.expect_pop(EQUAL);
-      auto e = expression::parse(tk);
-      defs->defs.push_back(std::move(std::make_unique<value>(std::move(m), std::move(e), itr_sv(loc_start, e->loc.end()))));
-    }*/
   } while (tk.peek() == AND);
   defs->loc = itr_sv(loc_start, defs->defs.back()->loc.end());
   defs->nonrec = nonrec;

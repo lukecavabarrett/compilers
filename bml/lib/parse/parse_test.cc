@@ -57,6 +57,9 @@ void parse_equal_rethrow(std::string_view source1, std::string_view source2) {
 #define TEST_PARSE_EXPRESSION_EQUAL(source, ...) TEST_PARSE_EQUAL_NS_IMPL( \
   expression, Expression, source,__VA_ARGS__)
 
+#define TEST_PARSE_TYPE_EQUAL(source, ...) TEST_PARSE_EQUAL_NS_IMPL( \
+  type::expression, TypeExpression , source,__VA_ARGS__)
+
 using namespace util;
 
 TEST_PARSE_EXPRESSION("Upper lower",
@@ -110,51 +113,57 @@ TEST_PARSE_DEFINITION("let rec f x = f x and x = f () ",
 
 TEST_PARSE_TYPE("int", "ast::type::expression::identifier{name : 'int'}");
 TEST_PARSE_TYPE("int list",
-                "ast::type::expression::constr{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'list'}}");
+                "ast::type::expression::application{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'list'}}");
 TEST_PARSE_TYPE("int option",
-                "ast::type::expression::constr{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'option'}}"
+                "ast::type::expression::application{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'option'}}"
 );
 TEST_PARSE_TYPE("int option list",
-                "ast::type::expression::constr{x : ast::type::expression::constr{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'option'}},  f : ast::type::expression::identifier{name : 'list'}}"
+                "ast::type::expression::application{x : ast::type::expression::application{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'option'}},  f : ast::type::expression::identifier{name : 'list'}}"
 );
 TEST_PARSE_TYPE("int list option list",
-                "ast::type::expression::constr{x : ast::type::expression::constr{x : ast::type::expression::constr{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'list'}},  f : ast::type::expression::identifier{name : 'option'}},  f : ast::type::expression::identifier{name : 'list'}}"
+                "ast::type::expression::application{x : ast::type::expression::application{x : ast::type::expression::application{x : ast::type::expression::identifier{name : 'int'},  f : ast::type::expression::identifier{name : 'list'}},  f : ast::type::expression::identifier{name : 'option'}},  f : ast::type::expression::identifier{name : 'list'}}"
 );
 TEST_PARSE_TYPE("(int,bool) result",
-                "ast::type::expression::constr{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::identifier{name : 'bool'}]},  f : ast::type::expression::identifier{name : 'result'}}"
+                "ast::type::expression::application{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::identifier{name : 'bool'}]},  f : ast::type::expression::identifier{name : 'result'}}"
 );
 TEST_PARSE_TYPE("(int * bool) list",
-                "ast::type::expression::constr{x : ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::identifier{name : 'bool'}]},  f : ast::type::expression::identifier{name : 'list'}}"
+                "ast::type::expression::application{x : ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::identifier{name : 'bool'}]},  f : ast::type::expression::identifier{name : 'list'}}"
 );
 TEST_PARSE_TYPE("int * bool list",
-                "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::constr{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
+                "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::application{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
 );
+
+TEST_PARSE_TYPE_EQUAL("int * (bool list)","int * bool list");
+
 TEST_PARSE_TYPE("int * (bool list)",
-                "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::constr{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
+                "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::application{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
 );
 TEST_PARSE_TYPE("int -> int",
                 "ast::type::expression::function{from : ast::type::expression::identifier{name : 'int'},  to : ast::type::expression::identifier{name : 'int'}}"
 );
+TEST_PARSE_TYPE("int -> int -> int",
+                "ast::type::expression::function{from : ast::type::expression::identifier{name : 'int'},  to : ast::type::expression::function{from : ast::type::expression::identifier{name : 'int'},  to : ast::type::expression::identifier{name : 'int'}}}"
+);
 TEST_PARSE_TYPE("'a list -> int",
-                "ast::type::expression::function{from : ast::type::expression::constr{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}},  to : ast::type::expression::identifier{name : 'int'}}"
+                "ast::type::expression::function{from : ast::type::expression::application{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}},  to : ast::type::expression::identifier{name : 'int'}}"
 );
 TEST_PARSE_TYPE("'a list -> ('a -> 'a -> bool) -> unit -> 'a list",
-                "ast::type::expression::function{from : ast::type::expression::constr{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}},  to : ast::type::expression::function{from : ast::type::expression::function{from : ast::type::expression::identifier{name : ''a'},  to : ast::type::expression::function{from : ast::type::expression::identifier{name : ''a'},  to : ast::type::expression::identifier{name : 'bool'}}},  to : ast::type::expression::function{from : ast::type::expression::identifier{name : 'unit'},  to : ast::type::expression::constr{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}}}}}"
+                "ast::type::expression::function{from : ast::type::expression::application{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}},  to : ast::type::expression::function{from : ast::type::expression::function{from : ast::type::expression::identifier{name : ''a'},  to : ast::type::expression::function{from : ast::type::expression::identifier{name : ''a'},  to : ast::type::expression::identifier{name : 'bool'}}},  to : ast::type::expression::function{from : ast::type::expression::identifier{name : 'unit'},  to : ast::type::expression::application{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'list'}}}}}"
 );
 
 TEST_PARSE_TYPE_DECL("type block = int * t and t = unit -> block option",
-                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'block',  type : ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::identifier{name : 't'}]}}, ast::type::definition::single_texpr{name : 't',  type : ast::type::expression::function{from : ast::type::expression::identifier{name : 'unit'},  to : ast::type::expression::constr{x : ast::type::expression::identifier{name : 'block'},  f : ast::type::expression::identifier{name : 'option'}}}}]}");
+                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'block',  type : ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::identifier{name : 't'}]}}, ast::type::definition::single_texpr{name : 't',  type : ast::type::expression::function{from : ast::type::expression::identifier{name : 'unit'},  to : ast::type::expression::application{x : ast::type::expression::identifier{name : 'block'},  f : ast::type::expression::identifier{name : 'option'}}}}]}");
 TEST_PARSE_TYPE_DECL("type 'a block = 'a * 'a t and 'a t = unit -> 'a block option",
-                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'block',  type : ast::type::expression::product{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::constr{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 't'}}]}}, ast::type::definition::single_texpr{name : 't',  type : ast::type::expression::function{from : ast::type::expression::identifier{name : 'unit'},  to : ast::type::expression::constr{x : ast::type::expression::constr{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'block'}},  f : ast::type::expression::identifier{name : 'option'}}}}]}"
+                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'block',  type : ast::type::expression::product{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::application{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 't'}}]}}, ast::type::definition::single_texpr{name : 't',  type : ast::type::expression::function{from : ast::type::expression::identifier{name : 'unit'},  to : ast::type::expression::application{x : ast::type::expression::application{x : ast::type::expression::identifier{name : ''a'},  f : ast::type::expression::identifier{name : 'block'}},  f : ast::type::expression::identifier{name : 'option'}}}}]}"
 );
 TEST_PARSE_TYPE_DECL("type 'a or_error = ('a,error) result ",
-                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'or_error',  type : ast::type::expression::constr{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::identifier{name : 'error'}]},  f : ast::type::expression::identifier{name : 'result'}}}]}"
+                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'or_error',  type : ast::type::expression::application{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::identifier{name : 'error'}]},  f : ast::type::expression::identifier{name : 'result'}}}]}"
 );
 TEST_PARSE_TYPE_DECL("type ('a,'b) tree = ('a,'b) result ",
-                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'tree',  type : ast::type::expression::constr{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::identifier{name : ''b'}]},  f : ast::type::expression::identifier{name : 'result'}}}]}"
+                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'tree',  type : ast::type::expression::application{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::identifier{name : ''b'}]},  f : ast::type::expression::identifier{name : 'result'}}}]}"
 );
 TEST_PARSE_TYPE_DECL("type ('a,'b) result = | Okay of 'a | Error of 'b ",
-                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_variant{name : 'result',  variants : [ast::type::definition::single_variant::constr{name : 'Okay',  type : ast::type::expression::identifier{name : ''a'}}, ast::type::definition::single_variant::constr{name : 'Error',  type : ast::type::expression::identifier{name : ''b'}}]}]}"
+                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_variant{name : 'result',  variants : [ast::type::definition::single_variant::constr{name : 'Okay',  args : [ast::type::expression::identifier{name : ''a'}]}, ast::type::definition::single_variant::constr{name : 'Error',  args : [ast::type::expression::identifier{name : ''b'}]}]}]}"
 );
 
 TEST_PARSE_EXPRESSION_EQUAL("4*5+27","(4*5)+27");

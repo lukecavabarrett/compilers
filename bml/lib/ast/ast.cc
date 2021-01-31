@@ -59,8 +59,8 @@ void constructor::bind(const constr_map &cm) {
     throw ast::unbound_constructor(name);
   } else {
     definition_point = it->second;
+    if (arg)arg->bind(cm);
   }
-  if (arg)arg->bind(cm);
 }
 void seq::bind(const constr_map &cm) {
   a->bind(cm);
@@ -173,187 +173,6 @@ capture_set fun::capture_group() {
   return std::move(cs);
 }
 
-void identifier::compile(direct_sections_t s, size_t stack_pos) {
-  std::string_view n = name;
-  if (definition_point->top_level) {
-    definition_point->globally_evaluate(s.main);
-  } else if (s.def_fun && s.def_fun->is_capturing(definition_point)) {
-    std::size_t idx = s.def_fun->capture_index(definition_point);
-    s.main << "mov rax, qword [r12+" << 8 * (idx + 4) << "]; retrieving " << name << ", #capture " << (idx + 1)
-           << " of " << s.def_fun->captures.size() << "\n";
-  } else {
-
-    s.main << "mov rax, qword [rsp";
-    if (stack_pos > definition_point->stack_relative_pos) {
-      s.main << "+" << 8 * (stack_pos - definition_point->stack_relative_pos);
-    }
-    s.main << "]  ; retrieving " << name << " from local scope\n";
-  }
-}
-void literal::compile(direct_sections_t s, size_t stack_pos) {
-  s.main << "mov rax, " << std::to_string(value->to_value()) << std::endl;
-}
-void constructor::compile(direct_sections_t s, size_t stack_pos) {
-  assert(definition_point);
-  if (definition_point->is_immediate() != (arg == nullptr)) {
-    (definition_point->is_immediate() ? throw constructor_shouldnt_take_arg(arg->loc)
-                                      : throw constructor_should_take_arg(name));
-  }
-  assert(definition_point->is_immediate() == (arg == nullptr)); // this would be clearly a type-system break
-  if (definition_point->is_immediate()) {
-    s.main << "mov rax, " << definition_point->tag << " ; == Tag `" << name << "` (immediate)\n";
-  } else {
-    arg->compile(s, stack_pos); // arg in rax
-    s.main << "mov rbx, rax\n" // arg in rbx
-           << "mov edi, 16\n"  // 16 to allocate
-           << "call malloc\n"  // malloc, block in rax
-           << "mov qword [rax], " << definition_point->tag << " ; == Tag `" << name << "` (block)\n"
-           << "mov qword [rax+8], rbx\n";
-  }
-}
-void if_then_else::compile(direct_sections_t s, size_t stack_pos) {
-  static size_t if_id = 0;
-  ++if_id;
-  condition->compile(s, stack_pos);
-  s.main << "cmp rax, 1\n"
-            "je .L_IF_F_" << if_id << "\n";
-  true_branch->compile(s, stack_pos);
-  s.main << "jmp .L_IF_E_" << if_id << "\n";
-  s.main << " .L_IF_F_" << if_id << ":\n";
-  false_branch->compile(s, stack_pos);
-  s.main << " .L_IF_E_" << if_id << ":\n";
-
-}
-void tuple::compile(direct_sections_t s, size_t stack_pos) {
-  s.main << "push r12\n";
-  ++stack_pos;
-  s.main << "mov edi, " << std::to_string(args.size() * 8) << "\n"
-         << "call malloc\n" << "mov r12, rax\n";
-  for (int i = 0; i < args.size(); ++i) {
-    args.at(i)->compile(s, stack_pos);
-    s.main << "mov qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "], rax\n";
-  }
-  s.main << "mov rax, r12\n"
-            "pop r12\n";
-  --stack_pos;
-}
-void fun_app::compile(direct_sections_t s, size_t stack_pos) {
-  f->compile(s, stack_pos);
-  s.main << "push rax\n";
-  ++stack_pos;
-  x->compile(s, stack_pos);
-  s.main << "pop rdi\n";
-  --stack_pos;
-  s.main << "mov rsi, rax\n"
-            "call apply_fn\n";
-}
-void destroy::compile(direct_sections_t s, size_t stack_pos) { THROW_UNIMPLEMENTED }
-void seq::compile(direct_sections_t s, size_t stack_pos) {
-  a->compile(s, stack_pos);
-  b->compile(s, stack_pos);
-}
-void match_with::compile(direct_sections_t s, size_t stack_pos) {
-  static size_t match_id = 0;
-  ++match_id;
-  what->compile(s, stack_pos);
-  s.main << "push rax\n";
-  ++stack_pos;
-  size_t branch_id = 0;
-  for (auto&[p, r] : branches) {
-    if (branch_id) {
-      s.main << ".MATCH_WITH_" << match_id << "_" << branch_id << "\n";
-      s.main << "mov rax, qword [rsp]\n";
-    }
-    std::string on_fail = (branch_id < branches.size() - 1)
-                          ? std::string(".MATCH_WITH_").append(std::to_string(match_id)).append("_").append(std::to_string(
-            branch_id + 1)) : "fail_match";
-    s.main << "; case " << p->to_texp()->to_string() << "\n";
-    size_t successful_stack_pos = p->test_locally_unroll(s.main, stack_pos, stack_pos, on_fail);
-    if (successful_stack_pos > stack_pos)
-      s.main << "sub rsp, " << 8 * (successful_stack_pos - stack_pos) << "; confirming space for accepted pattern\n";
-    r->compile(s, successful_stack_pos);
-    if (successful_stack_pos > stack_pos)
-      s.main << "add rsp, " << 8 * (successful_stack_pos - stack_pos) << "; reclaiming pattern space\n";
-    s.main << "jmp .MATCH_WITH_" << match_id << "_END\n";
-
-    ++branch_id;
-  }
-  s.main << ".MATCH_WITH_" << match_id << "_END\n";
-  s.main << "add rsp, 8\n";
-  --stack_pos;
-}
-void let_in::compile(direct_sections_t s, size_t stack_pos) {
-  size_t new_stack_pos = d->compile_locally(s, stack_pos);
-  e->compile(s, new_stack_pos);
-  if (new_stack_pos > stack_pos)
-    s.main << "add rsp, " << 8 * (new_stack_pos - stack_pos) << " ; retrieving space of variables from let_in\n";
-}
-void fun::compile(direct_sections_t s, size_t stack_pos) {
-  std::string name = compile_global(s);
-  if (captures.empty()) {
-    s.data << name << "__pure_fun_block" << " dq 1," << args.size() << "," << name
-           << "; FN_BASE_PURE, n_args, text_ptr  \n" << std::endl;
-    s.main << "mov rax, " << name << "__pure_fun_block\n";
-  } else {
-    s.main << "mov rdi, " << (4 + captures.size()) * 8 << "\n";
-    s.main << "call malloc \n";
-    s.main << "push r13;\n";
-    ++stack_pos;
-    s.main << "mov r13, rax\n";
-    s.main << "mov qword [r13], 3; FN_BASE_CLOSURE \n";
-    s.main << "mov qword [r13+8], " << args.size() << "; n_args \n";
-    s.main << "mov qword [r13+16], " << name << "; text_ptr \n";
-    s.main << "mov qword [r13+24], " << captures.size() << "; captures_size \n";
-    for (size_t i = 0; i < captures.size(); ++i) {
-      identifier mock_id(captures[i]->name);
-      mock_id.definition_point = captures[i];
-      mock_id.compile(s, stack_pos);
-      s.main << "mov qword [r13+" << (i + 4) * 8 << "], rax ; captured " << captures[i]->name << "\n";
-    }
-    s.main << "mov rax, r13\n";
-    s.main << "pop r13;\n";
-    --stack_pos;
-  }
-
-}
-std::string fun::compile_global(direct_sections_t s, std::string_view name_hint) {
-  const bool has_captures = !captures.empty(); // If it's global it should not be capturing anything
-
-  std::string text_ptr = text_name_gen(name_hint);
-
-  std::stringstream this_fun;
-  size_t this_stack_pos = 0;
-  this_fun << text_ptr << ":\n";
-  this_fun << "push r12\n";
-  ++this_stack_pos;
-  this_fun << "mov r12, rdi\n";
-  bool should_skip = false;
-  // iterate the args in reverse order
-  for (auto arg_it = args.rbegin(); arg_it != args.rend(); ++arg_it) {
-    if (should_skip)this_fun << "mov r12, qword [r12+16]\n";
-    should_skip = true;
-    this_fun << "mov rax, qword [r12+24]\n";
-    this_stack_pos = (*arg_it)->locally_unroll(this_fun, this_stack_pos);
-  }
-  if (has_captures)
-    this_fun << "mov r12, qword [r12+16]\n"
-             << "; assert qword[r12+24] == " << captures.size()
-             << "; i.e. the right number of captures has been saved\n";
-
-  body->compile(s.with_main(this_fun, this), this_stack_pos);
-
-  if (this_stack_pos > 1) {
-    this_fun << "add rsp, " << (8 * (this_stack_pos - 1)) << " ; popping fun args \n";
-    this_stack_pos = 1;
-  }
-
-  this_fun << "pop r12\n";
-  --this_stack_pos;
-  this_fun << "ret\n";
-  s.text << this_fun.str() << std::endl;
-  return text_ptr;
-}
-
 ir::lang::var identifier::ir_compile(ir_sections_t s) {
   if (definition_point->top_level) {
     return definition_point->ir_evaluate_global(s.main);
@@ -366,36 +185,69 @@ ir::lang::var literal::ir_compile(ir_sections_t s) {
 }
 ir::lang::var constructor::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
-  assert(definition_point->tag >= 5);
-  assert(definition_point->tag & 1);
-  if (arg) {
+  assert(definition_point->tag_id >= 51);
+  assert(definition_point->tag_id & 1);
+  if (!arg) {
+    assert(definition_point->args.empty());
+    return s.main.declare_constant(definition_point->tag_id);
+  }
+  const size_t n_args = definition_point->args.size();
+  if (n_args == 1) {
     var content = arg->ir_compile(s);
     var block = s.main.declare_assign(rhs_expr::malloc{.size=3});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
         3)});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
-        make_tag_size_d(definition_point->tag, 1, 0))});
+        make_tag_size_d(definition_point->tag_id, 1, 0))});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
     return block;
   } else {
-    assert(definition_point->tag & 1);
-    return s.main.declare_constant(definition_point->tag);
+    auto *t = dynamic_cast<tuple *>(arg.get());
+    assert(t);
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=2+n_args});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
+        3)});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
+        make_tag_size_d(definition_point->tag_id, n_args, 0))});
+    for (size_t i = 0; i < n_args; ++i)
+      s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2
+          + i, .src = t->args.at(i)->ir_compile(s)});
+    return block;
   }
 }
+
 ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) const {
   using namespace ir::lang;
-  assert(definition_point->tag >= 5);
-  assert(definition_point->tag & 1);
+
+  using namespace ir::lang;
+  assert(definition_point->tag_id >= 51);
+  assert(definition_point->tag_id & 1);
   assert(arg);
-  var content = arg->ir_compile(s);
-  var block = s.main.declare_assign(rhs_expr::malloc{.size=4});
-  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
-      3)});
-  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
-      make_tag_size_d(definition_point->tag, 1, 1))});
-  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
-  s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 3, .src = d});
-  return block;
+  const size_t n_args = definition_point->args.size();
+  if (n_args == 1) {
+    var content = arg->ir_compile(s);
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=3+1});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
+        3)});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
+        make_tag_size_d(definition_point->tag_id, 1, 1))});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2, .src = content});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 3, .src = d});
+    return block;
+  } else {
+    auto *t = dynamic_cast<tuple *>(arg.get());
+    assert(t);
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=2+n_args+1});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
+        3)});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
+        make_tag_size_d(definition_point->tag_id, n_args, 1))});
+    for (size_t i = 0; i < n_args; ++i)
+      s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2
+          + i, .src = t->args.at(i)->ir_compile(s)});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2+n_args, .src = d});
+    return block;
+  }
 }
 ir::lang::var if_then_else::ir_compile(ir_sections_t s) {
   using namespace ir::lang;
@@ -706,13 +558,25 @@ void t::ir_compile_global(ir_sections_t s) {
       }
     } else if (name && def.is_constr()) {
 
-      auto *e = dynamic_cast<expression::constructor *>(def.e.get());
+      auto *e = dynamic_cast<const expression::constructor *>(def.e.get());
       if (e->arg) {
         name->ir_allocate_global_constrblock(s.data, *e->definition_point);
-        assert(name->use_as_immediate);
-        auto v = e->arg->ir_compile(s);
         var constr_addr = s.main.declare_global(name->ir_asm_name());
-        s.main.push_back(instruction::write_uninitialized_mem{.base = constr_addr, .block_offset = 2, .src = v});
+        assert(name->use_as_immediate);
+        size_t n_args = e->definition_point->args.size();
+        //TODO: parse knowing type of constructor
+        if (n_args == 0)throw "not okay - didn't expect args";
+        if (n_args == 1) {
+          s.main.push_back(instruction::write_uninitialized_mem{.base = constr_addr, .block_offset = 2, .src = e->arg->ir_compile(
+              s)});
+        } else {
+          const auto *t = dynamic_cast<const expression::tuple *>(e->arg.get());
+          if (!t)throw "expected n_args argument";
+          if (t->args.size() != n_args)throw "expected n_args argument";
+          for (size_t i = 0; i < n_args; ++i)
+            s.main.push_back(instruction::write_uninitialized_mem{.base = constr_addr, .block_offset = 2
+                + i, .src = t->args.at(i)->ir_compile(s)});
+        }
       } else {
         name->ir_allocate_global_constrimm(s.data, *e->definition_point);
         assert(!name->use_as_immediate);
@@ -724,6 +588,7 @@ void t::ir_compile_global(ir_sections_t s) {
     }
   }
 }
+/*
 void t::compile_global(direct_sections_t s) {
   if (rec) {
     //check that all values are construcive w.r.t each other
@@ -786,6 +651,7 @@ size_t t::compile_locally(direct_sections_t s, size_t stack_pos) {
   }
   return 0;
 }
+*/
 void t::bind(const constr_map &cm) {
   for (auto &d : defs)d.name->bind(cm), d.e->bind(cm);
 }
@@ -874,11 +740,23 @@ void universal::ir_global_unroll(ir::scope &s, ir::lang::var what) {
 }
 void constructor::ir_global_unroll(ir::scope &s, ir::lang::var block) {
   assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
+  assert(definition_point->args.empty() == (arg == nullptr));
+  const size_t n_args = definition_point->args.size();
   using namespace ir::lang;
-  if (arg) {
-    arg->ir_global_unroll(s, s.declare_assign(block[2]));
+  if (n_args == 0) {
+    assert(arg == nullptr);
+    return;
   }
+  if (dynamic_cast<const ignore *>(arg.get()))return;
+  if (n_args == 1) {
+    arg->ir_global_unroll(s, s.declare_assign(block[2]));
+  } else {
+    auto *t = dynamic_cast<tuple *>(arg.get());
+    if (!t)throw "error - wrong number";
+    if (t->args.size() != n_args)throw "error - wrong number";
+    for (size_t i = 0; i < n_args; ++i)t->args.at(i)->ir_global_unroll(s, s.declare_assign(block[2 + i]));
+  }
+
 }
 void tuple::ir_global_unroll(ir::scope &s, ir::lang::var block) {
   using namespace ir::lang;
@@ -898,35 +776,6 @@ universal::universal(std::string_view n) : name(n), stack_relative_pos(-1), top_
 std::string universal::ir_asm_name() const {
   return std::string("__global_value_").append(std::to_string(name_resolution_id)).append("__");
 }
-void universal::globally_register(global_map &m) {
-  top_level = true;
-  if (auto[it, b] = m.try_emplace(name, this); !b) {
-    name_resolution_id = it->second->name_resolution_id + 1;
-    it->second = this;
-  }
-}
-void universal::globally_allocate(std::ostream &os) {
-  use_as_immediate = false;
-  os << asm_name() << " dq 0" << std::endl;
-}
-void universal::globally_allocate_funblock(size_t n_args,
-                                           std::ostream &os,
-                                           std::string_view text_ptr) {
-  use_as_immediate = true;
-  os << asm_name() << " dq 1," << n_args << "," << text_ptr << "\n" << std::endl;
-}
-
-void universal::globally_allocate_tupleblock(std::ostream &os, size_t tuple_size) {
-  use_as_immediate = true;
-  os << asm_name() << " dq ";
-  bool comma = false;
-  while (tuple_size--) {
-    if (comma)os << ", ";
-    comma = true;
-    os << "0";
-  }
-  os << "\n";
-}
 
 void universal::ir_allocate_globally_funblock(std::ostream &os, size_t n_args,
                                               std::string_view text_ptr) {
@@ -943,59 +792,20 @@ void universal::ir_allocate_global_tuple(std::ostream &os, size_t tuple_size) {
 }
 
 void universal::ir_allocate_global_constrblock(std::ostream &os,
-                                               const type::definition::single_variant::constr &constr) {
+                                               const ::type::function::variant::constr &constr) {
   use_as_immediate = true;
-  assert(!constr.is_immediate());
-  os << ir_asm_name() << " dq 0," << make_tag_size_d(constr.tag, 1, 0) << ", 0   ; " << name << " : " << constr.name
-     << " = " << constr.tag << "\n";
+  assert(!constr.args.empty());
+  os << ir_asm_name() << " dq 0," << make_tag_size_d(constr.tag_id, constr.args.size(), 0);
+  for (size_t i = 0; i < constr.args.size(); ++i)os << ", 0 ";
+  os << "   ; " << name << " : " << constr.name << " = " << constr.tag_id << "\n";
 }
 
-void universal::globally_allocate_constrblock(std::ostream &os,
-                                              const type::definition::single_variant::constr &constr) {
-  use_as_immediate = true;
-  assert(!constr.is_immediate());
-  os << asm_name() << " dq " << constr.tag << ", 0   ; `" << constr.name << "` = " << constr.tag << "\n";
-}
-void universal::ir_allocate_global_constrimm(std::ostream &os,
-                                             const type::definition::single_variant::constr &constr) {
+void universal::ir_allocate_global_constrimm(std::ostream &os, const ::type::function::variant::constr &constr) {
+  //TODO: instead of a memory indirection, use this as an eq, or better, a constexpr (when these will be implemented)
   use_as_immediate = false;
-  assert(constr.is_immediate());
-  os << ir_asm_name() << " dq " << constr.tag << "; " << name << " : " << constr.name << " = " << constr.tag << "\n";
-}
-void universal::globally_allocate_constrimm(std::ostream &os,
-                                            const type::definition::single_variant::constr &constr) {
-  use_as_immediate = false;
-  assert(constr.is_immediate());
-  os << asm_name() << " dq " << constr.tag << "; `" << constr.name << "` = " << constr.tag << "\n";
-}
-
-void universal::global_unroll(std::ostream &os) {
-  os << "mov qword [" << asm_name() << "], rax" << std::endl;
-}
-
-size_t universal::locally_unroll(std::ostream &os, size_t stack_pos) {
-  ++stack_pos;
-  stack_relative_pos = stack_pos;
-  os << "push rax  ; " << name << " is on position " << stack_relative_pos << " on the stack\n";
-  return stack_pos;
-}
-size_t universal::test_locally_unroll(std::ostream &os,
-                                      size_t stack_pos,
-                                      size_t caller_stack_pos,
-                                      std::string_view on_fail) {
-  ++stack_pos;
-  stack_relative_pos = stack_pos;
-  os << "mov qword[rsp-" << 8 * (stack_pos - caller_stack_pos) << "], rax ; " << name << " is on position "
-     << stack_relative_pos << " on the stack\n";
-  return stack_pos;
-}
-void universal::globally_evaluate(std::ostream &os) const {
-  assert(top_level);
-  if (use_as_immediate) {
-    os << "mov rax, " << asm_name() << std::endl;
-  } else {
-    os << "mov rax, qword [" << asm_name() << "]" << std::endl;
-  }
+  assert(constr.args.empty());
+  os << ir_asm_name() << " dq " << constr.tag_id << "; " << name << " : " << constr.name << " = " << constr.tag_id
+     << "\n";
 }
 
 ir::lang::var universal::ir_evaluate_global(ir::lang::scope &s) const {
@@ -1015,101 +825,25 @@ void universal::ir_locally_unroll(ir::scope &s, ir::lang::var v) {
   s.comment() << "local variable \"" << name << "\" is on " << ir_var;
 }
 
-void constructor::globally_register(global_map &m) {
-  if (arg)arg->globally_register(m);
-}
-void constructor::global_unroll(std::ostream &os) {
-  assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
-  if (arg) {
-    os << "mov rax, qword [rax+8]\n";
-    arg->global_unroll(os);
-  }
-}
-
-size_t constructor::locally_unroll(std::ostream &os, size_t stack_pos) {
-  assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
-  if (arg) {
-    os << "mov rax, qword [rax+8]\n";
-    return arg->locally_unroll(os, stack_pos);
-  } else return stack_pos;
-}
-
 void constructor::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
-  assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
-  if (arg) {
-    return arg->ir_locally_unroll(s, s.declare_assign(block[2]));
-  }
-}
 
-size_t constructor::test_locally_unroll(std::ostream &os,
-                                        size_t stack_pos,
-                                        size_t caller_stack_pos,
-                                        std::string_view on_fail) {
-  assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
-  if (arg) {
-    os << "test al, 1\n"
-          "jne " << on_fail << "\n";
-    os << "cmp qword [rax], " << definition_point->tag << " ; Tag = " << definition_point->name << "\n";
-    os << "jne " << on_fail << "\n";
-    os << "mov rax, qword [rax+8]\n";
-    return arg->test_locally_unroll(os, stack_pos, caller_stack_pos, on_fail);
-  } else {
-    os << "cmp rax, " << definition_point->tag << " ; Tag = " << definition_point->name << "\n";
-    os << "jne " << on_fail << "\n";
-    return stack_pos;
-  }
-}
-ir::lang::var constructor::ir_test_unroll(ir::scope &s, ir::lang::var v) {
+  assert(definition_point->args.empty() == (arg == nullptr));
+  const size_t n_args = definition_point->args.size();
   using namespace ir::lang;
-  assert(definition_point);
-  assert(definition_point->is_immediate() == (arg == nullptr));
-  if (arg) {
-    s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(1), .op=instruction::cmp_vars::test});
-
-    scope matching_tag, sfalse;
-    matching_tag.ret = arg->ir_test_unroll(matching_tag, matching_tag.declare_assign(v[2]).mark(trivial));
-    sfalse.ret = sfalse.declare_assign(1);
-    using binary_op = rhs_expr::binary_op;
-    scope sboxed, simmediate;
-    sboxed.push_back(instruction::cmp_vars{.v1=sboxed.declare_assign(binary_op{.op=binary_op::sar, .x1=sboxed.declare_assign(
-        v[1]).mark(trivial), .x2=sboxed.declare_constant(32)}).mark(trivial), .v2=sboxed.declare_constant(
-        definition_point->tag), .op=instruction::cmp_vars::cmp});
-    sboxed.ret =
-        sboxed.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(
-            matching_tag), .jmp_branch=std::move(
-            sfalse)}));
-
-    simmediate.ret = simmediate.declare_assign(1);
-    return s.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jnz, .nojmp_branch=std::move(sboxed), .jmp_branch=std::move(
-        simmediate)}));
+  if (n_args == 0) {
+    assert(arg == nullptr);
+    return;
+  }
+  if (dynamic_cast<const ignore *>(arg.get()))return;
+  if (n_args == 1) {
+    arg->ir_locally_unroll(s, s.declare_assign(block[2]));
   } else {
-    s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(definition_point->tag), .op=instruction::cmp_vars::cmp});
-    scope strue, sfalse;
-    strue.ret = strue.declare_assign(3);
-    sfalse.ret = sfalse.declare_assign(1);
-    return s.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(strue), .jmp_branch=std::move(
-        sfalse)}));
+    auto *t = dynamic_cast<tuple *>(arg.get());
+    if (!t)throw "error - wrong number";
+    if (t->args.size() != n_args)throw "error - wrong number";
+    for (size_t i = 0; i < n_args; ++i)t->args.at(i)->ir_locally_unroll(s, s.declare_assign(block[2 + i]));
   }
-}
 
-void tuple::globally_allocate(std::ostream &os) {
-  for (auto &p : args)p->globally_allocate(os);
-}
-void tuple::globally_register(global_map &m) {
-  for (auto &p : args)p->globally_register(m);
-}
-void tuple::global_unroll(std::ostream &os) {
-  os << "push r12\n"
-        "mov r12, rax\n";
-  for (int i = 0; i < args.size(); ++i) {
-    os << "mov rax, qword [r12" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "]\n";
-    args.at(i)->global_unroll(os);
-  }
-  os << "pop r12\n";
 }
 
 void tuple::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
@@ -1120,48 +854,6 @@ void tuple::ir_locally_unroll(ir::scope &s, ir::lang::var block) {
   }
 }
 
-size_t tuple::locally_unroll(std::ostream &os, size_t stack_pos) {
-  size_t rax_pos = stack_pos + stack_unrolling_dimension(); // The first free position in stack
-  os << "mov qword [rsp-" << 8 * (rax_pos - stack_pos) << "], rax ; save rax\n";
-  for (int i = 0; i < args.size(); ++i) {
-    if (i)os << "mov rax, qword [rsp-" << 8 * (rax_pos - stack_pos) << "] ; restore rax\n";
-    os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] "
-       << "; tuple " << loc << " " << (i + 1) << " of " << args.size() << " \n";
-    stack_pos = args.at(i)->locally_unroll(os, stack_pos);
-
-  }
-  return stack_pos;
-}
-size_t tuple::test_locally_unroll(std::ostream &os,
-                                  size_t stack_pos,
-                                  size_t caller_stack_pos,
-                                  std::string_view on_fail) {
-
-  size_t rax_pos = stack_pos + stack_unrolling_dimension(); // The first free position in stack
-  os << "mov qword [rsp-" << 8 * (rax_pos - caller_stack_pos) << "], rax ; save rax\n";
-  for (int i = 0; i < args.size(); ++i) {
-    if (i)os << "mov rax, qword [rsp-" << 8 * (rax_pos - caller_stack_pos) << "] ; restore rax\n";
-    os << "mov rax, qword [rax" << (i ? std::string("+").append(std::to_string(i * 8)) : "") << "] "
-       << "; tuple " << (i + 1) << " of " << args.size() << " \n";
-    stack_pos = args.at(i)->test_locally_unroll(os, stack_pos, caller_stack_pos, on_fail);
-
-  }
-  return stack_pos;
-}
-size_t tuple::unrolled_size() const {
-  size_t s = 0;
-  for (auto &m : args)s += m->unrolled_size();
-  return s;
-}
-size_t tuple::stack_unrolling_dimension() const {
-  size_t s = 0, d = 0;
-  for (auto &m : args) {
-    d = std::max(d, s + m->stack_unrolling_dimension());
-    s += m->unrolled_size();
-  }
-  ++d;
-  return d;
-}
 std::ostream &tuple::print(std::ostream &os) const {
   os << "(";
   bool comma = false;
@@ -1192,14 +884,57 @@ ir::lang::var tuple::ir_test_unroll(ir::scope &main, ir::lang::var v) {
   }
   return main.ret;
 }
-
-size_t literal::test_locally_unroll(std::ostream &os,
-                                    size_t stack_pos,
-                                    size_t caller_stack_pos, std::string_view on_fail) {
-  os << "cmp rax, " << value->to_value() << " ; literal " << loc << "\n";
-  os << "jne " << on_fail << " \n";
-  return stack_pos;
+ir::lang::var constructor::ir_test_unroll(ir::scope &s, ir::lang::var v) {
+  using namespace ir::lang;
+  assert(definition_point);
+  assert(definition_point->args.empty() == (arg == nullptr));
+  if (!arg || dynamic_cast<ignore *>(arg.get())) {
+    s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(definition_point->tag_id), .op=instruction::cmp_vars::cmp});
+    scope strue, sfalse;
+    strue.ret = strue.declare_assign(3);
+    sfalse.ret = sfalse.declare_assign(1);
+    return s.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(strue), .jmp_branch=std::move(
+        sfalse)}));
+  }
+  const size_t n_args = definition_point->args.size();
+  s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(1), .op=instruction::cmp_vars::test});
+  scope matching_tag, sfalse;
+  if (n_args == 1) {
+    matching_tag.ret = arg->ir_test_unroll(matching_tag, matching_tag.declare_assign(v[2]).mark(trivial));
+  } else {
+    //in the matching tag, test all of them (similar to tuple)
+    scope *current = &matching_tag;
+    auto * t = dynamic_cast<tuple*>(arg.get());
+    assert(t);
+    assert(t->args.size() == n_args);
+    for (size_t i = 0; i < n_args; ++i) {
+      var this_okay = t->args.at(i)->ir_test_unroll(*current, current->declare_assign(v[2 + i]).mark(trivial));
+      if (i + 1 == n_args) {
+        current->ret = this_okay;
+      } else {
+        current->push_back(instruction::cmp_vars{.v1=this_okay, .v2=current->declare_constant(2), .op=instruction::cmp_vars::test});
+        rhs_expr::branch b = std::make_unique<ternary>();
+        b->cond = ternary::jz;
+        b->jmp_branch.ret = b->jmp_branch.declare_constant(1); //false
+        scope *next = &b->nojmp_branch;
+        current->ret = current->declare_assign(std::move(b));
+        current = next;
+      }
+    }
+  }
+  sfalse.ret = sfalse.declare_assign(1);
+  using binary_op = rhs_expr::binary_op;
+  scope sboxed, simmediate;
+  sboxed.push_back(instruction::cmp_vars{.v1=sboxed.declare_assign(binary_op{.op=binary_op::sar, .x1=sboxed.declare_assign(
+      v[1]).mark(trivial), .x2=sboxed.declare_constant(32)}).mark(trivial), .v2=sboxed.declare_constant(definition_point->tag_id), .op=instruction::cmp_vars::cmp});
+  sboxed.ret =
+      sboxed.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jne, .nojmp_branch=std::move(matching_tag), .jmp_branch=std::move(
+          sfalse)}));
+  simmediate.ret = simmediate.declare_assign(1);
+  return s.declare_assign(std::make_unique<ternary>(ternary{.cond = ternary::jnz, .nojmp_branch=std::move(sboxed), .jmp_branch=std::move(
+      simmediate)}));
 }
+
 ir::lang::var literal::ir_test_unroll(ir::scope &s, ir::lang::var v) {
   using namespace ir::lang;
   s.push_back(instruction::cmp_vars{.v1=v, .v2=s.declare_constant(value->to_value()), .op=instruction::cmp_vars::cmp});
@@ -1259,6 +994,58 @@ ir::lang::var string::ir_compile(ir_sections_t s) const {
   s.data << "\n";
   return s.main.declare_global(name);
 }
+}
+
+namespace type::expression {
+
+::type::expression::t identifier::to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                          const ::type::type_map &type_map) const {
+  if (name.at(0) == '\'') {
+    //look in the map
+    if (!vars_map.contains(name)) throw std::runtime_error("unbound variable");
+    return ::type::expression::variable(vars_map.at(name));
+  } else {
+    //constructors taking no element
+    if (!type_map.contains(name))throw std::runtime_error("unbound type constructor");
+    const auto *ptr = type_map.at(name);
+    if (ptr->n_args)throw std::runtime_error("constructor expects N args, but 0 provided");
+    return ::type::expression::application(ptr);
+  }
+}
+::type::expression::t function::to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                        const ::type::type_map &type_map) const {
+  return ::type::expression::application(&::type::function::tf_fun,
+                                         {from->to_type(vars_map, type_map), to->to_type(vars_map, type_map)});
+}
+
+::type::expression::t product::to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                       const ::type::type_map &type_map) const {
+  std::vector<::type::expression::t> args;
+  for (const auto &t : ts)args.push_back(t->to_type(vars_map, type_map));
+  return ::type::expression::application(&::type::function::tf_tuple(ts.size()), std::move(args));
+}
+
+::type::expression::t tuple::to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                     const ::type::type_map &type_map) const {
+  throw std::runtime_error("syntax error");
+}
+
+::type::expression::t application::to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                           const ::type::type_map &type_map) const {
+  if (!type_map.contains(f->name))throw std::runtime_error("unbound type constructor");
+  const auto *ptr = type_map.at(f->name);
+  if (ptr->n_args == 0)throw std::runtime_error("expected 0 args, but some are provided");
+  if (const tuple *t = dynamic_cast<const tuple *>(x.get()); t) {
+    if (t->ts.size() != ptr->n_args)throw std::runtime_error("expected N args, but M are provided");
+    std::vector<::type::expression::t> args;
+    for (const auto &ta : t->ts)args.push_back(ta->to_type(vars_map, type_map));
+    return ::type::expression::application(ptr, std::move(args));
+  } else {
+    if (ptr->n_args != 1)throw std::runtime_error("expected N>1 args, but 1 are provided");
+    return ::type::expression::application(ptr, {x->to_type(vars_map, type_map)});
+  }
+}
+
 }
 
 }

@@ -82,24 +82,81 @@ ast::global_map make_ir_data_section(std::ostream &target) {
   return globals;
 }
 
+type::expression::t from_ast_type_expression(const ast::type::expression::ptr& p,const std::unordered_map<std::string_view,size_t>& vars_map,const type::type_map &type_map){
+  THROW_UNIMPLEMENTED
+}
+
+void record_typedef(type::constr_map &constr_map,
+                    std::vector<type::function::variant::ptr> &variants,
+                    type::type_map &type_map,
+                    ast::type::definition::ptr &&tp) {
+
+  if (std::any_of(tp->defs.begin(), tp->defs.end(), [](const auto &p) {
+    return dynamic_cast<ast::type::definition::single_variant *>(p.get()) == nullptr;
+  }))
+    THROW_UNIMPLEMENTED; //only variants are allowed
+  assert(tp->nonrec == false);//"Not implemented yet";
+  //TODO: ensure declared names are all different
+  if (!tp->nonrec) {
+    //load variant scratches in, so that they can be reused
+    for (const auto &p : tp->defs) {
+      variants.push_back(std::make_unique<type::function::variant>(p->name, p->params.size()));
+      type_map[p->name] = variants.back().get();
+    }
+  }
+  {
+    size_t j = 0;
+    for (const auto &p : tp->defs) {
+      //build the options
+      const auto *sv = dynamic_cast<ast::type::definition::single_variant *>(p.get());
+      type::function::variant::ptr &pv = variants.at(variants.size() - tp->defs.size() + j);
+      assert(p->name == pv->name);
+      std::unordered_map<std::string_view,size_t> params_id;
+      if(p->name.at(0)=='\'')throw parse::error::report_token(p->name,"declared type name","cannot start with ' (tick)");
+      for(size_t i = 0; i < sv->params.size();++i){
+        std::string_view p = sv->params.at(i)->name;
+        if(p.at(0)!='\'')throw parse::error::report_token(p,"type parameter","doesn't start with ' (tick)");
+        if(!params_id.try_emplace(p,i).second){
+          throw parse::error::report_token(p,"type parameter","occurred more than once. this is illegal");
+        }
+      }
+      for (const auto &ac : sv->variants) {
+        type::function::variant::constr c(ac.name,pv.get());
+        for(const auto &a : ac.args){
+          c.args.push_back(a->to_type(params_id,type_map));
+        }
+        pv->constructors.push_back(std::move(c));
+      }
+      for(const auto& c : pv->constructors){
+        constr_map.try_emplace(c.name,&c);
+      }
+
+      ++j;
+    }
+  }
+//TODO: check ownership of constructors
+}
+
 void build_ir(std::string_view s, std::ostream &target, std::string_view filename) {
   parse::tokenizer tk(s);
   ast::global_map globals = make_ir_data_section(target);
+  type::type_map type_map = type::make_default_type_map();
 
-  ast::constr_map constr_map;
+  type::constr_map constr_map;
   std::vector<ir::lang::function> functions;
   std::vector<ast::definition::ptr> defs;
-  std::vector<ast::type::definition::ptr> type_defs;
+  //std::vector<ast::type::definition::ptr> type_defs;
+  std::vector<type::function::variant::ptr> variants;
+  //TODO: add one map to types
   ir::lang::function main;
   main.name = "main";
-  while (true) {
-    if (tk.empty())break;
+  while (!tk.empty()) {
+    while (tk.peek() == parse::EOC)tk.pop();
     if (tk.peek() == parse::LET) {
       //value definition
       try {
         auto def = ast::definition::parse(tk);
         tk.expect_pop(parse::EOC);
-
         def->bind(constr_map);
         ast::free_vars_t fv = def->free_vars();
         resolve_global_free_vars(std::move(fv), globals);
@@ -108,30 +165,16 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
         assert(cg.empty());
         def->ir_compile_global(ir_sections_t(target, std::back_inserter(functions), main));
         defs.push_back(std::move(def));
-
       } catch (const util::error::message &e) {
         e.print(std::cout, s, "source.ml");
         throw std::runtime_error("compilation error");
       }
-
-      //THROW_UNIMPLEMENTED
     } else if (tk.peek() == parse::TYPE) {
       //type definition
       try {
         auto tp = ast::type::definition::parse(tk);
         tk.expect_pop(parse::EOC);
-        for (auto &td : tp->defs)
-          if (auto *sv = dynamic_cast<ast::type::definition::single_variant *>(td.get())) {
-            uint64_t tag_id = 5;
-            for (auto &v : sv->variants) {
-              v.tag = tag_id;
-              tag_id += 2;
-              constr_map.try_emplace(v.name, &v);
-              main.comment() << " Tag \"" << v.name << "\" = " << v.tag;
-              //data_section << "; " << v.name << " equ " << v.tag << "\n";
-            }
-          }
-        type_defs.push_back(std::move(tp));
+        record_typedef(constr_map, variants, type_map, std::move(tp));
       } catch (const util::error::message &e) {
         e.print(std::cout, s, "source.ml");
         throw std::runtime_error("compilation error");
@@ -158,117 +201,12 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
   main.ret = main.declare_constant(0);
   functions.push_back(std::move(main));
   for (auto &f : functions) {
-    //f.pre_compile();
-    //f.print(std::cout);
+//    f.pre_compile();
+//    f.print(std::cout);
     f.compile(target);
   }
 }
 
-struct direct_registerer_t {
-  template<size_t Id>
-  void add(std::string_view name, std::initializer_list<std::string_view> aliases = {}) {
-    static ast::matcher::universal m(name);
-
-    m.use_as_immediate = m.top_level = true;
-    globals.try_emplace(name, &m);
-    for (std::string_view alias : aliases)
-      globals.try_emplace(alias, &m);
-  }
-  ast::global_map &globals;
-};
-void build_direct(std::string_view s, std::ostream &target) {
-
-  parse::tokenizer tk(s);
-  ast::global_map globals;
-
-  direct_registerer_t direct_registerer{.globals=globals};
-
-#define register direct_registerer.add<__COUNTER__>
-  register("int_sum", {"__binary_op__PLUS__"});
-  register("int_sub", {"__binary_op__MINUS__"});
-  register("int_eq", {"__binary_op__EQUAL__"});
-  register("print_int");
-  register("println_int");
-  register("int_le", {"__binary_op__LESS_THAN__"});
-  register("int_negate", {"__unary_op__MINUS__"});
-#undef register
-
-  ast::constr_map constr_map;
-
-  std::stringstream data_section;
-  data_section << std::ifstream("/home/luke/CLionProjects/compilers/bml/lib/build/data_preamble_direct.asm").rdbuf();
-  std::stringstream text_section;
-  text_section << std::ifstream("/home/luke/CLionProjects/compilers/bml/lib/build/text_preamble_direct.asm").rdbuf();
-  std::stringstream main_section;
-  main_section << "main:" << std::endl;
-  std::vector<ast::definition::ptr> defs;
-  std::vector<ast::type::definition::ptr> type_defs;
-  while (true) {
-    if (tk.empty())break;
-    if (tk.peek() == parse::LET) {
-      //value definition
-      try {
-        auto def = ast::definition::parse(tk);
-        tk.expect_pop(parse::EOC);
-
-        def->bind(constr_map);
-        ast::free_vars_t fv = def->free_vars();
-        resolve_global_free_vars(std::move(fv), globals);
-        for (auto &def : def->defs)def.name->globally_register(globals);
-        auto cg = def->capture_group();
-        assert(cg.empty());
-        def->compile_global(util::direct_sections_t(data_section, text_section, main_section));
-        defs.push_back(std::move(def));
-
-      } catch (const util::error::message &e) {
-        e.print(std::cout, s, "source.ml");
-        throw std::runtime_error("compilation error");
-      }
-
-      //THROW_UNIMPLEMENTED
-    } else if (tk.peek() == parse::TYPE) {
-      //type definition
-      try {
-        auto tp = ast::type::definition::parse(tk);
-        tk.expect_pop(parse::EOC);
-        for (auto &td : tp->defs)
-          if (auto *sv = dynamic_cast<ast::type::definition::single_variant *>(td.get())) {
-            uint64_t tag_id = 1;
-            for (auto &v : sv->variants) {
-              v.tag = tag_id;
-              tag_id += 2;
-              constr_map.try_emplace(v.name, &v);
-              //data_section << "; " << v.name << " equ " << v.tag << "\n";
-            }
-          }
-        type_defs.push_back(std::move(tp));
-      } catch (const util::error::message &e) {
-        e.print(std::cout, s, "source.ml");
-        throw std::runtime_error("compilation error");
-      }
-    } else {
-      //expression
-      try {
-        auto e = ast::expression::parse(tk);
-        tk.expect_pop(parse::EOC);
-        e->bind(constr_map);
-        ast::free_vars_t fv = e->free_vars();
-        resolve_global_free_vars(std::move(fv), globals);
-        auto cg = e->capture_group();
-        assert(cg.empty());
-        e->compile(util::direct_sections_t(data_section, text_section, main_section), 0);
-      } catch (const util::error::message &e) {
-        e.print(std::cout, s, "source.ml");
-        throw std::runtime_error("compilation error");
-      }
-    }
-  }
-  main_section << "xor eax, eax\n"
-                  "ret\n";
-
-  target << data_section.str() << std::endl << text_section.str() << std::endl << main_section.str() << std::endl;
-
-}
 void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m) {
   for (auto&[name, usages] : fv) {
     if (auto it = m.find(name); it != m.end()) {
