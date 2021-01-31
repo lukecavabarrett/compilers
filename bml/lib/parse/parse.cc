@@ -671,72 +671,7 @@ ptr parse_t2(tokenizer &tk) {
 
 }
 }
-/*
-bool parse_i_first(token_type);
-ptr parse_c(tokenizer &tk);
-ptr parse_p(tokenizer &tk);
-ptr parse_f(tokenizer &tk);
-ptr parse_t(tokenizer &tk);
 
-bool parse_i_first(token_type t) {
-  return is_in(t, {PARENS_OPEN, IDENTIFIER});
-}
-ptr parse_i(tokenizer &tk) {
-  switch (tk.peek()) {
-    case PARENS_OPEN: {
-      auto loc_start = tk.peek_sv().begin();
-      tk.expect_pop(PARENS_OPEN);
-      ptr t = parse(tk);
-      tk.expect_peek(PARENS_CLOSE);
-      t->loc = itr_sv(loc_start, tk.pop().sv.end());
-      return t;
-    }
-    case IDENTIFIER: {
-      return std::make_unique<identifier>(tk.pop().sv);
-    }
-    default:tk.unexpected_token();
-  }
-  THROW_UNIMPLEMENTED;
-}
-ptr parse_c(tokenizer &tk) {
-  ptr x = parse_i(tk);
-  while (parse_i_first(tk.peek())) {
-    ptr f = parse_i(tk);
-    x = std::make_unique<constr>(std::move(x), std::move(f));
-  }
-  return x;
-}
-
-ptr parse_p(tokenizer &tk) {
-  using namespace patterns;
-  return parse_vec<product, &product::ts, tk_sep<STAR>, parse_c>(tk);
-}
-ptr make_function(ptr &&a, ptr &&b, token t) {
-  return std::make_unique<function>(std::move(a), std::move(b));
-}
-ptr parse_f(tokenizer &tk) {
-  using namespace patterns;
-  return parse_fold_l<make_function, tk_sep<ARROW>, parse_p>(tk);
-}
-
-ptr parse_t(tokenizer &tk) {
-
-  //return patterns::parse_vec<tuple,&tuple::ts,parse_f,patterns::tk_sep<COMMA>>(tk);
-
-  //TODO: compress
-  ptr t = parse_f(tk);
-  if (tk.peek() != COMMA)return t;
-  tuple::ptr ts = std::make_unique<tuple>(std::move(t));
-  while (tk.peek() == COMMA) {
-    tk.expect_pop(COMMA);
-    ts->ts.push_back(parse_f(tk));
-  }
-  // ts->set_loc();
-  return ts;
-}
-
-}
-*/
 ptr parse(tokenizer &tk) {
   return parse_t0(tk);
 }
