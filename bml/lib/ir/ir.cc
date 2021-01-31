@@ -480,7 +480,7 @@ bool scope::tight_inference() {
   bool once = false;
   bool actioned = true;
   auto reduce_space = [&actioned](var v, destroy_class_t d) {
-    if ((d & v.destroy_class()) == unvalid_destroy_class)THROW_UNIMPLEMENTED; //TODO: unconsitent usage
+    if ((d & v.destroy_class()) == unvalid_destroy_class)THROW_UNIMPLEMENTED; //TODO: unconsistent usage
     if (v.destroy_class() <= d)return;
     actioned = true;
     v.destroy_class() = v.destroy_class() & d;
@@ -546,7 +546,7 @@ namespace {
 
 template<typename T>
 struct __single_ignore {
-  auto operator()(const T &) {}//TODO: might have to set void
+  auto operator()(const T &) {}
 };
 
 template<typename ...Ts>
