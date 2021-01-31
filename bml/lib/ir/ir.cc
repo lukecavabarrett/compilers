@@ -1159,8 +1159,8 @@ context_t context_t::merge(context_t c1, std::ostream &os1, context_t c2, std::o
 
 
 
-  //TODO: intersection must match on unborn, deads, union of {constant,global,on_stack,on_reg}
-  //TODO: at most one variable can change from true store {on_stack,on_reg} to {constant,global}
+  //intersection must match on unborn, deads, union of {constant,global,on_stack,on_reg}
+  //at most one variable can change from true store {on_stack,on_reg} to virtual {constant,global}
 
   assert(c1.stack == c2.stack);
   assert(c1.regs == c2.regs);
