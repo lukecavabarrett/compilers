@@ -147,7 +147,6 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
   std::vector<ast::definition::ptr> defs;
   //std::vector<ast::type::definition::ptr> type_defs;
   std::vector<type::function::variant::ptr> variants;
-  //TODO: add one map to types
   ir::lang::function main;
   main.name = "main";
   while (!tk.empty()) {
