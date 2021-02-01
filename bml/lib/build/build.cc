@@ -126,12 +126,16 @@ void record_typedef(type::constr_map &constr_map,
       type::function::variant::ptr &pv = variants.at(variants.size() - tp->defs.size() + j);
       assert(p->name == pv->name);
       std::unordered_map<std::string_view, size_t> params_id;
+
       if (p->name.at(0) == '\'')
         throw parse::error::report_token(p->name,
                                          "declared type name",
                                          "cannot start with ' (tick)");
+
       for (size_t i = 0; i < sv->params.size(); ++i) {
+
         std::string_view p = sv->params.at(i)->name;
+
         if (p.at(0) != '\'')throw parse::error::report_token(p, "type parameter", "doesn't start with ' (tick)");
         if (!params_id.try_emplace(p, i).second) {
           throw parse::error::report_token(p, "type parameter", "occurred more than once. this is illegal");

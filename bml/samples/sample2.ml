@@ -29,8 +29,190 @@ let rec play_fib logger =
     play_fib logger;;
 
 
-acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> play_fib;;
+acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> tee play_fib;;
+(* EXAMPLE result in log.txt:
+
+Mon Feb  1 00:55:54 2021
+ | INFO: (Hello)
+Mon Feb  1 00:55:54 2021
+ | INFO: (This is logging some information)
+Mon Feb  1 00:55:54 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:55:57 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:55:57 2021
+ | INFO: (2 )
+Mon Feb  1 00:55:57 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:55:57 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:55:57 2021
+ | INFO: (1 )
+Mon Feb  1 00:55:57 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:00 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:00 2021
+ | INFO: (3 )
+Mon Feb  1 00:56:00 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:00 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:00 2021
+ | INFO: (2 )
+Mon Feb  1 00:56:00 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:02 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:02 2021
+ | INFO: (4 )
+Mon Feb  1 00:56:02 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:02 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:02 2021
+ | INFO: (3 )
+Mon Feb  1 00:56:02 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:03 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:03 2021
+ | INFO: (5 )
+Mon Feb  1 00:56:03 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:03 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:03 2021
+ | INFO: (5 )
+Mon Feb  1 00:56:03 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:04 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:04 2021
+ | INFO: (6 )
+Mon Feb  1 00:56:04 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:04 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:04 2021
+ | INFO: (8 )
+Mon Feb  1 00:56:04 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:04 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:04 2021
+ | INFO: (7 )
+Mon Feb  1 00:56:04 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:04 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:04 2021
+ | INFO: (13 )
+Mon Feb  1 00:56:04 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:05 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:05 2021
+ | INFO: (8 )
+Mon Feb  1 00:56:05 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:05 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:05 2021
+ | INFO: (21 )
+Mon Feb  1 00:56:05 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:06 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:06 2021
+ | INFO: (9 )
+Mon Feb  1 00:56:06 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:06 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:06 2021
+ | INFO: (34 )
+Mon Feb  1 00:56:06 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:07 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:07 2021
+ | INFO: (10 )
+Mon Feb  1 00:56:07 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:07 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:07 2021
+ | INFO: (55 )
+Mon Feb  1 00:56:07 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:10 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:10 2021
+ | INFO: (20 )
+Mon Feb  1 00:56:10 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:10 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:10 2021
+ | INFO: (6765 )
+Mon Feb  1 00:56:10 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:12 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:12 2021
+ | INFO: (30 )
+Mon Feb  1 00:56:12 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:12 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:12 2021
+ | INFO: (832040 )
+Mon Feb  1 00:56:12 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:13 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:13 2021
+ | INFO: (35 )
+Mon Feb  1 00:56:13 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:15 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:15 2021
+ | INFO: (9227465 )
+Mon Feb  1 00:56:15 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:19 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:19 2021
+ | INFO: (37 )
+Mon Feb  1 00:56:19 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:24 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:24 2021
+ | INFO: (24157817 )
+Mon Feb  1 00:56:24 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:26 2021
+ | INFO: (User entered n = )
+Mon Feb  1 00:56:26 2021
+ | INFO: (39 )
+Mon Feb  1 00:56:26 2021
+ | INFO: (Computing fibonacci of n...)
+Mon Feb  1 00:56:37 2021
+ | INFO: (Computed!)
+Mon Feb  1 00:56:37 2021
+ | INFO: (63245986 )
+Mon Feb  1 00:56:37 2021
+ | INFO: (Waiting for user input)
+Mon Feb  1 00:56:43 2021
+ | INFO: (CLOSING FILE)
+
+*)
+
 let tee f x = f x ; x ;;
+
 (*
 This would play two games
 acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> tee play_fib |> play_fib;;

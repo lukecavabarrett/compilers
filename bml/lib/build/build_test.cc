@@ -707,7 +707,8 @@ test ();;
 test () (Int 1729) (Str "As long as we use it, the file is still alive!\n");;
 
 )";
-  test_build(source, {});
+  //TODO: find a way to test this non-typechecking program
+  //test_build(source, {});
 }
 
 TEST(Build, Time) {
@@ -726,6 +727,23 @@ TEST(Typing, Simple) {
   test_build("let f b x = if b then (4,x) else (10,x) ;;",{});
   test_build("let rec f n (x,y) = if n=0 then (x,y) else g (n-1) (y,x) and\n"
              "g n (y,x) = if n=0 then (x,y) else f (n-1) (x,y) ;;",{});
+}
+
+TEST(Typing, Result) {
+ test_build(R"(
+
+type ('a,'err) result = | Ok of 'a | Error of 'err ;;
+let print_result pok perror x =
+  match x with
+  | Ok x -> print_str "Ok "; pok x
+  | Error err -> print_str "Error "; perror err;;
+
+let print_i_s_result = print_result print_int print_str ;;
+
+let safe_div x y = if y=0 then Error "division by zero!" else Ok (x/y) ;;
+safe_div 1232 122 |> print_i_s_result;;
+safe_div 192 0 |> print_i_s_result;;
+)",{.expected_stdout="Ok 10 Error division by zero!"});
 }
 
 /*
