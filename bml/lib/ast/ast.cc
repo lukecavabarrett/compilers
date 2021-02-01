@@ -204,7 +204,7 @@ ir::lang::var constructor::ir_compile(ir_sections_t s) {
   } else {
     auto *t = dynamic_cast<tuple *>(arg.get());
     assert(t);
-    var block = s.main.declare_assign(rhs_expr::malloc{.size=2+n_args});
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + n_args});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
         3)});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
@@ -215,7 +215,6 @@ ir::lang::var constructor::ir_compile(ir_sections_t s) {
     return block;
   }
 }
-
 ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang::var d) const {
   using namespace ir::lang;
 
@@ -226,7 +225,7 @@ ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang:
   const size_t n_args = definition_point->args.size();
   if (n_args == 1) {
     var content = arg->ir_compile(s);
-    var block = s.main.declare_assign(rhs_expr::malloc{.size=3+1});
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=3 + 1});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
         3)});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
@@ -237,7 +236,7 @@ ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang:
   } else {
     auto *t = dynamic_cast<tuple *>(arg.get());
     assert(t);
-    var block = s.main.declare_assign(rhs_expr::malloc{.size=2+n_args+1});
+    var block = s.main.declare_assign(rhs_expr::malloc{.size=2 + n_args + 1});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 0, .src = s.main.declare_constant(
         3)});
     s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 1, .src = s.main.declare_constant(
@@ -245,7 +244,7 @@ ir::lang::var constructor::ir_compile_with_destructor(ir_sections_t s, ir::lang:
     for (size_t i = 0; i < n_args; ++i)
       s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2
           + i, .src = t->args.at(i)->ir_compile(s)});
-    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2+n_args, .src = d});
+    s.main.push_back(instruction::write_uninitialized_mem{.base = block, .block_offset = 2 + n_args, .src = d});
     return block;
   }
 }
@@ -436,6 +435,103 @@ std::string fun::ir_compile_global(ir_sections_t s) {
   return name;
 }
 
+//typecheck
+tc_section::idx_t identifier::typecheck(tc_section tcs) const {
+  if (tcs.global.contains(definition_point)) {
+    // return a copy
+    const auto &t = tcs.global.at(definition_point);
+    assert(t.is_poly_normalized());
+    return tcs.arena.type_with_args(t, tcs.arena.fresh_n(t.poly_n_args()));
+  } else if (tcs.local.contains(definition_point)) {
+    //return the same
+    return tcs.local.at(definition_point);
+  } else return tcs.local.try_emplace(definition_point, tcs.arena.fresh()).first->second;
+}
+tc_section::idx_t literal::typecheck(tc_section tcs) const {
+  return value->typecheck(tcs);
+}
+tc_section::idx_t constructor::typecheck(tc_section tcs) const {
+  std::vector<tc_section::idx_t> ts;
+  assert(definition_point);
+
+  const auto *tf = definition_point->parent_tf;
+  // 1. create fresh vars for all the params of definition_point->parent_tf
+  std::vector<tc_section::idx_t> tf_args = tcs.arena.fresh_n(tf->n_args);
+  // 2. create version of this variant, using such fresh vars (which we will return)
+  auto tf_id = tcs.arena.apply(tf, std::vector<tc_section::idx_t>(tf_args));
+
+  // 3. unify those fresh vars with the arguments, based on the respective types for each variant option
+
+  if (definition_point->args.empty()) {
+    assert(!arg);
+    return tf_id;
+  }
+
+  if (definition_point->args.size() == 1) {
+    assert(arg);
+    auto arg_id = arg->typecheck(tcs);
+    tcs.arena.unify(arg_id, tcs.arena.type_with_args(definition_point->args.at(0), tf_args));
+    return tf_id;
+  }
+
+  assert(definition_point->args.size() > 1);
+  assert(arg);
+  const auto *args = dynamic_cast<const tuple *>(arg.get());
+  assert(args);
+  assert(args->args.size() == definition_point->args.size());
+  for (size_t i = 0; i < args->args.size(); ++i) {
+    tcs.arena.unify(args->args.at(i)->typecheck(tcs), tcs.arena.type_with_args(definition_point->args.at(i), tf_args));
+  }
+  return tf_id;
+}
+tc_section::idx_t if_then_else::typecheck(tc_section tcs) const {
+  tcs.arena.unify(condition->typecheck(tcs), tcs.arena.type_with_args(&::type::function::tf_bool, {}));
+  auto tid = true_branch->typecheck(tcs), fid = false_branch->typecheck(tcs);
+  tcs.arena.unify(tid, fid);
+  return tid; // == fid
+}
+tc_section::idx_t tuple::typecheck(tc_section tcs) const {
+  std::vector<tc_section::idx_t> ts;
+  for (const auto &p : args)ts.emplace_back(p->typecheck(tcs));
+  return tcs.arena.apply(&::type::function::tf_tuple(args.size()), std::move(ts));
+}
+tc_section::idx_t fun_app::typecheck(tc_section tcs) const {
+  auto fid = f->typecheck(tcs), xid = x->typecheck(tcs), aid = tcs.arena.fresh();
+  tcs.arena.unify(fid, tcs.arena.apply(&::type::function::tf_fun, {xid, aid}));
+  return aid;
+}
+tc_section::idx_t destroy::typecheck(tc_section tcs) const {
+  auto did = d->typecheck(tcs), oid = obj->typecheck(tcs);
+  tcs.arena.unify(did, tcs.arena.apply(&::type::function::tf_fun, {oid, tcs.arena.fresh()}));
+  return oid;
+}
+tc_section::idx_t seq::typecheck(tc_section tcs) const {
+  //TODO-decision: should we force discarded to be unit?
+  a->typecheck(tcs);
+  return b->typecheck(tcs);
+}
+tc_section::idx_t match_with::typecheck(tc_section tcs) const {
+  auto wid = what->typecheck(tcs);
+  auto ret = tcs.arena.fresh();
+  for(const branch& b : branches){
+    tcs.arena.unify(wid,b.pattern->typecheck(tcs));
+    tcs.arena.unify(ret,b.result->typecheck(tcs));
+  }
+  return ret;
+}
+tc_section::idx_t let_in::typecheck(tc_section tcs) const {
+  d->typecheck(tcs);
+  return e->typecheck(tcs);
+}
+tc_section::idx_t fun::typecheck(tc_section tcs) const {
+  std::vector<tc_section::idx_t> args_id;
+  for (const auto &m : args)args_id.push_back(m->typecheck(tcs));
+  auto bid = body->typecheck(tcs);
+  for (auto mit = args_id.crbegin(); mit != args_id.crend(); ++mit)
+    bid = tcs.arena.apply(&::type::function::tf_fun, {*mit, bid});
+  return bid;
+}
+
 identifier::identifier(std::string_view n) : t(n), name(n), definition_point(nullptr) {}
 identifier::identifier(std::string_view n, std::string_view loc) : t(loc), name(n), definition_point(nullptr) {}
 
@@ -492,6 +588,11 @@ bool def::is_constr() const { return dynamic_cast<expression::constructor *>(e.g
 bool def::is_fun() const { return dynamic_cast<expression::fun *>(e.get()); }
 bool def::is_single_name() const { return dynamic_cast<matcher::universal *>(name.get()); }
 def::def(matcher::ptr &&name, expression::ptr e) : name(std::move(name)), e(std::move(e)) {}
+void def::typecheck(tc_section tcs) const {
+  auto idx_name = name->typecheck(tcs);
+  auto idx_e = e->typecheck(tcs);
+  tcs.arena.unify(idx_name, idx_e);
+}
 
 free_vars_t t::free_vars(free_vars_t &&fv) {
   if (rec) {
@@ -588,72 +689,12 @@ void t::ir_compile_global(ir_sections_t s) {
     }
   }
 }
-/*
-void t::compile_global(direct_sections_t s) {
-  if (rec) {
-    //check that all values are construcive w.r.t each other
-    // 1. check no name clashes
-    // 2. check that if one contains another
-    //THROW_UNIMPLEMENTED
 
-  }
-  for (auto &def : defs)
-    if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
-      dynamic_cast<matcher::universal *>(def.name.get())->use_as_immediate = true;
-    }
-  for (auto &def : defs) {
-    auto *name = dynamic_cast<matcher::universal *>(def.name.get());
-    if (name && def.is_fun()) {
-      auto *f = dynamic_cast<expression::fun *>(def.e.get());
-      assert(f->captures.empty());
-      std::string text_ptr = f->compile_global(s, name->name);
-      name->globally_allocate_funblock(f->args.size(), s.data, text_ptr);
-    } else if (name && def.is_tuple()) {
-      auto *tuple_expr = dynamic_cast<expression::tuple *>(def.e.get());
-      name->globally_allocate_tupleblock(s.data, tuple_expr->args.size());
-      assert(name->use_as_immediate);
-      size_t i = 0;
-      for (auto &e : tuple_expr->args) {
-        e->compile(s, 0);
-        s.main << "mov qword[" << name->asm_name();
-        if (i)s.main << "+" << (8 * i);
-        s.main << "], rax\n";
-        ++i;
-      }
-    } else if (name && def.is_constr()) {
-      auto *e = dynamic_cast<expression::constructor *>(def.e.get());
-      if (e->arg) {
-        name->globally_allocate_constrblock(s.data, *e->definition_point);
-        assert(name->use_as_immediate);
-        e->arg->compile(s, 0);
-        s.main << "mov qword[" << name->asm_name() << "+8], rax\n";
-      } else {
-        name->globally_allocate_constrimm(s.data, *e->definition_point);
-        assert(!name->use_as_immediate);
-      }
-    } else {
-      def.name->globally_allocate(s.data);
-      def.e->compile(s, 0); // the value is left on rax
-      def.name->global_unroll(s.main); // take rax, unroll it onto globals.
-    }
-  }
-
-}
-size_t t::compile_locally(direct_sections_t s, size_t stack_pos) {
-  if (rec) {
-    THROW_UNIMPLEMENTED
-  } else {
-    for (auto &def : defs) {
-      def.e->compile(s, stack_pos); // put value in rax
-      stack_pos = def.name->locally_unroll(s.main, stack_pos); // load value from rax
-    }
-    return stack_pos;
-  }
-  return 0;
-}
-*/
 void t::bind(const constr_map &cm) {
   for (auto &d : defs)d.name->bind(cm), d.e->bind(cm);
+}
+void t::typecheck(tc_section tcs) const {
+  for (const auto &d : defs)d.typecheck(tcs);
 }
 
 }
@@ -706,19 +747,19 @@ void tuple::bind(capture_set &cs) {
 void ignore::bind(const constr_map &cm) {}
 
 //ir_globally_register
-void universal::ir_globally_register(global_map &m) {
+void universal::ir_globally_register(global_names_map &m) {
   static size_t start_id = 1;
   top_level = true;
   m[name] = this;
   name_resolution_id = ++start_id;
 }
-void constructor::ir_globally_register(global_map &m) {
+void constructor::ir_globally_register(global_names_map &m) {
   if (arg)arg->ir_globally_register(m);
 }
-void tuple::ir_globally_register(global_map &m) {
+void tuple::ir_globally_register(global_names_map &m) {
   for (auto &p : args)p->ir_globally_register(m);
 }
-void ignore::ir_globally_register(global_map &m) {}
+void ignore::ir_globally_register(global_names_map &m) {}
 
 //ir_allocate_global_value
 void universal::ir_allocate_global_value(std::ostream &os) {
@@ -764,6 +805,75 @@ void tuple::ir_global_unroll(ir::scope &s, ir::lang::var block) {
     var content = s.declare_assign(block[i + 2]);
     args.at(i)->ir_global_unroll(s, content);
   }
+}
+
+//typecheck
+tc_section::idx_t universal::typecheck(tc_section tcs) const {
+  if (tcs.local.contains(this))return tcs.local.at(this);
+  return tcs.local.try_emplace(this, tcs.arena.fresh()).first->second;
+}
+tc_section::idx_t ignore::typecheck(tc_section tcs) const {
+  return tcs.arena.fresh();
+}
+tc_section::idx_t constructor::typecheck(tc_section tcs) const {
+  std::vector<tc_section::idx_t> ts;
+  assert(definition_point);
+
+  const auto *tf = definition_point->parent_tf;
+  // 1. create fresh vars for all the params of definition_point->parent_tf
+  std::vector<tc_section::idx_t> tf_args = tcs.arena.fresh_n(tf->n_args);
+  // 2. create version of this variant, using such fresh vars (which we will return)
+  auto tf_id = tcs.arena.apply(tf, std::vector<tc_section::idx_t>(tf_args));
+
+  // 3. unify those fresh vars with the arguments, based on the respective types for each variant option
+
+  if (definition_point->args.empty() || dynamic_cast<const ignore *>(arg.get())) {
+    assert(!arg);
+    return tf_id;
+  }
+
+  if (definition_point->args.size() == 1) {
+    assert(arg);
+    auto arg_id = arg->typecheck(tcs);
+    tcs.arena.unify(arg_id, tcs.arena.type_with_args(definition_point->args.at(0), tf_args));
+    return tf_id;
+  }
+
+  assert(definition_point->args.size() > 1);
+  assert(arg);
+  const auto *args = dynamic_cast<const tuple *>(arg.get());
+  assert(args);
+  assert(args->args.size() == definition_point->args.size());
+  for (size_t i = 0; i < args->args.size(); ++i) {
+    tcs.arena.unify(args->args.at(i)->typecheck(tcs), tcs.arena.type_with_args(definition_point->args.at(i), tf_args));
+  }
+  return tf_id;
+}
+tc_section::idx_t tuple::typecheck(tc_section tcs) const {
+  std::vector<tc_section::idx_t> ts;
+  for (const auto &p : args)ts.emplace_back(p->typecheck(tcs));
+  return tcs.arena.apply(&::type::function::tf_tuple(args.size()), std::move(ts));
+}
+tc_section::idx_t literal::typecheck(tc_section tcs) const {
+  return value->typecheck(tcs);
+}
+
+std::list<const universal *> universal::universals() const {
+  return {this};
+}
+std::list<const universal *> ignore::universals() const {
+  return {};
+}
+std::list<const universal *> constructor::universals() const {
+  return arg ? arg->universals() : std::list<const universal *>{};
+}
+std::list<const universal *> tuple::universals() const {
+  std::list<const universal *> l;
+  for (const auto &m : args)l.splice(l.cend(), m->universals());
+  return l;
+}
+std::list<const universal *> literal::universals() const {
+  return {};
 }
 
 //singles
@@ -904,7 +1014,7 @@ ir::lang::var constructor::ir_test_unroll(ir::scope &s, ir::lang::var v) {
   } else {
     //in the matching tag, test all of them (similar to tuple)
     scope *current = &matching_tag;
-    auto * t = dynamic_cast<tuple*>(arg.get());
+    auto *t = dynamic_cast<tuple *>(arg.get());
     assert(t);
     assert(t->args.size() == n_args);
     for (size_t i = 0; i < n_args; ++i) {
@@ -950,18 +1060,18 @@ namespace literal {
 uint64_t integer::to_value() const {
   return uint64_t((value << 1) | 1);
 }
+uint64_t boolean::to_value() const { return value ? 3 : 1; }
+uint64_t string::to_value() const { THROW_UNIMPLEMENTED }
+
 ir::lang::var integer::ir_compile(ir_sections_t s) const {
   return s.main.declare_constant(to_value());
 }
-uint64_t boolean::to_value() const { return value ? 3 : 1; }
 ir::lang::var boolean::ir_compile(ir_sections_t s) const {
   return s.main.declare_constant(to_value());
 }
 ir::lang::var unit::ir_compile(ir_sections_t s) const {
   return s.main.declare_constant(to_value());
 }
-uint64_t string::to_value() const { THROW_UNIMPLEMENTED }
-
 ir::lang::var string::ir_compile(ir_sections_t s) const {
   assert(value.size() % 8 == 0);
   assert(!value.empty());
@@ -994,6 +1104,12 @@ ir::lang::var string::ir_compile(ir_sections_t s) const {
   s.data << "\n";
   return s.main.declare_global(name);
 }
+
+tc_section::idx_t integer::typecheck(tc_section tcs) const { return tcs.arena.apply(&::type::function::tf_int, {}); }
+tc_section::idx_t boolean::typecheck(tc_section tcs) const { return tcs.arena.apply(&::type::function::tf_bool, {}); }
+tc_section::idx_t unit::typecheck(tc_section tcs) const { return tcs.arena.apply(&::type::function::tf_unit, {}); }
+tc_section::idx_t string::typecheck(tc_section tcs) const { return tcs.arena.apply(&::type::function::tf_string, {}); }
+
 }
 
 namespace type::expression {

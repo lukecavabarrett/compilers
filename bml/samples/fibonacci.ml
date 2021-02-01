@@ -9,6 +9,6 @@ let rec factorial n = if n=0 then 1 else n*(factorial (n-1));;
 let rec main () =
         let input = scan_int () in
         if input<0 then ()
-        else factorial input |> print_int; main () ;;
+        else fibonacci input |> println_int; main () ;;
 
 main ();;

@@ -1,63 +1,34 @@
 #include <gtest/gtest.h>
 #include <types/types.h>
 
+using namespace type::function;
+using namespace type::expression::placeholder;
+
 TEST(Type, Print1) {
   std::stringstream s;
-  type::expression::t t(&type::function::tf_fun, {
-      &type::function::tf_int,
-      type::expression::t{
-          &type::function::tf_fun, {
-              &type::function::tf_int,
-              &type::function::tf_int
-          }}
-  });
+  auto t = tf_fun(tf_int, tf_fun(tf_int, tf_int));
   (s << t);
   EXPECT_EQ(s.str(), "int -> int -> int");
 }
 
 TEST(Type, Print1b) {
   std::stringstream s;
-  type::expression::t t(&type::function::tf_fun, {
-      type::expression::t{
-          &type::function::tf_fun, {
-              &type::function::tf_int,
-              &type::function::tf_int
-          }},
-      &type::function::tf_int
-  });
+  auto t = tf_fun(tf_fun(tf_int, tf_int), tf_int);
+
   (s << t);
   EXPECT_EQ(s.str(), "(int -> int) -> int");
 }
 
 TEST(Type, Print1c) {
   std::stringstream s;
-  type::expression::t t(&type::function::tf_fun, {
-      type::expression::t{
-          &type::function::tf_tuple(2), {
-              &type::function::tf_int,
-              &type::function::tf_int
-          }},
-      &type::function::tf_int
-  });
+  auto t = tf_fun(tf_tuple(2)(tf_int, tf_int), tf_int);
   (s << t);
   EXPECT_EQ(s.str(), "int * int -> int");
 }
 
 TEST(Type, Print2) {
   std::stringstream s;
-  type::expression::t t(&type::function::tf_tuple(3), {
-      &type::function::tf_int,
-      type::expression::t{
-          &type::function::tf_fun, {
-              &type::function::tf_int,
-              &type::function::tf_int
-          }},
-      type::expression::t{
-          &type::function::tf_tuple(2), {
-              type::expression::variable(0),
-              type::expression::variable(1)
-          }}
-  });
+  auto t = tf_tuple(3)(tf_int, tf_fun(tf_int, tf_int), tf_tuple(2)(_a,_b));
   (s << t);
   EXPECT_EQ(s.str(), "int * (int -> int) * ('a * 'b)");
 }

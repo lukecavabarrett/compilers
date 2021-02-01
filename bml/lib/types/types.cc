@@ -62,6 +62,10 @@ void tf_tuple_t::print_with_args(const std::vector<expression::t> &args, std::os
   }
 
 }
+
+primitive tf_char("char"),tf_int("int"), tf_bool("bool"), tf_string("string"), tf_unit("unit"), tf_time("time"),
+    tf_file("file");
+tf_fun_t tf_fun;
 }
 
 namespace expression {
@@ -100,24 +104,51 @@ bool t::is_poly_normalized() const {
 void t::poly_normalize() {
   std::unordered_map<size_t, size_t> relabel;
   execute_poly_normalize(relabel);
+  assert(is_poly_normalized());
 }
-void t::execute_poly_normalize(std::unordered_map<size_t, size_t> &relabel) const {
+void t::execute_poly_normalize(std::unordered_map<size_t, size_t> &relabel)  {
   std::visit(util::overloaded{
-      [&relabel](variable v) {
+      [&relabel](variable& v){
         v.id = relabel.try_emplace(v.id, relabel.size()).first->second;
       },
-      [&relabel](const application &a) {
-        for (const t &x : a.args)x.execute_poly_normalize(relabel);
+      [&relabel](application &a){
+        for (t &x : a.args)x.execute_poly_normalize(relabel);
+      }
+  }, *static_cast<base *>(this));
+}
+size_t t::poly_n_args() const {
+  return std::visit(util::overloaded{
+      [](variable v) {
+        return v.id+1;
+      },
+      [](const application &a) {
+        size_t m = 0;
+        for(const auto& t : a.args)m = std::max(m,t.poly_n_args());
+        return m;
       }
   }, *static_cast<const base *>(this));
 }
+bool t::is_valid() const {
+  return std::visit(util::overloaded{
+      [](variable v) {
+        return true;
+      },
+      [](const application &a) {
+        if(a.f== nullptr)return false;
+        if(a.f->n_args!=a.args.size())return false;
+        for(const auto& t : a.args)if(!t.is_valid())return false;
+        return true;
+      }
+  }, *static_cast<const base *>(this));
+}
+
 }
 
 type_map make_default_type_map() {
   type_map m;
   using namespace function;
-  for(const primitive& p : {tf_int,tf_bool,tf_file,tf_string,tf_time,tf_unit}){
-    m.try_emplace(p.name,&p);
+  for(const primitive* p : {&tf_int,&tf_bool,&tf_file,&tf_string,&tf_time,&tf_unit}){
+    m.try_emplace(p->name,p);
   }
   return m;
 }

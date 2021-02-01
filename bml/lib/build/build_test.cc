@@ -151,6 +151,7 @@ TEST(Build, Expression1) {
 
 }
 
+
 TEST(Build, Expression2) {
   constexpr std::string_view source = "let g f x = f x 1 ;;\n"
                                       "let y = g (+) 10;;\n"
@@ -195,20 +196,20 @@ TEST(Build, SomeAddition) {
 }
 
 TEST(Build, OptionMapSome) {
-  test_build("type int_option = | None | Some of int ;;\n"
+  test_build("type 'a option = | None | Some of 'a ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
              "let _ = option_map print_int (Some 42);;\n", {.expected_stdout = "42 "});
 
 }
 
 TEST(Build, OptionMapNone) {
-  test_build("type int_option = | None | Some of int ;;\n"
+  test_build("type 'a option = | None | Some of 'a ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
              "let _ = option_map print_int None;;\n", {});
 }
 
 TEST(Build, OptionMapError) {
-  test_build("type int_option = | None | Some of int | Another ;;\n"
+  test_build("type 'a option = | None | Some of 'a | Another ;;\n"
              "let option_map f xo = match xo with | None -> None | Some x -> Some (f x);;\n"
              "let _ = option_map print_int Another;;\n",
              {.expected_stderr = "match failed\n", .expected_exit_code=1});
@@ -257,12 +258,14 @@ TEST(Build, OptionMap) {
 }
 
 TEST(Build, MaybeAdditionNested) {
-  test_build("type int_option = | None | Some of int ;;\n"
-             "let option_map f x = match x with | None -> None | Some x -> Some (f x);;\n"
-             "let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;\n"
-             "let maybe_sum x y = option_map (maybe_add y) x;;\n"
-             "let Some (Some ans) = maybe_sum (Some 10) (Some 100);;\n"
-             "print_int ans;;\n", {.expected_stdout = "110 "});
+  test_build(R"(
+type 'a option = | None | Some of 'a ;;
+let option_map f x = match x with | None -> None | Some x -> Some (f x);;
+let maybe_add y x = match y with | None -> None | Some y -> Some (x+y);;
+let maybe_sum x y = option_map (maybe_add y) x;;
+let Some (Some ans) = maybe_sum (Some 10) (Some 100);;
+print_int ans;;
+)", {.expected_stdout = "110 "});
 }
 
 TEST(Build, MaybeAdditionCorrect) {
@@ -427,15 +430,15 @@ TEST(Build, TakeFromInfiniteList) {
 }
 
 #define floyd_algo "    let rec run_until_equal f tortoise hare =\n"\
-"    if tortoise=hare then (tortoise,hare)\n"\
+"    if tortoise==hare then (tortoise,hare)\n"\
 "    else run_until_equal f (f tortoise) (f (f hare)) ;;\n"\
 \
 "    let rec find_mu f tortoise hare mu =\n"\
-"    if tortoise=hare then (tortoise,hare,mu)\n"\
+"    if tortoise==hare then (tortoise,hare,mu)\n"\
 "    else find_mu f (f tortoise) (f hare) (mu+1) ;;\n"\
 \
 "    let rec find_lam f tortoise hare lam = \n"\
-"    if tortoise=hare then lam else\n"\
+"    if tortoise==hare then lam else\n"\
 "    find_lam f tortoise (f hare) (lam +1) ;;\n"\
 \
 "let floyd f x0 = \n"\
@@ -456,44 +459,45 @@ TEST(Build, TortoiseAndHare_Numbers) {
 }
 
 TEST(Build, TortoiseAndHare_Simple) {
+  // should get: val floyd : ('a -> 'a) -> 'a -> int * int = <fun>
   test_build(
       floyd_algo
-      "type 'a list = | Null | Cons of 'a * 'a list;;\n"
+      R"(
+type 'a list = | Null | Cons of 'a * 'a list;;
+let list_examine_cycle l =
+  let (lam,mu) = floyd (fun Cons(_,xs) -> xs) l in
+  print_int lam; print_int mu;;
 
-      "let list_examine_cycle l = \n"
-      " let (lam,mu) = floyd (fun Cons(_,xs) -> xs) l in\n"
-      "print_int lam; print_int mu;;\n"
-
-      "let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;\n"
-
-      "list_examine_cycle c;;", {.expected_stdout = "2 4 "});
+let rec a = Cons(10,b) and b = Cons(20,a) and c = Cons (1 , Cons (2, Cons (3, Cons(4,a)) ) );;
+list_examine_cycle c;;
+)", {.expected_stdout = "2 4 "});
 }
 
 TEST(Build, SmallComparison) {
   test_build(R"(
- print_int (3 < 4);;
-    print_int (3 < 3);;
-    println_int (3 < 2);;
-)", {.expected_stdout = "1 0 0\n"});
+ print_bool (3 < 4);;
+ print_bool (3 < 3);;
+ println_bool (3 < 2);;
+)", {.expected_stdout = "true false false\n"});
 }
 
 TEST(Build, IntComparison) {
   test_build(R"(
-    print_int (3 < 4);;
-    print_int (3 < 3);;
-    println_int (3 < 2);;
+    print_bool (3 < 4);;
+    print_bool (3 < 3);;
+    println_bool (3 < 2);;
 
-    print_int (0 < (-1));;
-    print_int (0 < 0);;
-    println_int (0 < 1);;
+    print_bool (0 < (-1));;
+    print_bool (0 < 0);;
+    println_bool (0 < 1);;
 
-    print_int ((-1) < (-2));;
-    print_int ((-1) < (-1));;
-    println_int ((-1) <  0);;
+    print_bool ((-1) < (-2));;
+    print_bool ((-1) < (-1));;
+    println_bool ((-1) <  0);;
 
-    println_int ((-54) < (-53));;
+    println_bool ((-54) < (-53));;
 
-)", {.expected_stdout = "1 0 0\n0 0 1\n0 0 1\n1\n"});
+)", {.expected_stdout = "true false false\nfalse false true\nfalse false true\ntrue\n"});
 }
 
 TEST(Build, Stream) {
@@ -678,7 +682,7 @@ TEST(Build, AutoCloseFile) {
 (* Module Auto_close_file *)
 
 (* These two should be not exposed *)
-type acf_t = | Fd of int;;
+type acf_t = | Fd of file;;
 let acf_fd (Fd fd) = fd;;
 
 let acf_open path mode = (Fd (fopen path mode)) ~> (fun (Fd fd) -> fclose fd);;
@@ -716,6 +720,12 @@ TEST(Build, Time) {
   std::string exp(ctime(&t));
   exp[exp.size() - 8] = exp[exp.size() - 7] = '.';
   test_build(source, {.use_release_lib=true, .expected_stdout = ::testing::MatchesRegex(exp)});
+}
+
+TEST(Typing, Simple) {
+  test_build("let f b x = if b then (4,x) else (10,x) ;;",{});
+  test_build("let rec f n (x,y) = if n=0 then (x,y) else g (n-1) (y,x) and\n"
+             "g n (y,x) = if n=0 then (x,y) else f (n-1) (x,y) ;;",{});
 }
 
 /*

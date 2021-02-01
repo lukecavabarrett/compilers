@@ -405,6 +405,15 @@ uintptr_t _mllib_fn__int_eq(uintptr_t argv) {
   return uint_to_v(a == b ? 1 : 0);
 }
 
+uintptr_t _mllib_fn__t_phys_eq(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  uintptr_t b_v = argv_b[4];
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  uintptr_t a_v = argv_a[4];
+  decrement_value(argv);
+  return uint_to_v(a_v == b_v ? 1 : 0);
+}
+
 uintptr_t _mllib_fn__int_lt(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
@@ -457,6 +466,24 @@ uintptr_t _mllib_fn__int_println(uintptr_t argv) {
   return uint_to_v(0);
 }
 
+uintptr_t _mllib_fn__bool_println(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  if(b)printf("true\n");
+  else printf("false\n");
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
+uintptr_t _mllib_fn__bool_print(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  if(b)printf("true ");
+  else printf("false ");
+  decrement_boxed(argv);
+  return uint_to_v(0);
+}
+
 uintptr_t _mllib_fn__int_fprintln(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
@@ -466,6 +493,18 @@ uintptr_t _mllib_fn__int_fprintln(uintptr_t argv) {
   int64_t a = v_to_int(argv_a[4]);
   decrement_value((uintptr_t) argv_a);
   dprintf(a, "%ld\n", b);
+  return uint_to_v(0);
+}
+
+uintptr_t _mllib_fn__int_fprint(uintptr_t argv) {
+  uintptr_t *argv_b = (uintptr_t *) argv;
+  int64_t b = v_to_int(argv_b[4]);
+  uintptr_t *argv_a = (uintptr_t *) argv_b[2];
+  increment_value((uintptr_t) argv_a);
+  decrement_value((uintptr_t) argv_b);
+  int64_t a = v_to_int(argv_a[4]);
+  decrement_value((uintptr_t) argv_a);
+  dprintf(a, "%ld ", b);
   return uint_to_v(0);
 }
 

@@ -282,6 +282,7 @@ std::string_view make_binary_op(token t) {
     case LESS_EQUAL_THAN:return "__binary_op__LESS_EQUAL_THAN__";
     case GREATER_THAN:return "__binary_op__GREATER_THAN__";
     case GREATER_EQUAL_THAN:return "__binary_op__GREATER_EQUAL_THAN__";
+    case PHYS_EQUAL:return "__binary_op__PHYS_EQUAL__";
     default: throw parse::error::report_token(t.sv, "", " is not a recognized infix binary operator");
   }
 }
@@ -315,7 +316,7 @@ ptr make_fun_app(ptr &&f, ptr &&x, token t) {
 ptr parse_e_a(tokenizer &tk) {
 
   using namespace patterns;
-  return parse_fold_r<make_infix_app, tk_sep<EQUAL, NOT_EQUAL>,
+  return parse_fold_r<make_infix_app, tk_sep<EQUAL, NOT_EQUAL, PHYS_EQUAL, NOT_PHYS_EQUAL>,
                       parse_fold_r<make_infix_app, tk_sep<LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN>,
                                    parse_fold_l<make_fun_app, tk_sep<PIPE_LEFT>,
                                                 parse_fold_r<make_rev_fun_app, tk_sep<PIPE_RIGHT>,

@@ -49,15 +49,7 @@ PE = possibly empty
   A program that typechecks will assign poly-typeexpr to all the global universal_matchers
 */
 namespace util {
-template<typename V>
-// recursion-ender
-void multi_emplace(std::vector<V> &vec) {}
 
-template<typename V, typename T1, typename... Types>
-void multi_emplace(std::vector<V> &vec, T1 &&t1, Types &&... args) {
-  vec.emplace_back(std::move(t1));
-  multi_emplace(vec, args...);
-}
 }
 //declaration of structs
 namespace type_function {

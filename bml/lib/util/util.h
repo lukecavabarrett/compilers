@@ -55,6 +55,16 @@ private:
   formatter &operator=(formatter &);
 };
 
+template<typename V>
+// recursion-ender
+void multi_emplace(std::vector<V> &vec) {}
+
+template<typename V, typename T1, typename... Types>
+void multi_emplace(std::vector<V> &vec, T1 &&t1, Types &&... args) {
+  vec.emplace_back(std::move(t1));
+  multi_emplace(vec, args...);
+}
+
 template<typename... T>
 constexpr auto make_array(T &&... values) ->
 std::array<

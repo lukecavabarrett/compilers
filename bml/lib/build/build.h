@@ -3,7 +3,7 @@
 
 #include <parse/parse.h>
 
-void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_map &m);
+void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_names_map &m);
 
 struct build_params {
   std::ostream& print_ir;

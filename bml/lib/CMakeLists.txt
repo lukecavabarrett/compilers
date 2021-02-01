@@ -28,7 +28,7 @@ add_subdirectory(rt)
 add_subdirectory(build)
 
 
-add_library(libbml STATIC bind.cc)
+add_library(libbml STATIC empty.cc)
 target_link_libraries(libbml PRIVATE util build)
 
 target_include_directories(libbml

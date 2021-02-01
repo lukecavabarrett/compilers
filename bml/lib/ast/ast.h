@@ -189,7 +189,23 @@ struct t;
 typedef std::unique_ptr<t> ptr;
 }
 
-typedef std::unordered_map<std::string_view, matcher::universal *> global_map;
+typedef std::unordered_map<std::string_view, matcher::universal *> global_names_map;
+typedef std::unordered_map<const matcher::universal *, ::type::expression::t > global_types_map;
+typedef std::unordered_map<const matcher::universal *, ::type::arena::idx_t > local_types_map;
+struct tc_section {
+  const global_types_map& global;
+  local_types_map& local;
+  ::type::arena& arena;
+  typedef ::type::arena::idx_t idx_t;
+};
+struct tr_section {
+  const global_types_map& global;
+  local_types_map& local;
+  ::type::arena& arena;
+  bool verbose;
+  std::ostream& os;
+  typedef ::type::arena::idx_t idx_t;
+};
 typedef std::forward_list<expression::identifier *> usage_list;
 typedef std::unordered_map<std::string_view, usage_list> free_vars_t;
 typedef std::unordered_set<const matcher::universal *> capture_set;
@@ -202,6 +218,8 @@ struct t : public locable, public texp_of_t {
   virtual capture_set capture_group() = 0; // computes the set of non-global universal_macthers free in e
   virtual ir::lang::var ir_compile(ir_sections_t) = 0; // generate ir code, returning the var containing the result
   virtual void bind(const ::type::constr_map &) = 0;
+  virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
+
 };
 
 struct literal : public t {
@@ -213,6 +231,7 @@ struct literal : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final {}
 TO_TEXP(value);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
 };
 
 struct identifier : public t {
@@ -225,6 +244,7 @@ struct identifier : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final;
 TO_TEXP(name);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
 };
 
 struct constructor : public t {
@@ -238,6 +258,8 @@ struct constructor : public t {
   ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d) const;
   void bind(const constr_map &cm) final;
 TO_TEXP(name, arg);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct if_then_else : public t {
@@ -248,6 +270,8 @@ struct if_then_else : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
 TO_TEXP(condition, true_branch, false_branch);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct tuple : public t {
@@ -260,6 +284,8 @@ struct tuple : public t {
   ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d);
   void bind(const constr_map &cm) final;
 TO_TEXP(args);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct fun_app : public t {
@@ -270,6 +296,8 @@ struct fun_app : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
 TO_TEXP(f, x);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct destroy : public t {
@@ -280,6 +308,8 @@ struct destroy : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
 TO_TEXP(obj, d);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct seq : public t {
@@ -290,6 +320,8 @@ struct seq : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
 TO_TEXP(a, b);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct match_with : public t {
@@ -308,6 +340,8 @@ struct match_with : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
 TO_TEXP(what, branches);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct let_in : public t {
@@ -319,6 +353,8 @@ struct let_in : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
 TO_TEXP(d, e);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 struct fun : public t {
@@ -335,6 +371,8 @@ struct fun : public t {
   size_t capture_index(const matcher::universal *m) const;
 TO_TEXP(args, body);
   std::string ir_compile_global(ir_sections_t s);
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 };
 
 }
@@ -345,11 +383,13 @@ struct t : public locable, texp_of_t {
   virtual void bind(free_vars_t &) = 0;
   virtual void bind(capture_set &) = 0;
   virtual void bind(const constr_map &) = 0;
-  virtual void ir_globally_register(global_map &) = 0;
+  virtual void ir_globally_register(global_names_map &) = 0;
   virtual void ir_allocate_global_value(std::ostream &os) = 0;
   virtual void ir_global_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on globals
   virtual void ir_locally_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on locals
   virtual ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) = 0;
+  virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
+  virtual std::list<const universal*> universals() const = 0;
 };
 struct universal : public t {
   typedef std::unique_ptr<universal> ptr;
@@ -372,7 +412,7 @@ struct universal : public t {
 
   std::ostream &print(std::ostream &os) const final { return os << name; }
 
-  void ir_globally_register(global_map &m) final;
+  void ir_globally_register(global_names_map &m) final;
   void ir_allocate_global_value(std::ostream &os) final;
   void ir_allocate_global_tuple(std::ostream &os, size_t tuple_size);
 
@@ -386,6 +426,9 @@ struct universal : public t {
 TO_TEXP(name)
   void ir_allocate_globally_funblock(std::ostream &os, size_t n_args, std::string_view text_ptr);
   ir::var ir_evaluate_global(ir::scope &s) const;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+  std::list<const universal*> universals() const final;
+
 };
 
 struct ignore : public t {
@@ -395,10 +438,13 @@ struct ignore : public t {
   void bind(capture_set &cs) final;
   void bind(const constr_map &cm) final;
   void ir_allocate_global_value(std::ostream &os) final;
-  void ir_globally_register(global_map &m) final;
+  void ir_globally_register(global_names_map &m) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var) final {}
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final { return s.declare_constant(3); }
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+  std::list<const universal*> universals() const final;
+
 TO_TEXP_EMPTY()
 };
 
@@ -414,12 +460,15 @@ struct constructor : public t {
   }
   void bind(free_vars_t &fv) final;
   void bind(capture_set &cs) final;
-  void ir_globally_register(global_map &m) final;
+  void ir_globally_register(global_names_map &m) final;
   void bind(const constr_map &cm) final;
   void ir_allocate_global_value(std::ostream &os) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var) final;
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+  std::list<const universal*> universals() const final;
+
 TO_TEXP(cons, arg);
 };
 
@@ -434,11 +483,14 @@ struct literal : public t {
   void bind(free_vars_t &fv) final {}
   void bind(capture_set &cs) final {}
   void bind(const constr_map &cm) final {}
-  void ir_globally_register(global_map &m) final {}
+  void ir_globally_register(global_names_map &m) final {}
   void ir_allocate_global_value(std::ostream &os) final {}
   void ir_global_unroll(ir::scope &s, ir::lang::var) final {}
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+  std::list<const universal*> universals() const final;
+
 TO_TEXP(value);
 };
 
@@ -451,10 +503,13 @@ struct tuple : public t {
   std::ostream &print(std::ostream &os) const final;
 
   void ir_allocate_global_value(std::ostream &os) final;
-  void ir_globally_register(global_map &m) final;
+  void ir_globally_register(global_names_map &m) final;
   void ir_global_unroll(ir::scope &s, ir::lang::var) final;
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
   ir::lang::var ir_test_unroll(ir::scope &main, ir::lang::var v) final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+  std::list<const universal*> universals() const final;
+
 TO_TEXP(args);
 };
 
@@ -465,12 +520,14 @@ struct t : public texp_of_t {
   virtual ~t() = default;
   virtual uint64_t to_value() const = 0;
   virtual ir::lang::var ir_compile(ir_sections_t) const = 0;
+  virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
 };
 struct integer : public t {
   int64_t value;
   integer(int64_t value) : value(value) {}
   uint64_t to_value() const final;
   ir::lang::var ir_compile(ir_sections_t) const final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
 TO_TEXP(value)
 };
 struct boolean : public t {
@@ -478,12 +535,15 @@ struct boolean : public t {
   boolean(bool value) : value(value) {}
   uint64_t to_value() const final;
   ir::lang::var ir_compile(ir_sections_t) const final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
 TO_TEXP(value)
 };
 struct unit : public t {
   unit() {}
   uint64_t to_value() const final { return 1; }
   ir::lang::var ir_compile(ir_sections_t) const final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 TO_TEXP_EMPTY()
 };
 struct string : public t {
@@ -492,6 +552,8 @@ struct string : public t {
   string(std::string &&value) : value(std::move(value)) {}
   uint64_t to_value() const final;
   ir::lang::var ir_compile(ir_sections_t) const final;
+  tc_section::idx_t typecheck(tc_section tcs) const final;
+
 TO_TEXP(value)
 };
 }
@@ -507,6 +569,8 @@ struct def : public texp_of_t {
   bool is_constr() const;
   bool is_tuple() const;
   bool is_single_name() const;
+  void typecheck(tc_section tcs) const;
+
 TO_TEXP(name, e);
 };
 struct t : public locable, public texp_of_t {
@@ -518,8 +582,7 @@ struct t : public locable, public texp_of_t {
 
   void ir_compile_global(ir_sections_t s);
   void ir_compile_locally(ir_sections_t s);
-  void compile_global(direct_sections_t s);
-  size_t compile_locally(direct_sections_t s, size_t stack_pos);
+  void typecheck(tc_section tcs) const;
 
   void bind(const constr_map &cm);
 

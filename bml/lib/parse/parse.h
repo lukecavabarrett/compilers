@@ -12,7 +12,7 @@
 
 namespace parse {
 enum token_type {
-  LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE,
+  LITERAL, IDENTIFIER, CAP_NAME, PARENS_OPEN, PARENS_CLOSE, PHYS_EQUAL, NOT_PHYS_EQUAL,
   EQUAL, PIPE, ARROW, PLUS, MINUS, EOC, LET, REC, IN, AND, WITH, MATCH, FUN,
   COMMA, COLON, SEMICOLON, DOT, IF, THEN, ELSE, TRUE, FALSE, UNDERSCORE,
   LESS_THAN, GREATER_THAN, LESS_EQUAL_THAN, GREATER_EQUAL_THAN, STAR, SLASH,
@@ -49,9 +49,9 @@ namespace {
 typedef std::pair<std::string_view, token_type> st;
 }
 constexpr auto tokens_map = util::make_array(
-    st{"(", PARENS_OPEN},
-    st{")", PARENS_CLOSE},
+    st{"(", PARENS_OPEN},st{")", PARENS_CLOSE},
     st{"<|", PIPE_LEFT}, st{"|>", PIPE_RIGHT},
+    st{"==",PHYS_EQUAL},st{"!==",NOT_PHYS_EQUAL},
     st{"=", EQUAL}, st{"|", PIPE},
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},

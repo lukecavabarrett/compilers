@@ -2,8 +2,6 @@
     We don't have modules yet, so we'll just prepend
   acf_ to the functions of this "module" for clarity.*)
 
-type file = int;;
-type time = int;;
 
 (*Module Auto_close_file *)
 
