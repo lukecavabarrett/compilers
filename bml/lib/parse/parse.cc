@@ -703,7 +703,7 @@ ptr parse(tokenizer &tk) {
         params.push_back(std::make_unique<param>(dynamic_cast<expression::identifier *>(c->x.get())->name));
       } else if (dynamic_cast<expression::tuple *>(c->x.get())) {
         for (expression::ptr &t : dynamic_cast<expression::tuple *>(c->x.get())->ts) {
-          if (expression::identifier *i = dynamic_cast<expression::identifier *>(m.get()); i == nullptr) {
+          if (expression::identifier *i = dynamic_cast<expression::identifier *>(t.get()); i == nullptr) {
             THROW_UNIMPLEMENTED
             //TODO: throw exception "not allowed"
           } else params.push_back(std::make_unique<param>(i->name));

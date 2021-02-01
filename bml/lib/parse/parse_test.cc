@@ -162,8 +162,8 @@ TEST_PARSE_TYPE_DECL("type 'a or_error = ('a,error) result ",
 TEST_PARSE_TYPE_DECL("type ('a,'b) tree = ('a,'b) result ",
                      "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_texpr{name : 'tree',  type : ast::type::expression::application{x : ast::type::expression::tuple{ts : [ast::type::expression::identifier{name : ''a'}, ast::type::expression::identifier{name : ''b'}]},  f : ast::type::expression::identifier{name : 'result'}}}]}"
 );
-TEST_PARSE_TYPE_DECL("type ('a,'b) result = | Okay of 'a | Error of 'b ",
-                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_variant{name : 'result',  variants : [ast::type::definition::single_variant::constr{name : 'Okay',  args : [ast::type::expression::identifier{name : ''a'}]}, ast::type::definition::single_variant::constr{name : 'Error',  args : [ast::type::expression::identifier{name : ''b'}]}]}]}"
+TEST_PARSE_TYPE_DECL("type ('a,'err) result = | Ok of 'a | Error of 'err ",
+                     "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_variant{name : 'result',  variants : [ast::type::definition::single_variant::constr{name : 'Ok',  args : [ast::type::expression::identifier{name : ''a'}]}, ast::type::definition::single_variant::constr{name : 'Error',  args : [ast::type::expression::identifier{name : ''err'}]}]}]}"
 );
 
 TEST_PARSE_EXPRESSION_EQUAL("4*5+27","(4*5)+27");
