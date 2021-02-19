@@ -45,15 +45,15 @@ std::pair<ast::global_names_map, ast::global_types_map> make_ir_data_section(std
   register("_mllib_fn__int_div", 2, "__binary_op__SLASH__", iii);
   register("_mllib_fn__int_neg", 1, "__unary_op__MINUS__", ii);
   register("_mllib_fn__int_eq", 2, "__binary_op__EQUAL__", iib);
-  register("_mllib_fn__t_phys_eq", 2, "__binary_op__PHYS_EQUAL__", tf_fun(_a,tf_fun(_a,tf_bool)));
+  register("_mllib_fn__t_phys_eq", 2, "__binary_op__PHYS_EQUAL__", tf_fun(_a, tf_fun(_a, tf_bool)));
   register("_mllib_fn__int_lt", 2, "__binary_op__LESS_THAN__", iib);
   register("_mllib_fn__int_leq", 2, "__binary_op__LESS_EQUAL_THAN__", iib);
   register("_mllib_fn__int_gt", 2, "__binary_op__GREATER_THAN__", iib);
   register("_mllib_fn__int_geq", 2, "__binary_op__GREATER_EQUAL_THAN__", iib);
   register("_mllib_fn__int_print", 1, "print_int", iu);
   register("_mllib_fn__int_println", 1, "println_int", iu);
-  register("_mllib_fn__bool_print", 1, "print_bool", tf_fun(tf_bool,tf_unit));
-  register("_mllib_fn__bool_println", 1, "println_bool", tf_fun(tf_bool,tf_unit));
+  register("_mllib_fn__bool_print", 1, "print_bool", tf_fun(tf_bool, tf_unit));
+  register("_mllib_fn__bool_println", 1, "println_bool", tf_fun(tf_bool, tf_unit));
   register("_mllib_fn__int_fprintln", 2, "fprintln_int", tf_fun(tf_file, iu));
   register("_mllib_fn__int_fprint", 2, "fprint_int", tf_fun(tf_file, iu));
   register("_mllib_fn__int_scan", 1, "scan_int", tf_fun(tf_unit, tf_int));
@@ -178,28 +178,30 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
     if (tk.peek() == parse::LET) {
       //value definition
       try {
-        auto def = ast::definition::parse(tk);
+        auto d = ast::definition::parse(tk);
         tk.expect_pop(parse::EOC);
-        def->bind(constr_map);
-        ast::free_vars_t fv = def->free_vars();
+        d->bind(constr_map);
+        ast::free_vars_t fv = d->free_vars();
         resolve_global_free_vars(std::move(fv), global_names);
-        for (auto &def : def->defs)def.name->ir_globally_register(global_names);
-        auto cg = def->capture_group();
+        for (auto &def : d->defs)def.name->ir_globally_register(global_names);
+        auto cg = d->capture_group();
         assert(cg.empty());
         ast::local_types_map local_types;
         type::arena arena;
-        def->typecheck(ast::tc_section{global_types, local_types, arena});
-        for(auto& [m,id] : local_types)if(m->top_level){
+        d->typecheck(ast::tc_section{global_types, local_types, arena});
+        for (auto&[m, id] : local_types)
+          if (m->top_level) {
             auto t = arena.to_typeexpr(id);
             t.poly_normalize();
             std::cout << m->name << " : " << t << std::endl;
-            global_types.try_emplace(m,std::move(t));
-        }
-        def->ir_compile_global(ir_sections_t(target, std::back_inserter(functions), main));
-        defs.push_back(std::move(def));
-      } catch (const util::error::message &e) {
-        e.print(std::cout, s, "source.ml");
-        throw std::runtime_error("compilation error");
+            global_types.try_emplace(m, std::move(t));
+          }
+        d->ir_compile_global(ir_sections_t(target, std::back_inserter(functions), main));
+        defs.push_back(std::move(d));
+      } catch (util::message::base &e) {
+        e.link_file(s, filename);
+        e.print(std::cout);
+        throw;
       }
     } else if (tk.peek() == parse::TYPE) {
       //type definition
@@ -207,9 +209,10 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
         auto tp = ast::type::definition::parse(tk);
         tk.expect_pop(parse::EOC);
         record_typedef(constr_map, variants, type_map, std::move(tp));
-      } catch (const util::error::message &e) {
-        e.print(std::cout, s, "source.ml");
-        throw std::runtime_error("compilation error");
+      } catch (util::message::base &e) {
+        e.link_file(s, filename);
+        e.print(std::cout);
+        throw;
       }
     } else {
       //expression
@@ -228,9 +231,10 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
         std::cout << " - : " << t << std::endl;
         e->ir_compile(ir_sections_t(target, std::back_inserter(functions), main));
 
-      } catch (const util::error::message &e) {
-        e.print(std::cout, s, "source.ml");
-        throw std::runtime_error("compilation error");
+      } catch (util::message::base &e) {
+        e.link_file(s, filename);
+        e.print(std::cout);
+        throw;
       }
     }
   }
@@ -250,7 +254,7 @@ void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_names_map
       for (auto id : usages)id->definition_point = it->second;
       it->second->usages.merge(std::move(usages));
     } else
-      throw ast::unbound_value((*std::min_element(usages.begin(),
+      throw ast::error::unbound_value((*std::min_element(usages.begin(),
                                                   usages.end(),
                                                   [](const auto &i1, const auto &i2) {
                                                     return i1->loc.begin() < i2->loc.begin();

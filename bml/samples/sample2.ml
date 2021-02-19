@@ -1,4 +1,3 @@
-
 (* IDEA2 *)
 
 type alive_file = | Fd of file;;
@@ -29,7 +28,7 @@ let rec play_fib logger =
     play_fib logger;;
 
 
-acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> tee play_fib;;
+acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> play_fib;;
 (* EXAMPLE result in log.txt:
 
 Mon Feb  1 00:55:54 2021

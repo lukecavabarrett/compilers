@@ -2,7 +2,7 @@
 
 namespace util {
 std::string_view itr_sv(std::string_view::iterator begin, std::string_view::iterator end) {
-  return std::string_view(begin, end - begin);
+  return std::string_view(begin, std::max<long>(end - begin,0));
 }
 
 std::string load_file(std::string_view path) {

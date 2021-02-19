@@ -26,24 +26,30 @@ std::string_view unite_sv(const P1 &p1, const P2 &p2) {
 
 }
 
-namespace {
-
-class unbound_value : public std::runtime_error, public util::error::report_token_error {
+namespace error {
+class base : public std::runtime_error {
+public:
+  base() : std::runtime_error("ast::error") {}
+};
+class unbound_value : public base, public util::message::error_token {
 public:
   unbound_value(std::string_view value)
-      : std::runtime_error("name-resolving error"),
-        util::error::report_token_error("Error: Unbound value ",
-                                        value,
-                                        "; maybe you forget a rec or you mispelt something.") {}
+      : util::message::error_token(value) {}
+  void describe(std::ostream &os) const {
+    os << "unbound value  " << util::message::style::bold << token << util::message::style::clear
+       << " (maybe you forget a rec or you mispelt something) ";
+  }
 };
 
-class unbound_constructor : public std::runtime_error, public util::error::report_token_error {
+class unbound_constructor : public base, public util::message::error_token {
 public:
   unbound_constructor(std::string_view value)
-      : std::runtime_error("name-resolving error"),
-        util::error::report_token_error("Error: Unbound constructor ", value, "; maybe you mispelt something.") {}
+      : util::message::error_token(value) {}
+  void describe(std::ostream &os) const {
+    os << "unbound constructor  " << util::message::style::bold << token << util::message::style::clear;
+  }
 };
-
+/*
 class constructor_shouldnt_take_arg : public std::runtime_error, public util::error::report_token_error {
 public:
   constructor_shouldnt_take_arg(std::string_view value)
@@ -57,7 +63,7 @@ public:
       : std::runtime_error("name-resolving error"),
         util::error::report_token_error("Error: Constructor ", value, "; should have an arg") {}
 };
-
+*/
 }
 
 struct locable {
@@ -72,7 +78,8 @@ namespace type {
 namespace expression {
 
 struct t : public locable, public texp_of_t {
-  virtual ::type::expression::t to_type(const std::unordered_map<std::string_view,size_t>& vars_map,const ::type::type_map &type_map) const = 0;
+  virtual ::type::expression::t to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                        const ::type::type_map &type_map) const = 0;
 };
 typedef std::unique_ptr<t> ptr;
 
@@ -80,13 +87,15 @@ struct identifier : public t {
   typedef std::unique_ptr<identifier> ptr;
   std::string_view name;
   identifier(std::string_view s) : name(s) {}
-  ::type::expression::t to_type(const std::unordered_map<std::string_view,size_t>& vars_map,const ::type::type_map &type_map) const final;
+  ::type::expression::t to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                const ::type::type_map &type_map) const final;
 TO_TEXP(name);
 }; //e.g. 'a or int
 struct function : public t {
   ptr from, to;
   function(ptr &&f, ptr &&x) : from(std::move(f)), to(std::move(x)) { loc = unite_sv(from, to); }
-  ::type::expression::t to_type(const std::unordered_map<std::string_view,size_t>& vars_map,const ::type::type_map &type_map) const final;
+  ::type::expression::t to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                const ::type::type_map &type_map) const final;
 TO_TEXP(from, to);
 };
 struct product : public t {
@@ -94,7 +103,8 @@ struct product : public t {
 
   std::vector<expression::ptr> ts; //size>=2
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
-  ::type::expression::t to_type(const std::unordered_map<std::string_view,size_t>& vars_map,const ::type::type_map &type_map) const final;
+  ::type::expression::t to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                const ::type::type_map &type_map) const final;
 
 TO_TEXP(ts);
 };
@@ -104,15 +114,20 @@ struct tuple : public t {
   std::vector<expression::ptr> ts; //size>=2
   tuple(expression::ptr &&x) { ts.push_back(std::move(x)); }
   //void set_loc() {loc = itr_sv(ts.front()->loc.begin(),ts.back()->loc.end());}
-  ::type::expression::t to_type(const std::unordered_map<std::string_view,size_t>& vars_map,const ::type::type_map &type_map) const final;
+  ::type::expression::t to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                const ::type::type_map &type_map) const final;
 
 TO_TEXP(ts);
 }; //not really a valid type-expression per se, but used in construction
 struct application : public t {
   ptr x;
   identifier::ptr f;
-  application(ptr &&xx, identifier::ptr &&ff) : x(std::move(xx)), f(std::move(ff)) { loc = itr_sv(x->loc.begin(), f->loc.end()); }
-  ::type::expression::t to_type(const std::unordered_map<std::string_view,size_t>& vars_map,const ::type::type_map &type_map) const final;
+  application(ptr &&xx, identifier::ptr &&ff) : x(std::move(xx)), f(std::move(ff)) {
+    loc = itr_sv(x->loc.begin(),
+                 f->loc.end());
+  }
+  ::type::expression::t to_type(const std::unordered_map<std::string_view, size_t> &vars_map,
+                                const ::type::type_map &type_map) const final;
 
 TO_TEXP(x, f)
 };
@@ -190,20 +205,20 @@ typedef std::unique_ptr<t> ptr;
 }
 
 typedef std::unordered_map<std::string_view, matcher::universal *> global_names_map;
-typedef std::unordered_map<const matcher::universal *, ::type::expression::t > global_types_map;
-typedef std::unordered_map<const matcher::universal *, ::type::arena::idx_t > local_types_map;
+typedef std::unordered_map<const matcher::universal *, ::type::expression::t> global_types_map;
+typedef std::unordered_map<const matcher::universal *, ::type::arena::idx_t> local_types_map;
 struct tc_section {
-  const global_types_map& global;
-  local_types_map& local;
-  ::type::arena& arena;
+  const global_types_map &global;
+  local_types_map &local;
+  ::type::arena &arena;
   typedef ::type::arena::idx_t idx_t;
 };
 struct tr_section {
-  const global_types_map& global;
-  local_types_map& local;
-  ::type::arena& arena;
+  const global_types_map &global;
+  local_types_map &local;
+  ::type::arena &arena;
   bool verbose;
-  std::ostream& os;
+  std::ostream &os;
   typedef ::type::arena::idx_t idx_t;
 };
 typedef std::forward_list<expression::identifier *> usage_list;
@@ -218,6 +233,7 @@ struct t : public locable, public texp_of_t {
   virtual capture_set capture_group() = 0; // computes the set of non-global universal_macthers free in e
   virtual ir::lang::var ir_compile(ir_sections_t) = 0; // generate ir code, returning the var containing the result
   virtual void bind(const ::type::constr_map &) = 0;
+  virtual bool is_constexpr() const = 0;
   virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
 
 };
@@ -230,8 +246,9 @@ struct literal : public t {
   capture_set capture_group() final;;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final {}
-TO_TEXP(value);
   tc_section::idx_t typecheck(tc_section tcs) const final;
+  bool is_constexpr() const final { return true; }
+TO_TEXP(value);
 };
 
 struct identifier : public t {
@@ -243,6 +260,7 @@ struct identifier : public t {
   std::string_view name;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &) final;
+  bool is_constexpr() const final { return true; }
 TO_TEXP(name);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 };
@@ -253,10 +271,11 @@ struct constructor : public t {
   explicit constructor(std::string_view n);
   std::string_view name;
   ptr arg; // either null, an expression, a_tuple
-  const ::type::function::variant::constr * definition_point;
+  const ::type::function::variant::constr *definition_point;
   ir::lang::var ir_compile(ir_sections_t) final;
   ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d) const;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final { return arg ? arg->is_constexpr() : true; }
 TO_TEXP(name, arg);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -269,6 +288,9 @@ struct if_then_else : public t {
   capture_set capture_group() final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final {
+    return condition->is_constexpr() && true_branch->is_constexpr() && false_branch->is_constexpr();
+  }
 TO_TEXP(condition, true_branch, false_branch);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -283,6 +305,12 @@ struct tuple : public t {
   ir::lang::var ir_compile(ir_sections_t) final;
   ir::lang::var ir_compile_with_destructor(ir_sections_t, ir::lang::var d);
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final {
+    return std::all_of(args.begin(),
+                       args.end(),
+                       [](const auto &p) { return p->is_constexpr(); });
+  }
+
 TO_TEXP(args);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -295,6 +323,8 @@ struct fun_app : public t {
   capture_set capture_group() final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final { return false; }
+
 TO_TEXP(f, x);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -307,6 +337,8 @@ struct destroy : public t {
   capture_set capture_group() final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final { return false; }
+
 TO_TEXP(obj, d);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -319,6 +351,8 @@ struct seq : public t {
   capture_set capture_group() final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final { return a->is_constexpr() && b->is_constexpr(); }
+
 TO_TEXP(a, b);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -339,6 +373,8 @@ struct match_with : public t {
   capture_set capture_group() final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final { return false; }
+
 TO_TEXP(what, branches);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -348,10 +384,11 @@ struct let_in : public t {
   definition::ptr d;
   expression::ptr e;
   let_in(definition::ptr &&d, expression::ptr &&e) : d(std::move(d)), e(std::move(e)) {}
-  free_vars_t free_vars() final;;
-  capture_set capture_group() final;;
+  free_vars_t free_vars() final;
+  capture_set capture_group() final;
   ir::lang::var ir_compile(ir_sections_t) final;
   void bind(const constr_map &cm) final;
+  bool is_constexpr() const final { return false; }
 TO_TEXP(d, e);
   tc_section::idx_t typecheck(tc_section tcs) const final;
 
@@ -369,6 +406,7 @@ struct fun : public t {
   void bind(const constr_map &cm) final;
   bool is_capturing(const matcher::universal *m) const;
   size_t capture_index(const matcher::universal *m) const;
+  bool is_constexpr() const final { return true; }
 TO_TEXP(args, body);
   std::string ir_compile_global(ir_sections_t s);
   tc_section::idx_t typecheck(tc_section tcs) const final;
@@ -389,7 +427,7 @@ struct t : public locable, texp_of_t {
   virtual void ir_locally_unroll(ir::scope &s, ir::lang::var v) = 0; // match value in v, unrolling on locals
   virtual ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) = 0;
   virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
-  virtual std::list<const universal*> universals() const = 0;
+  virtual std::list<const universal *> universals() const = 0;
 };
 struct universal : public t {
   typedef std::unique_ptr<universal> ptr;
@@ -427,7 +465,7 @@ TO_TEXP(name)
   void ir_allocate_globally_funblock(std::ostream &os, size_t n_args, std::string_view text_ptr);
   ir::var ir_evaluate_global(ir::scope &s) const;
   tc_section::idx_t typecheck(tc_section tcs) const final;
-  std::list<const universal*> universals() const final;
+  std::list<const universal *> universals() const final;
 
 };
 
@@ -443,7 +481,7 @@ struct ignore : public t {
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final { return s.declare_constant(3); }
   tc_section::idx_t typecheck(tc_section tcs) const final;
-  std::list<const universal*> universals() const final;
+  std::list<const universal *> universals() const final;
 
 TO_TEXP_EMPTY()
 };
@@ -467,7 +505,7 @@ struct constructor : public t {
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
   tc_section::idx_t typecheck(tc_section tcs) const final;
-  std::list<const universal*> universals() const final;
+  std::list<const universal *> universals() const final;
 
 TO_TEXP(cons, arg);
 };
@@ -489,7 +527,7 @@ struct literal : public t {
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final {}
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
   tc_section::idx_t typecheck(tc_section tcs) const final;
-  std::list<const universal*> universals() const final;
+  std::list<const universal *> universals() const final;
 
 TO_TEXP(value);
 };
@@ -508,7 +546,7 @@ struct tuple : public t {
   void ir_locally_unroll(ir::scope &s, ir::lang::var v) final;
   ir::lang::var ir_test_unroll(ir::scope &main, ir::lang::var v) final;
   tc_section::idx_t typecheck(tc_section tcs) const final;
-  std::list<const universal*> universals() const final;
+  std::list<const universal *> universals() const final;
 
 TO_TEXP(args);
 };

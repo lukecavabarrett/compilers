@@ -56,7 +56,7 @@ void if_then_else::bind(const constr_map &cm) {
 }
 void constructor::bind(const constr_map &cm) {
   if (auto it = cm.find(name); it == cm.end()) {
-    throw ast::unbound_constructor(name);
+    throw ast::error::unbound_constructor(name);
   } else {
     definition_point = it->second;
     if (arg)arg->bind(cm);
@@ -704,7 +704,7 @@ namespace matcher {
 void universal::bind(const constr_map &cm) {}
 void constructor::bind(const constr_map &cm) {
   if (auto it = cm.find(cons); it == cm.end()) {
-    throw ast::unbound_constructor(cons);
+    throw ast::error::unbound_constructor(cons);
   } else {
     definition_point = it->second;
   }

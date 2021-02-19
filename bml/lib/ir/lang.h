@@ -355,28 +355,51 @@ enum token_type {
 };
 
 namespace error {
-class t : public std::runtime_error {
+class t : public std::runtime_error, public virtual util::message::base {
 public:
-  t() : std::runtime_error("parsing error") {}
+  t() : std::runtime_error("ir::parse::error") {}
 };
 
-class report_token : public t, public util::error::report_token_error {
-public:
-  report_token(std::string_view found, std::string_view before, std::string_view after)
-      : util::error::report_token_error(before, found, after) {}
 
+struct cannot_parse_anymore : public t, public util::message::error_token {
+  cannot_parse_anymore(std::string_view filename,
+                       std::string_view file) : util::message::error_token(std::string_view(file.end(), 0),
+                                                                           file,
+                                                                           filename) {}
+  void describe(std::ostream &os) const {
+    os << "cannot parse anymore";
+  }
 };
 
-class unexpected_token : public t, public util::error::report_token_error {
-public:
-  unexpected_token(std::string_view found) : util::error::report_token_error("Token", found, "was not expected here") {}
-
+struct unexpected_token : public t, public util::message::error_token {
+  unexpected_token(std::string_view filename,
+                   std::string_view file,
+                   std::string_view found) : util::message::error_token(found, file, filename) {}
+  void describe(std::ostream &os) const {
+    os << "token " << util::message::style::bold << token << util::message::style::clear << "was not expected here.";
+  }
 };
 
-class expected_token_found_another : public t, public util::error::report_token_error {
+struct expected_token_found_another : public t, public util::message::error_token {
 public:
-  expected_token_found_another(std::string_view expected, std::string_view found)
-      : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
+  std::string_view expected;
+  expected_token_found_another(std::string_view filename,
+                               std::string_view file,
+                               std::string_view expected,
+                               std::string_view found)
+      : util::message::error_token(found, file, filename), expected(expected) {}
+  void describe(std::ostream &os) const {
+    os << "token " << util::message::style::bold << expected << util::message::style::clear << ", but "
+       << util::message::style::bold << token << util::message::style::clear << " was found";
+  }
+};
+
+struct custom_msg : public t, public util::message::error_report_token_front_back {
+  custom_msg(std::string_view front, std::string_view token, std::string_view back,
+             std::string_view file, std::string_view filename) : util::message::error_report_token_front_back(front,
+                                                                                                              token,
+                                                                                                              back,
+                                                                                                              file,filename) {}
 };
 }
 

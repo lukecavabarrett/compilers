@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <charconv>
 #include <iostream>
-#include "util/util.h"
+#include <util/util.h>
 #include <util/message.h>
 
 namespace parse {
@@ -22,36 +22,63 @@ enum token_type {
 namespace error {
 class t : public std::runtime_error {
 public:
-  t() : std::runtime_error("parsing error") {}
+  t() : std::runtime_error("ast::parse::error") {}
 };
 
-class report_token : public t, public util::error::report_token_error {
+template<typename Style>
+struct style_token : public t, public util::message::report_token_front_back<Style> {
+  style_token(std::string_view front, std::string_view token, std::string_view back,
+              std::string_view file, std::string_view filename) : util::message::report_token_front_back<Style>(front,
+                                                                                                                token,
+                                                                                                                back,
+                                                                                                                file,
+                                                                                                                filename) {}
+  style_token(std::string_view front, std::string_view token, std::string_view back)
+      : util::message::report_token_front_back<Style>(front,
+                                                      token,
+                                                      back,
+                                                      "",
+                                                      "") {}
+};
+
+typedef style_token<util::message::style::error> report_token;
+typedef style_token<util::message::style::note> note_token;
+
+struct unexpected_token : public t, public util::message::error_token {
+  unexpected_token(std::string_view filename,
+                   std::string_view file,
+                   std::string_view found) : util::message::error_token(found, file, filename) {}
+  void describe(std::ostream &os) const {
+    os << "token " << util::message::style::bold << token << util::message::style::clear << "was not expected here.";
+  }
+};
+
+struct expected_token_found_another : public t, public util::message::error_token {
 public:
-  report_token(std::string_view found, std::string_view before, std::string_view after)
-      : util::error::report_token_error(before, found, after) {}
-
+  std::string_view expected;
+  expected_token_found_another(std::string_view expected,
+                               std::string_view found)
+      : util::message::error_token(found, "", ""), expected(expected) {}
+  void describe(std::ostream &os) const {
+    os << "token " << util::message::style::bold << expected << util::message::style::clear << " was expected, but "
+       << util::message::style::bold << token << util::message::style::clear << " was found";
+  }
 };
 
-class unexpected_token : public t, public util::error::report_token_error {
-public:
-  unexpected_token(std::string_view found) : util::error::report_token_error("Token", found, "was not expected here") {}
-
+struct multi : public t, public util::message::vector {
+  typedef util::message::vector vec_t;
+  using vec_t::vec_t;
 };
 
-class expected_token_found_another : public t, public util::error::report_token_error {
-public:
-  expected_token_found_another(std::string_view expected, std::string_view found)
-      : util::error::report_token_error(std::string("Expected ").append(expected).append(" but found"), found, "") {}
-};
 }
 
 namespace {
 typedef std::pair<std::string_view, token_type> st;
 }
 constexpr auto tokens_map = util::make_array(
-    st{"(", PARENS_OPEN},st{")", PARENS_CLOSE},
+    st{"(", PARENS_OPEN}, st{")", PARENS_CLOSE},
     st{"<|", PIPE_LEFT}, st{"|>", PIPE_RIGHT},
-    st{"==",PHYS_EQUAL},st{"!==",NOT_PHYS_EQUAL},
+    st{"==", PHYS_EQUAL}, st{"!==", NOT_PHYS_EQUAL},
     st{"=", EQUAL}, st{"|", PIPE},
     st{"->", ARROW}, st{"-", MINUS},
     st{"+", PLUS}, st{";;", EOC},
@@ -130,7 +157,7 @@ public:
   tokenizer(tokenizer &&) = default;
   tokenizer &operator=(const tokenizer &) = default;
   tokenizer &operator=(tokenizer &&) = default;
-  explicit tokenizer(std::string_view source);
+  explicit tokenizer(std::string_view source, std::string_view filename = "source.ml");
   token_type peek() const;
   token peek_full() const;
   std::string_view peek_sv() const;
@@ -141,9 +168,11 @@ public:
   void expect_peek_any_of(std::initializer_list<token_type>);
   void unexpected_token();
   void print_errors();
+  std::string_view get_source() const;
+  std::string_view get_filename() const;
 private:
   void write_head();
-  std::string_view to_parse, source;
+  std::string_view to_parse, source, filename;
   token head;
 };
 

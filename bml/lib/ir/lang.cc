@@ -121,8 +121,7 @@ void tokenizer::write_head() {
 
   auto end = std::find_if_not(to_parse.begin(), to_parse.end(), allowed_in_identifier);
   if (to_parse.begin() == end) {
-    throw std::runtime_error(
-        formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
+    throw error::cannot_parse_anymore("source.ir", source);
   }
   head = {.sv=itr_sv(to_parse.begin(), end), .type= token_type::IDENTIFIER};
   to_parse.remove_prefix(end - to_parse.begin());
@@ -134,17 +133,17 @@ void tokenizer::expect_pop(token_type t) {
 }
 void tokenizer::expect_peek(token_type t) {
   if (head.type != t) {
-    throw error::expected_token_found_another(token_type_to_string(t), head.sv);
+
+    throw error::expected_token_found_another("source.ir", source, token_type_to_string(t), head.sv);
   }
 }
 void tokenizer::expect_peek_any_of(std::initializer_list<token_type> il) {
   if (std::find(il.begin(), il.end(), head.type) == il.end()) {
-    throw error::unexpected_token(head.sv);
+    throw error::unexpected_token("source.ir", source, head.sv);
   }
 }
 void tokenizer::unexpected_token() {
-  throw error::unexpected_token(head.sv);
-  //throw std::runtime_error("expected \"TK\", found another");
+  throw error::unexpected_token("source.ir", source, head.sv);
 }
 std::string_view tokenizer::get_source() const {
   return source;
@@ -197,7 +196,7 @@ void scope::print(std::ostream &os, size_t offset) const {
   assert(std::is_sorted(comments.begin(),
                         comments.end(),
                         [](const auto &a, const auto &b) { return a.first < b.first; }));
-  auto print_comments = [&](const size_t i,const size_t offset) {
+  auto print_comments = [&](const size_t i, const size_t offset) {
     auto it = std::partition_point(comments.begin(), comments.end(), [i](const auto &c) { return c.first < i; });
     while (it != comments.end() && it->first == i) {
       for (size_t o = offset; o--;)os << "  ";
@@ -279,7 +278,12 @@ void scope::parse(parse::tokenizer &tk, std::unordered_map<std::string_view, var
       tk.expect_pop(COLON);
       tk.expect_peek(IDENTIFIER);
       dc = destroy_class_of_string(tk.peek_sv());
-      if (!dc) throw error::report_token(tk.peek_sv(), "Specifier", "is not a recognized destroyability class");
+      if (!dc)
+        throw error::custom_msg("Specifier",
+                                tk.peek_sv(),
+                                "is not a recognized destroyability class",
+                                tk.get_source(),
+                                "source.ir");
 
       tk.pop();
     }
@@ -463,7 +467,13 @@ void function::parse(parse::tokenizer &tk) {
         tk.expect_pop(COLON);
         tk.expect_peek(IDENTIFIER);
         dc = destroy_class_of_string(tk.peek_sv());
-        if (!dc) throw error::report_token(tk.peek_sv(), "Specifier", "is not a recognized destroyability class");
+        if (!dc)
+          if (!dc)
+            throw error::custom_msg("Specifier",
+                                    tk.peek_sv(),
+                                    "is not a recognized destroyability class",
+                                    tk.get_source(),
+                                    "source.ir");
         tk.expect_pop(IDENTIFIER);
       }
       if (tk.peek() == COMMA)tk.pop();
@@ -477,9 +487,9 @@ void function::parse(parse::tokenizer &tk) {
     tk.expect_pop(CURLY_OPEN);
     scope::parse(tk, names);
     tk.expect_pop(CURLY_CLOSE);
-  } catch (const util::error::message &e) {
-    e.print(std::cout, tk.get_source(), "source.ir");
-    throw std::runtime_error("ir parsing error");
+  } catch (const util::message::base &m) {
+    m.print(std::cout);
+    throw;
   }
   scope::tight_inference();
 }

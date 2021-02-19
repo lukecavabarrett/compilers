@@ -108,7 +108,8 @@ std::invoke_result_t<decltype(sub_method), tokenizer &> parse_fold_l(tokenizer &
 }
 
 namespace parse {
-tokenizer::tokenizer(std::string_view source) : to_parse(source), source(source) { write_head(); }
+tokenizer::tokenizer(std::string_view source, std::string_view filename)
+    : to_parse(source), source(source), filename(filename) { write_head(); }
 token tokenizer::pop() {
   token t = head;
   write_head();
@@ -121,7 +122,7 @@ bool tokenizer::empty() const { return head.type == END_OF_INPUT; }
 void tokenizer::write_head() {
   while (!to_parse.empty() && to_parse.front() <= 32)to_parse.remove_prefix(1);
   if (to_parse.empty()) {
-    head = token{.sv=std::string_view(), .type=END_OF_INPUT};
+    head = token{.sv=to_parse, .type=END_OF_INPUT};
     return;
   }
   if (to_parse.size() >= 2 && to_parse[0] == '(' && to_parse[1] == '*') {
@@ -137,7 +138,12 @@ void tokenizer::write_head() {
         to_parse.remove_prefix(2);
       } else to_parse.remove_prefix(1);
     }
-    if (nested_comment)throw parse::error::report_token(start_comment, "Begin of comment ", " is unmatched.");
+    if (nested_comment)
+      throw parse::error::report_token("Begin of comment ",
+                                       start_comment,
+                                       " is unmatched.",
+                                       source,
+                                       filename);
     return write_head();
   }
   for (const auto&[p, t] : tokens_map)
@@ -156,11 +162,15 @@ void tokenizer::write_head() {
       else previous_slash = false;
       ++i;
     }
-    if (i == to_parse.size())throw parse::error::report_token(to_parse, "string literal", " is not terminated.");
+    if (i == to_parse.size())
+      throw parse::error::report_token("string literal",
+                                       to_parse,
+                                       " is not terminated.",
+                                       source,
+                                       filename);
     if (to_parse[i] == 10)
-      throw parse::error::report_token(std::string_view(to_parse.begin(), i),
-                                       "string literal",
-                                       " is not terminated.");
+      throw parse::error::report_token("string literal", std::string_view(to_parse.begin(), i),
+                                       " is not terminated.", source, filename);
     i += 1;
     head = token{.sv=std::string_view(to_parse.begin(), i), .type=LITERAL};
     to_parse.remove_prefix(i);
@@ -186,8 +196,7 @@ void tokenizer::write_head() {
 
   auto end = std::find_if_not(to_parse.begin(), to_parse.end(), allowed_in_identifier);
   if (to_parse.begin() == end) {
-    throw std::runtime_error(
-        formatter() << "cannot parse anymore: " << int(to_parse.front()) << to_parse >> formatter::to_str);
+    throw std::runtime_error("cannot parse anymore: ");
   }
   head = {.sv=itr_sv(to_parse.begin(), end), .type= ::isupper(to_parse.front()) ? token_type::CAP_NAME
                                                                                 : token_type::IDENTIFIER};
@@ -205,12 +214,11 @@ void tokenizer::expect_peek(token_type t) {
 }
 void tokenizer::expect_peek_any_of(std::initializer_list<token_type> il) {
   if (std::find(il.begin(), il.end(), head.type) == il.end()) {
-    throw error::unexpected_token(head.sv);
+    throw error::unexpected_token(filename,source,head.sv);
   }
 }
 void tokenizer::unexpected_token() {
-  throw error::unexpected_token(head.sv);
-  //throw std::runtime_error("expected \"TK\", found another");
+  throw error::unexpected_token(filename,source,head.sv);
 }
 
 }
@@ -254,7 +262,7 @@ std::string_view make_unary_op(token t) {
   switch (t.type) {
     case PLUS:return "__unary_op__PLUS__";
     case MINUS:return "__unary_op__MINUS__";
-    default: throw parse::error::report_token(t.sv, "", " is not a recognized prefix unary operator");
+    default: throw parse::error::report_token( "",t.sv, " is not a recognized prefix unary operator");
   }
 }
 bool is_binary_op(token_type t) {
@@ -283,7 +291,7 @@ std::string_view make_binary_op(token t) {
     case GREATER_THAN:return "__binary_op__GREATER_THAN__";
     case GREATER_EQUAL_THAN:return "__binary_op__GREATER_EQUAL_THAN__";
     case PHYS_EQUAL:return "__binary_op__PHYS_EQUAL__";
-    default: throw parse::error::report_token(t.sv, "", " is not a recognized infix binary operator");
+    default: throw parse::error::report_token( "",t.sv, " is not a recognized infix binary operator");
   }
 }
 
@@ -299,7 +307,7 @@ ptr make_prefix_app(ptr &&arg, token t) {
 
 ptr make_fun_constr_app(ptr &&f, ptr &&x, bool) {
   if (constructor *c = dynamic_cast<constructor *>(f.get()); c) {
-    if (c->arg)throw parse::error::report_token(x->loc, "unexpected ", " this constructors expects no argument");
+    if (c->arg)throw parse::error::report_token( "unexpected ",x->loc, " this constructors expects no argument");
     c->arg = std::move(x);
     return std::move(f);
   } else return std::make_unique<fun_app>(std::move(f), std::move(x));
@@ -363,7 +371,14 @@ ptr parse_e_p(tokenizer &tk) {
         return std::make_unique<identifier>(make_binary_op(t), t.sv);
       } else {
         auto e = expression::parse(tk);
+        if(tk.peek()!=PARENS_CLOSE){
+          parse::error::multi m;
+          m.push_back(std::make_unique<parse::error::expected_token_found_another>(token_type_to_string(PARENS_CLOSE), tk.peek_sv()));
+          m.push_back(std::make_unique<parse::error::note_token>("unmatched open parenthesis was opened here: ",itr_sv(loc_start,loc_start+1),""));
+          throw std::move(m);
+        }
         tk.expect_peek(PARENS_CLOSE);
+        //TODO: note the open parens
         e->loc = itr_sv(loc_start, tk.pop().sv.end());
         return std::move(e);
       }
@@ -734,16 +749,18 @@ ptr parse(tokenizer &tk) {
         if (tk.peek() == OF) {
           tk.expect_pop(OF);
           def->variants.back().args.push_back(expression::parse_t2(tk));
-          while(tk.peek() == STAR){
+          while (tk.peek() == STAR) {
             tk.expect_pop(STAR);
             def->variants.back().args.push_back(expression::parse_t2(tk));
           }
-          if(tk.peek()==ARROW){
+          if (tk.peek() == ARROW) {
             THROW_UNIMPLEMENTED //TODO: throw syntax error as this //type t = | A of int -> int ;; is not allowed
           }
         }
       }
-      def->loc = itr_sv(single_loc_start,def->variants.back().args.empty()  ? def->variants.back().name.end() : def->variants.back().args.back()->loc.end());
+      def->loc = itr_sv(single_loc_start,
+                        def->variants.back().args.empty() ? def->variants.back().name.end()
+                                                          : def->variants.back().args.back()->loc.end());
       defs->defs.push_back(std::move(def));
     } else {
       //texpr

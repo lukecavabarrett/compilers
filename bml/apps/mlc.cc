@@ -14,11 +14,16 @@ int main(int argc, const char *argv[]) {
   std::string_view target_asm = get_arg(argc, argv, "-oasm", "/tmp/file.asm");
   std::string_view target_obj = get_arg(argc, argv, "-oobj", "/tmp/file.o");
   std::string_view target = get_arg(argc, argv, "-o", "/tmp/file.exe");
-  std::string_view lib_object_file = get_arg(argc, argv, "-lib", "/home/luke/CLionProjects/compilers/bml/lib/rt/rt_fast.o");
+  std::string_view
+      lib_object_file = get_arg(argc, argv, "-lib", "/home/luke/CLionProjects/compilers/bml/lib/rt/rt_fast.o");
   std::string source = util::load_file(source_path);
   std::ofstream oasm;
   oasm.open(target_asm.data());
-  build_ir(source, oasm, source_path);
+  try {
+    build_ir(source, oasm, source_path);
+  } catch (const std::exception &) {
+    return 1;
+  }
   oasm.close();
   //YASM
   std::string yasm_command;

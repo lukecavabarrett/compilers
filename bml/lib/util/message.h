@@ -1,86 +1,158 @@
 #ifndef COMPILERS_BML_LIB_ERRMSG_H_
 #define COMPILERS_BML_LIB_ERRMSG_H_
 #include <string>
-namespace util::error {
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <util/util.h>
+namespace util::message {
 
-//Assumption: just one source at a time is considered
-class message {
- protected:
-  virtual std::string_view get_msgtype() const = 0;
-  virtual std::string_view get_msgstyle() const;
-
-  virtual std::string_view get_code_token() const = 0; // the point IN CODE to be displayed (if any)
-  virtual void print_content(std::ostream&) const = 0;
- public:
-  virtual void print(std::ostream&,std::string_view file,std::string_view filename) const;
-  virtual void print(std::ostream&,std::initializer_list<std::string_view> files, std::initializer_list<std::string_view> filenames) const;
+struct base {
+  virtual void print(std::ostream &) const = 0;
+  virtual void link_file(std::string_view file, std::string_view filename = "source.ml") = 0;
+  virtual ~base() = default;
 };
 
-//std::ostream& operator<< (std::ostream& os, const message& em);
+struct vector : public virtual base, public std::vector<std::unique_ptr<base>> {
+  typedef std::vector<std::unique_ptr<base>> vec_t;
+  using vec_t::vec_t;
+  void print(std::ostream &os) const final {
+    for (const auto &p : static_cast<const vec_t &>(*this))p->print(os);
+  }
+  void link_file(std::string_view file, std::string_view filename) final {
+    for (auto &p : static_cast<const vec_t &>(*this))p->link_file(file, filename);
+  }
 
-//error, warnings, both can be followed by notes, and preceeded by locators
-// locators not an message
+};
+
+struct string : public virtual base {
+  std::string_view what;
+  string(std::string_view what) : what(what) {}
+  void print(std::ostream &os) const final {
+    os << what << std::endl;
+  }
+  void link_file(std::string_view file, std::string_view filename) final {
+
+  }
+
+};
 namespace style {
 
-class error : public virtual message {
-  std::string_view get_msgtype() const override;
-  std::string_view get_msgstyle() const override;
+static constexpr std::string_view bold = "\e[1m";
+static constexpr std::string_view clear = "\e[0m";
+
+struct none {
+  static constexpr std::string_view name = "";
+  static constexpr std::string_view escape = "\e[0m";
 };
 
-class note : public virtual message {
-  std::string_view get_msgtype() const override;
-  std::string_view get_msgstyle() const override;
+struct error {
+  static constexpr std::string_view name = "error";
+  static constexpr std::string_view escape = "\e[31m";
 };
 
-class warning : public virtual message {
-  std::string_view get_msgtype() const override;
-  std::string_view get_msgstyle() const override;
+struct note {
+  static constexpr std::string_view name = "note";
+  static constexpr std::string_view escape = "\e[36m";
+};
+
+struct warning {
+  static constexpr std::string_view name = "warning";
+  static constexpr std::string_view escape = "\e[35m";
 };
 
 }
 
 template<typename Style>
-class simple : public virtual message, public virtual Style {
- public:
-  std::string_view token, msg;
-  virtual std::string_view get_code_token() const { return token; }
-  virtual void print_content(std::ostream &os) const { os << msg; }
+struct styled_string : public virtual base {
+  std::string_view what;
+  styled_string(std::string_view what) : what(what) {}
+  void print(std::ostream &os) const final {
+    os << Style::escape << Style::name << ": " << Style::none::escape << what << std::endl;
+  }
+  void link_file(std::string_view file, std::string_view filename) final {
+  }
+
 };
-
-
-//what if this is a template of error|warning|note ?
+typedef styled_string<style::error> error_string;
+typedef styled_string<style::warning> warning_string;
+typedef styled_string<style::note> note_string;
 
 template<typename Style>
-class report_token : public virtual message, public virtual Style {
- public:
-  std::string_view token;
-  std::string msg_front,msg_back;
-  virtual std::string_view get_code_token() const {return token;}
-  virtual void print_content(std::ostream& os) const {
-    constexpr std::string_view bold_style="\e[1m";
-    constexpr std::string_view clear_style="\e[0m";
-    os << msg_front <<std::string_view(" '")<<bold_style<<token<<clear_style<<std::string_view("' ")<<msg_back;
-  }
-  report_token(std::string_view f,std::string_view t,std::string_view b) : msg_front(f),token(t),msg_back(b) {}
-};
-/*
-template<typename BaseMsg>
-class report_token_string : public BaseMsg {
- public:
-  std::string_view token,msg_front,msg_back;
-  std::string quote;
-  virtual std::string_view get_code_token() const {return token;}
-  virtual void print_content(std::ostream& os) const {
-    constexpr std::string_view bold_style="\e[1m";
-    constexpr std::string_view clear_style="\e[0m";
-    os << msg_front <<std::string_view(" '")<<bold_style<<quote<<clear_style<<std::string_view("' ")<<msg_back;
-  }
-  report_token_string(std::string_view t,std::string_view f,std::string_view q,std::string_view b) : msg_front(f),token(t),msg_back(b),quote(q) {}
-};
-*/
-typedef report_token<style::error> report_token_error;
+struct report_token : public virtual base {
 
+  std::string_view token, file, filename;
+  report_token(std::string_view token, std::string_view file, std::string_view filename)
+      : token(token), file(file), filename(filename) {}
+  report_token(std::string_view token)
+      : token(token) {}
+  void link_file(std::string_view file, std::string_view filename) final {
+    if (token.begin() >= file.begin() && token.end() <= file.end()) {
+      this->file = file;
+      this->filename = filename;
+    }
+  }
 
+  virtual void describe(std::ostream &os) const = 0;
+  void print(std::ostream &os) const final {
+    constexpr std::string_view bold_style = "\e[1m";
+    constexpr std::string_view clear_style = "\e[0m";
+    constexpr std::string_view sep = ":";
+    constexpr std::string_view ssep = ": ";
+    std::string_view tk = token;
+    std::size_t posy, posx;
+    os << bold_style;
+    if (!file.empty() && tk.begin() >= file.begin() && tk.end() <= file.end()) {
+      posy = std::count(file.begin(), tk.begin(), 10) + 1;
+      posx = std::distance(std::find(std::string_view::const_reverse_iterator(tk.begin() + 1), file.crend(), 10).base(),
+                           tk.begin()) + 1;
+      os << filename << sep << posy << sep << posx << ssep;
+    }
+    os << Style::escape << Style::name << ssep << clear_style;
+    describe(os);
+    os << std::endl;
+    if (!file.empty() && tk.begin() >= file.begin() && tk.end() <= file.end()) {
+
+      auto it_endline = tk.begin();
+      if (auto ite = std::find(tk.begin(), tk.end(), 10);ite != tk.end()) {
+        it_endline = ite;
+        tk.remove_suffix(std::distance(ite, tk.end()));
+      } else {
+        it_endline = std::find(tk.end(), file.end(), 10);
+      }
+      for (int w = int(5) - std::to_string(posy).size(); w > 0; w--)os << ' ';
+      os << posy << " | " << itr_sv(tk.begin() - posx + 1, tk.begin()) << bold_style << Style::escape << tk
+         << clear_style << itr_sv(tk.end(), it_endline) << std::endl;
+      os << "      |" << std::string(posx, ' ') << bold_style << Style::escape << "^";
+      for (int w = int(tk.size()) - 1; w > 0; w--)os << '~';
+      os << clear_style << std::endl;
+    }
+  }
+}; // virtual class
+typedef report_token<style::error> error_token;
+typedef report_token<style::warning> warning_token;
+typedef report_token<style::note> note_token;
+
+template<typename Style>
+struct report_token_front_back : public report_token<Style> {
+  std::string_view front, back;
+  typedef report_token<Style> base_rt;
+  report_token_front_back(std::string_view front,
+                          std::string_view token,
+                          std::string_view back,
+                          std::string_view file,
+                          std::string_view filename) : base_rt(token, file, filename), front(front), back(back) {}
+  void describe(std::ostream &os) const final {
+    os << front;
+    if (!front.empty() && front.back() != ' ')os << " ";
+    os << style::bold << base_rt::token << style::clear;
+    if (!back.empty() && back.front() != ' ')os << " ";
+    os << back;
+  }
+};
+typedef report_token_front_back<style::error> error_report_token_front_back;
+typedef report_token_front_back<style::warning> warning_report_token_front_back;
+typedef report_token_front_back<style::note> note_report_token_front_back;
 
 }
 #endif //COMPILERS_BML_LIB_ERRMSG_H_

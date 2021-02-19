@@ -11,9 +11,10 @@ void parse_expect_rethrow(std::string_view source, std::string_view expected) {
     auto ast = ParseFun(tks);
     EXPECT_TRUE(tks.empty());
     EXPECT_EQ(ast->to_texp()->to_string(), expected);
-  } catch (const util::error::message &m) {
-    m.print(std::cout, source, "source");
-    throw std::runtime_error("parsing error");
+  } catch (util::message::base &m) {
+    m.link_file(source);
+    m.print(std::cout);
+    throw;
   }
 }
 
@@ -25,9 +26,11 @@ void parse_equal_rethrow(std::string_view source1, std::string_view source2) {
     EXPECT_TRUE(tks1.empty());
     EXPECT_TRUE(tks2.empty());
     EXPECT_EQ(ast1->to_texp()->to_string(), ast2->to_texp()->to_string());
-  } catch (const util::error::message &m) {
-    m.print(std::cout, {source1, source2}, {"source1", "source2"});
-    throw std::runtime_error("parsing error");
+  } catch (util::message::base &m) {
+    m.link_file(source1,"source1.ml");
+    m.link_file(source2,"source2.ml");
+    m.print(std::cout);
+    throw;
   }
 }
 
@@ -133,7 +136,7 @@ TEST_PARSE_TYPE("int * bool list",
                 "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::application{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
 );
 
-TEST_PARSE_TYPE_EQUAL("int * (bool list)","int * bool list");
+TEST_PARSE_TYPE_EQUAL("int * (bool list)", "int * bool list");
 
 TEST_PARSE_TYPE("int * (bool list)",
                 "ast::type::expression::product{ts : [ast::type::expression::identifier{name : 'int'}, ast::type::expression::application{x : ast::type::expression::identifier{name : 'bool'},  f : ast::type::expression::identifier{name : 'list'}}]}"
@@ -166,21 +169,27 @@ TEST_PARSE_TYPE_DECL("type ('a,'err) result = | Ok of 'a | Error of 'err ",
                      "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_variant{name : 'result',  variants : [ast::type::definition::single_variant::constr{name : 'Ok',  args : [ast::type::expression::identifier{name : ''a'}]}, ast::type::definition::single_variant::constr{name : 'Error',  args : [ast::type::expression::identifier{name : ''err'}]}]}]}"
 );
 
-TEST_PARSE_EXPRESSION_EQUAL("4*5+27","(4*5)+27");
-TEST_PARSE_EXPRESSION_EQUAL("4*5+27/34*32-27*34/32+5*(6+23)/45","(4*5)+((27/34)*32)-((27*34)/32)+((5*(6+23))/45)");
-TEST_PARSE_EXPRESSION_EQUAL("- 10","__unary_op__MINUS__ 10");
-TEST_PARSE_EXPRESSION_EQUAL("+ 45 + - - 23","__binary_op__PLUS__ (__unary_op__PLUS__ 45) (__unary_op__MINUS__ (__unary_op__MINUS__ 23))");
-TEST_PARSE_EXPRESSION("(<)","ast::expression::identifier{name : '__binary_op__LESS_THAN__'}");
-TEST_PARSE_EXPRESSION("(+)","ast::expression::identifier{name : '__binary_op__PLUS__'}");
-TEST_PARSE_EXPRESSION("( * )","ast::expression::identifier{name : '__binary_op__STAR__'}");
-TEST_PARSE_EXPRESSION("( *)","ast::expression::identifier{name : '__binary_op__STAR__'}");
+TEST_PARSE_EXPRESSION_EQUAL("4*5+27", "(4*5)+27");
+TEST_PARSE_EXPRESSION_EQUAL("4*5+27/34*32-27*34/32+5*(6+23)/45", "(4*5)+((27/34)*32)-((27*34)/32)+((5*(6+23))/45)");
+TEST_PARSE_EXPRESSION_EQUAL("- 10", "__unary_op__MINUS__ 10");
+TEST_PARSE_EXPRESSION_EQUAL("+ 45 + - - 23",
+                            "__binary_op__PLUS__ (__unary_op__PLUS__ 45) (__unary_op__MINUS__ (__unary_op__MINUS__ 23))");
+TEST_PARSE_EXPRESSION("(<)", "ast::expression::identifier{name : '__binary_op__LESS_THAN__'}");
+TEST_PARSE_EXPRESSION("(+)", "ast::expression::identifier{name : '__binary_op__PLUS__'}");
+TEST_PARSE_EXPRESSION("( * )", "ast::expression::identifier{name : '__binary_op__STAR__'}");
+TEST_PARSE_EXPRESSION("( *)", "ast::expression::identifier{name : '__binary_op__STAR__'}");
 
-TEST_PARSE_EXPRESSION_EQUAL("a b |> c d |> e f <| g h |> i j <| k l ","(a b |> c d |> e f) <| (g h |> i j) <| (k l) ");
-TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) <| (g h |> i j) <| (k l) ","(a b |> c d |> e f) ( (g h |> i j)  (k l))");
-TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) ((g h |> i j) (k l))","(e f (c d (a b))) ((i j (g h)) (k l))");
+TEST_PARSE_EXPRESSION_EQUAL("a b |> c d |> e f <| g h |> i j <| k l ", "(a b |> c d |> e f) <| (g h |> i j) <| (k l) ");
+TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) <| (g h |> i j) <| (k l) ",
+                            "(a b |> c d |> e f) ( (g h |> i j)  (k l))");
+TEST_PARSE_EXPRESSION_EQUAL("(a b |> c d |> e f) ((g h |> i j) (k l))", "(e f (c d (a b))) ((i j (g h)) (k l))");
 
-TEST_PARSE_EXPRESSION(R"( "Hello, World!" )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello, World!\0\0\0'}})");
-TEST_PARSE_EXPRESSION(R"( "Hello,\n Newline!\n" )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello,\n Newline!\n\0\0\0\0\0\0\0'}})");
-TEST_PARSE_EXPRESSION(R"( "Hello,\10 Newline!\10" )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello,\n Newline!\n\0\0\0\0\0\0\0'}})");
-TEST_PARSE_EXPRESSION(R"( "Hello, john\"\\"  )",R"(ast::expression::literal{value : ast::literal::string{value : 'Hello, john\"\\\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello, World!" )",
+                      R"(ast::expression::literal{value : ast::literal::string{value : 'Hello, World!\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello,\n Newline!\n" )",
+                      R"(ast::expression::literal{value : ast::literal::string{value : 'Hello,\n Newline!\n\0\0\0\0\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello,\10 Newline!\10" )",
+                      R"(ast::expression::literal{value : ast::literal::string{value : 'Hello,\n Newline!\n\0\0\0\0\0\0\0'}})");
+TEST_PARSE_EXPRESSION(R"( "Hello, john\"\\"  )",
+                      R"(ast::expression::literal{value : ast::literal::string{value : 'Hello, john\"\\\0\0\0'}})");
 }

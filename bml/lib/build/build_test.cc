@@ -85,12 +85,14 @@ TEST(Build, EmptyProgram) {
 }
 
 TEST(Build, SomeAllocations) {
-  test_build("type int_option = | None | Some of int ;;\n"
-             "let tuple = (1,2,3)\n"
-             "and some_int = Some 3\n"
-             "and none = None\n"
-             "and three = 3\n"
-             ";;", {});
+  test_build(R"(
+type 'a option = | None | Some of 'a ;;
+let tuple = (1,2,3)
+and some_int = Some 3
+and none = None
+and three = 3
+and (a,b,c) = (1,2,3);;
+)", {});
 }
 
 TEST(Build, Expression0) {
@@ -727,10 +729,47 @@ TEST(Typing, Simple) {
   test_build("let f b x = if b then (4,x) else (10,x) ;;",{});
   test_build("let rec f n (x,y) = if n=0 then (x,y) else g (n-1) (y,x) and\n"
              "g n (y,x) = if n=0 then (x,y) else f (n-1) (x,y) ;;",{});
+  test_build(R"(
+type 'a option = | Some of 'a | None ;;
+type 'a list = | Nil | Cons of 'a * 'a list ;;
+let rec map f l =
+  match l with
+  | Nil -> Nil
+  | Cons (x,xs) -> Cons (f x,map f xs);;
+
+let rec filter p l =
+  match l with
+  | Nil -> Nil
+  | Cons (x,xs) -> let ys = filter p xs in
+                    if (p x) then Cons (x,ys) else ys
+;;
+
+let rec map_filter f l =
+  match l with
+  | Nil -> Nil
+  | Cons (x,xs) ->
+      let ys = map_filter f xs in
+          match (f x) with
+          | None -> ys
+          | Some y -> Cons (y,ys)
+;;
+
+let rec fold l init f =
+  match l with
+  | Nil -> init
+  | Cons (x,xs) -> fold xs (f init x) f;;
+
+let rec fold_suf l init f =
+  match l with
+  | Nil -> init
+  | Cons (x,xs) -> fold_suf xs (f init xs) f;;
+
+let all_suffs l = fold_suf l Nil (fun acc l -> Cons(l,acc));;
+)",{});
 }
 
 TEST(Typing, Result) {
- test_build(R"(
+  test_build(R"(
 
 type ('a,'err) result = | Ok of 'a | Error of 'err ;;
 let print_result pok perror x =
@@ -744,6 +783,13 @@ let safe_div x y = if y=0 then Error "division by zero!" else Ok (x/y) ;;
 safe_div 1232 122 |> print_i_s_result;;
 safe_div 192 0 |> print_i_s_result;;
 )",{.expected_stdout="Ok 10 Error division by zero!"});
+}
+
+TEST(Building, Unpack_and_destroy) {
+  test_build(R"(
+let x,y = 42,108 ~> (fun t -> print_str "Destroyed Tuple!\n") ;;
+println_int x; println_int y;;
+)",{.expected_stdout="Destroyed Tuple!\n42\n108\n"});
 }
 
 /*

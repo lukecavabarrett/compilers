@@ -13,47 +13,7 @@ struct fun;
 }
 namespace util {
 
-struct direct_sections_t {
-  std::ostream &data, &text, &main;
-  ast::expression::fun *def_fun;
-  direct_sections_t(const direct_sections_t &) = default;
-  direct_sections_t(std::ostream &d, std::ostream &t, std::ostream &m, ast::expression::fun *df = nullptr)
-      : data(d), text(t), main(m), def_fun(df) {}
-  direct_sections_t with_main(std::ostream &os, ast::expression::fun *df) {
-    return direct_sections_t(data, text, os, df);
-  }
-  direct_sections_t with_main(std::ostream &os) {
-    return direct_sections_t(data, text, os, def_fun);
-  }
-};
-
 std::string load_file(std::string_view path);
-
-class formatter {
-public:
-  formatter() {}
-  ~formatter() {}
-
-  template<typename Type>
-  formatter &operator<<(const Type &value) {
-    stream_ << value;
-    return *this;
-  }
-
-  std::string str() const { return stream_.str(); }
-  operator std::string() const { return stream_.str(); }
-
-  enum ConvertToString {
-    to_str
-  };
-  std::string operator>>(ConvertToString) { return stream_.str(); }
-
-private:
-  std::stringstream stream_;
-
-  formatter(const formatter &);
-  formatter &operator=(formatter &);
-};
 
 template<typename V>
 // recursion-ender
