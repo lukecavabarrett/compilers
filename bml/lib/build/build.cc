@@ -1,6 +1,11 @@
 #include <build.h>
 #include <types/types.h>
 
+struct extern_matcher : public ast::matcher::universal {
+  typedef ast::matcher::universal base_t;
+  using base_t::base_t;
+};
+
 struct ir_registerer_t {
   template<size_t Id>
   void add(std::string_view external_name,
@@ -8,7 +13,7 @@ struct ir_registerer_t {
            std::string_view name,
            const type::expression::t &type,
            std::initializer_list<std::string_view> aliases = {}) {
-    static ast::matcher::universal m(name);
+    static extern_matcher m(name);
     data << "extern " << external_name << " \n";
     m.ir_globally_register(names);
     m.ir_allocate_globally_funblock(data, args, external_name);
@@ -74,7 +79,7 @@ std::pair<ast::global_names_map, ast::global_types_map> make_ir_data_section(std
   //special case for the unmatched function
   {
     target << "extern match_failed_fun \n";
-    static ast::matcher::universal mf("__throw__unmatched__");
+    static extern_matcher mf("__throw__unmatched__");
     mf.ir_globally_register(global_names);
     mf.ir_allocate_globally_funblock(target, 1, "match_failed_fun");
     mf.use_as_immediate = mf.top_level = true;
@@ -83,14 +88,14 @@ std::pair<ast::global_names_map, ast::global_types_map> make_ir_data_section(std
   //IO
   //TODO-someday: use more constexpr representation for stderr, stdout
   {
-    static ast::matcher::universal mf("stdout");
+    static extern_matcher mf("stdout");
     mf.ir_globally_register(global_names);
     mf.use_as_immediate = mf.top_level = true;
     target << mf.ir_asm_name() << " equ 3" << "; stdout\n";
     global_types.try_emplace(&mf, tf_file);
   }
   {
-    static ast::matcher::universal mf("stderr");
+    static extern_matcher mf("stderr");
     mf.ir_globally_register(global_names);
     mf.use_as_immediate = mf.top_level = true;
     target << mf.ir_asm_name() << " equ 5" << "; stderr\n";
@@ -160,6 +165,7 @@ void record_typedef(type::constr_map &constr_map,
 }
 
 void build_ir(std::string_view s, std::ostream &target, std::string_view filename) {
+  util::message::global.clear();
   parse::tokenizer tk(s);
   auto[global_names, global_types] = make_ir_data_section(target);
   for (const auto&[k, v] : global_types)assert(v.is_valid());
@@ -181,6 +187,7 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
         auto d = ast::definition::parse(tk);
         tk.expect_pop(parse::EOC);
         d->bind(constr_map);
+        for (auto &def : d->defs)def.name->for_each_universal([](ast::matcher::universal &u) { u.top_level = true; });
         ast::free_vars_t fv = d->free_vars();
         resolve_global_free_vars(std::move(fv), global_names);
         for (auto &def : d->defs)def.name->ir_globally_register(global_names);
@@ -246,6 +253,12 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
 //    f.print(std::cout);
     f.compile(target);
   }
+  for (const auto&[n, m] : global_names)
+    if (m->usages.empty() && !dynamic_cast<extern_matcher*>(m))
+      util::message::global.push_back(std::make_unique<ast::error::unused_value>(m->name));
+  util::message::global.link_file(s, filename);
+  util::message::global.print(std::cout);
+  util::message::global.clear();
 }
 
 void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_names_map &m) {
@@ -255,10 +268,10 @@ void resolve_global_free_vars(ast::free_vars_t &&fv, const ast::global_names_map
       it->second->usages.merge(std::move(usages));
     } else
       throw ast::error::unbound_value((*std::min_element(usages.begin(),
-                                                  usages.end(),
-                                                  [](const auto &i1, const auto &i2) {
-                                                    return i1->loc.begin() < i2->loc.begin();
-                                                  }))->loc);
+                                                         usages.end(),
+                                                         [](const auto &i1, const auto &i2) {
+                                                           return i1->loc.begin() < i2->loc.begin();
+                                                         }))->loc);
     //TODO: decide whether it would be nicer to report all occurrences of the unbound variable
   }
 }

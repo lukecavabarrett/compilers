@@ -4,8 +4,6 @@
 #include <algorithm>
 #include <ostream>
 
-namespace util {
-
-
+namespace util::message{
+message::vector global;
 }
-

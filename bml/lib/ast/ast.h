@@ -31,6 +31,16 @@ class base : public std::runtime_error {
 public:
   base() : std::runtime_error("ast::error") {}
 };
+
+class unused_value : public util::message::warning_token {
+public:
+  unused_value(std::string_view value)
+      : util::message::warning_token(value) {}
+  void describe(std::ostream &os) const {
+    os << "value " << util::message::style::bold << token << util::message::style::clear
+       << " is unused";
+  }
+};
 class unbound_value : public base, public util::message::error_token {
 public:
   unbound_value(std::string_view value)
@@ -428,6 +438,7 @@ struct t : public locable, texp_of_t {
   virtual ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) = 0;
   virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
   virtual std::list<const universal *> universals() const = 0;
+  virtual void for_each_universal(const std::function<void(universal&)>& f) = 0;
 };
 struct universal : public t {
   typedef std::unique_ptr<universal> ptr;
@@ -466,7 +477,9 @@ TO_TEXP(name)
   ir::var ir_evaluate_global(ir::scope &s) const;
   tc_section::idx_t typecheck(tc_section tcs) const final;
   std::list<const universal *> universals() const final;
-
+  void for_each_universal(const std::function<void(universal&)>& f) final {
+    return f(*this);
+  }
 };
 
 struct ignore : public t {
@@ -482,7 +495,7 @@ struct ignore : public t {
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final { return s.declare_constant(3); }
   tc_section::idx_t typecheck(tc_section tcs) const final;
   std::list<const universal *> universals() const final;
-
+  void for_each_universal(const std::function<void(universal&)>& f) final {}
 TO_TEXP_EMPTY()
 };
 
@@ -506,7 +519,7 @@ struct constructor : public t {
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
   tc_section::idx_t typecheck(tc_section tcs) const final;
   std::list<const universal *> universals() const final;
-
+  void for_each_universal(const std::function<void(universal&)>& f) final {if(arg)arg->for_each_universal(f);}
 TO_TEXP(cons, arg);
 };
 
@@ -528,7 +541,7 @@ struct literal : public t {
   ir::lang::var ir_test_unroll(ir::scope &s, ir::lang::var v) final;
   tc_section::idx_t typecheck(tc_section tcs) const final;
   std::list<const universal *> universals() const final;
-
+  void for_each_universal(const std::function<void(universal&)>& f) final {}
 TO_TEXP(value);
 };
 
@@ -547,7 +560,7 @@ struct tuple : public t {
   ir::lang::var ir_test_unroll(ir::scope &main, ir::lang::var v) final;
   tc_section::idx_t typecheck(tc_section tcs) const final;
   std::list<const universal *> universals() const final;
-
+  void for_each_universal(const std::function<void(universal&)>& f) final {for(auto &p : args)p->for_each_universal(f);}
 TO_TEXP(args);
 };
 

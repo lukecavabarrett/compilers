@@ -153,6 +153,9 @@ struct report_token_front_back : public report_token<Style> {
 typedef report_token_front_back<style::error> error_report_token_front_back;
 typedef report_token_front_back<style::warning> warning_report_token_front_back;
 typedef report_token_front_back<style::note> note_report_token_front_back;
+extern message::vector global;
 
 }
+
+
 #endif //COMPILERS_BML_LIB_ERRMSG_H_

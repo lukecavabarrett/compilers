@@ -9,6 +9,7 @@ struct build_params {
   std::ostream& print_ir;
   std::ostream& print_compiled_signature;
 };
+
 void build_ir(std::string_view s, std::ostream &target, std::string_view filename = "source.ml");
 /*
  IDEA for tests:

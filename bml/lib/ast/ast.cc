@@ -721,10 +721,11 @@ void universal::bind(free_vars_t &fv) {
     usages = std::move(it->second);
     fv.erase(it);
     for (auto i : usages) i->definition_point = this;
-
-  } else {
-    //TODO-someday: warning that the name is unused
+  } else if(!top_level){
+    //this name is not used.
+    util::message::global.push_back(std::make_unique<error::unused_value>(name));
   }
+  // for the globals, we take care later
 }
 void constructor::bind(free_vars_t &fv) {
   if (arg)arg->bind(fv);
