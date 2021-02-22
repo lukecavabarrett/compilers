@@ -792,6 +792,21 @@ println_int x; println_int y;;
 )",{.expected_stdout="Destroyed Tuple!\n42\n108\n"});
 }
 
+
+TEST(Building, RecDef){
+  test_build(R"(
+type 'a list = | Nil | Cons of 'a * 'a list ;;
+let rec fib n = if n<2 then n else (fib (n-1)) + (fib (n-2)) ;;
+
+let rec a = Cons (x, b)
+and b = Cons (2,a)
+and x = fib 8;;
+
+println_int x ;;
+let Cons (x,_) = a ;;
+println_int x ;;
+)",{.expected_stdout="21\n21\n"});
+}
 /*
 
 */

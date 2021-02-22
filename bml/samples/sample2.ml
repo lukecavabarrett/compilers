@@ -229,3 +229,11 @@ let rec map f (Item (x,xf)) = Item (f x,( fun () -> map f (xf()))) ;;
 This would play two games
 acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> tee play_fib |> play_fib;;
 *)
+
+type 'a list = | Nil | Cons of 'a * 'a list;;
+
+let rec a = Cons (x, b)
+and b = Cons (2,a)
+and x = slow_fib 3;;
+
+println_int x ;;

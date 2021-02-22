@@ -59,6 +59,19 @@ public:
     os << "unbound constructor  " << util::message::style::bold << token << util::message::style::clear;
   }
 };
+
+class rec_def_lhs_must_be_name;
+
+class rec_def_lhs_must_be_name : public base, public util::message::error_token {
+public:
+  rec_def_lhs_must_be_name(std::string_view value)
+      : util::message::error_token(value) {}
+  void describe(std::ostream &os) const {
+    os << "pattern " << util::message::style::bold << token << util::message::style::clear << " is not accepted as a left-hand side in a recursive declaration (only names are allowed)";
+  }
+};
+
+
 /*
 class constructor_shouldnt_take_arg : public std::runtime_error, public util::error::report_token_error {
 public:
@@ -245,8 +258,10 @@ struct t : public locable, public texp_of_t {
   virtual void bind(const ::type::constr_map &) = 0;
   virtual bool is_constexpr() const = 0;
   virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
-
+  template<typename Fun>
+  void for_each_identifier(const Fun &fun_);
 };
+
 
 struct literal : public t {
   typedef std::unique_ptr<literal> ptr;
@@ -439,6 +454,8 @@ struct t : public locable, texp_of_t {
   virtual tc_section::idx_t typecheck(tc_section tcs) const = 0;
   virtual std::list<const universal *> universals() const = 0;
   virtual void for_each_universal(const std::function<void(universal&)>& f) = 0;
+  template<typename Fun,typename State>
+  State accumulate_universal(State init, Fun&& fun);
 };
 struct universal : public t {
   typedef std::unique_ptr<universal> ptr;
@@ -640,6 +657,42 @@ struct t : public locable, public texp_of_t {
 TO_TEXP(rec, defs);
 };
 typedef std::unique_ptr<t> ptr;
+
+}
+
+namespace error{
+
+class rec_def_invalid_rhs : public base, public util::message::vector {
+  class bad_lhs : public util::message::error_token {
+  public:
+    bad_lhs(std::string_view value) : util::message::error_token(value) {}
+    void describe(std::ostream &os) const {
+      os << "value " << util::message::style::bold << token << util::message::style::clear << " is not statically constructive w.r.t the other values defined in the same recursive definition block. The storage it's not static, but it contains one or more other values.";
+    }
+  };
+  class bad_rhs : public util::message::note_token {
+  public:
+    bad_rhs(std::string_view value) : util::message::note_token(value) {}
+    void describe(std::ostream &os) const {
+      os << "It contains value " << util::message::style::bold << token << util::message::style::clear << " from the same recursive definition block.";
+    }
+  };
+  class bad_rhs_def : public util::message::note_token {
+  public:
+    bad_rhs_def(std::string_view value) : util::message::note_token(value) {}
+    void describe(std::ostream &os) const {
+      os  << util::message::style::bold << token << util::message::style::clear << " is defined here:";
+    }
+  };
+public:
+  //make two subsclasses
+  rec_def_invalid_rhs(std::string_view lhs,const ast::expression::identifier& rhs) {
+    emplace_back(std::make_unique<bad_lhs>(lhs));
+    emplace_back(std::make_unique<bad_rhs>(rhs.name));
+    emplace_back(std::make_unique<bad_rhs_def>(rhs.definition_point->name));
+  }
+};
+
 
 }
 

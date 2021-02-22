@@ -40,6 +40,70 @@ uint64_t make_tag_size_d(uint32_t tag, uint32_t size, uint8_t d) {
 
 namespace expression {
 
+template<typename Fun>
+void t::for_each_identifier(const Fun &fun_) {
+  if(auto * i = dynamic_cast<identifier*>(this); i){ fun_(*i);return;}
+  if(auto * f = dynamic_cast<fun_app*>(this); f){
+    f->f->template for_each_identifier(fun_);
+    f->x->template for_each_identifier(fun_);
+    return;
+  }
+  if(auto * d = dynamic_cast<destroy*>(this); d){
+    d->obj->template for_each_identifier(fun_);
+    d->d->template for_each_identifier(fun_);
+    return;
+  }
+
+  if(auto * i = dynamic_cast<if_then_else*>(this); i){
+    i->condition->template for_each_identifier(fun_);
+    i->true_branch->template for_each_identifier(fun_);
+    i->false_branch->template for_each_identifier(fun_);
+    return;
+  }
+
+  if(auto * c = dynamic_cast<constructor*>(this); c){
+    if(c->arg)c->arg->template for_each_identifier(fun_);
+    return;
+  }
+
+  if(auto * s = dynamic_cast<seq*>(this); s){
+    s->a->template for_each_identifier(fun_);
+    s->b->template for_each_identifier(fun_);
+    return;
+  }
+
+  if(auto * m = dynamic_cast<match_with*>(this); m){
+    m->what->template for_each_identifier(fun_);
+    for(auto & b : m->branches)b.result->template for_each_identifier(fun_);
+    return;
+  }
+
+  if(auto * t = dynamic_cast<tuple*>(this); t){
+    for(auto & b : t->args)b->template for_each_identifier(fun_);
+    return;
+  }
+
+  if(auto * l = dynamic_cast<let_in*>(this); l){
+    for(auto & d : l->d->defs)d.e->template for_each_identifier(fun_);
+    l->e->template for_each_identifier(fun_);
+    return;
+  }
+  if(auto * f = dynamic_cast<fun*>(this); f){
+    f->body->template for_each_identifier(fun_);
+    return;
+  }
+  if(auto * t = dynamic_cast<literal*>(this); t){
+    return;
+  }
+
+
+
+
+
+  //TODO: implement for all other cases
+  THROW_UNIMPLEMENTED
+}
+
 void identifier::bind(const constr_map &) {}
 void fun_app::bind(const constr_map &cm) {
   f->bind(cm);
@@ -513,9 +577,9 @@ tc_section::idx_t seq::typecheck(tc_section tcs) const {
 tc_section::idx_t match_with::typecheck(tc_section tcs) const {
   auto wid = what->typecheck(tcs);
   auto ret = tcs.arena.fresh();
-  for(const branch& b : branches){
-    tcs.arena.unify(wid,b.pattern->typecheck(tcs));
-    tcs.arena.unify(ret,b.result->typecheck(tcs));
+  for (const branch &b : branches) {
+    tcs.arena.unify(wid, b.pattern->typecheck(tcs));
+    tcs.arena.unify(ret, b.result->typecheck(tcs));
   }
   return ret;
 }
@@ -616,6 +680,10 @@ capture_set t::capture_group(capture_set &&cs) {
 }
 void t::ir_compile_locally(ir_sections_t s) {
   if (rec) {
+    for (auto &def : defs)
+      if (!dynamic_cast<const matcher::universal *>(def.name.get()))
+        throw error::rec_def_lhs_must_be_name(def.name->loc);
+    //std::unordered_set<const match
     //check that all values are construcive w.r.t each other
     // 1. check no name clashes
     // 2. check that if one contains another
@@ -633,6 +701,30 @@ void t::ir_compile_global(ir_sections_t s) {
     // - check that all values are construcive w.r.t each other
     //     1. check no name clashes
     //     2. check that if one contains another
+    std::unordered_set<const matcher::universal *> declared_names;
+
+    for (auto &def : defs) {
+
+      if (auto *n = dynamic_cast< matcher::universal *>(def.name.get()); n) {
+        declared_names.insert(n);
+      } else {
+        throw error::rec_def_lhs_must_be_name(def.name->loc);
+      }
+    }
+    //check statical constructivity
+    //compute first the expression
+    auto it_expr = std::partition(defs.begin(),defs.end(),[](const auto& def){return !(def.is_constr() || def.is_fun() || def.is_tuple());});
+    std::for_each(defs.begin(),it_expr,[&declared_names](def& d){
+
+      d.e->for_each_identifier([&declared_names,&d](expression::identifier & i) -> void{
+
+        if(declared_names.contains(i.definition_point)){
+          throw error::rec_def_invalid_rhs(dynamic_cast< matcher::universal *>(d.name.get())->name,i);
+        }
+      });
+    });
+    //TODO: compute first
+
   }
   for (auto &def : defs)
     if (def.is_single_name() && (def.is_fun() || def.is_tuple() || def.is_constr())) {
@@ -700,6 +792,25 @@ void t::typecheck(tc_section tcs) const {
 }
 
 namespace matcher {
+
+template<typename Fun, typename State>
+State t::accumulate_universal(State init, Fun &&fun) {
+  if (auto *u = dynamic_cast<universal *>(this); u) {
+    return fun(init);
+  }
+  if (auto *c = dynamic_cast<constructor *>(this); c) {
+    return c->arg ? c->arg->template accumulate_universal(init, fun) : init;
+  }
+  if (auto *t = dynamic_cast<tuple *>(this); t) {
+    for (auto &m : t->args)init = m->template accumulate_universal(init, fun);
+    return init;
+  }
+  if (auto *i = dynamic_cast<ignore *>(this); i) {
+    return init;
+  }
+  THROW_INTERNAL_ERROR
+}
+
 //bind constructor map
 void universal::bind(const constr_map &cm) {}
 void constructor::bind(const constr_map &cm) {
@@ -721,7 +832,7 @@ void universal::bind(free_vars_t &fv) {
     usages = std::move(it->second);
     fv.erase(it);
     for (auto i : usages) i->definition_point = this;
-  } else if(!top_level){
+  } else if (!top_level) {
     //this name is not used.
     util::message::global.push_back(std::make_unique<error::unused_value>(name));
   }
