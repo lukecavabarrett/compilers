@@ -214,11 +214,11 @@ void tokenizer::expect_peek(token_type t) {
 }
 void tokenizer::expect_peek_any_of(std::initializer_list<token_type> il) {
   if (std::find(il.begin(), il.end(), head.type) == il.end()) {
-    throw error::unexpected_token(filename,source,head.sv);
+    throw error::unexpected_token(head.sv);
   }
 }
 void tokenizer::unexpected_token() {
-  throw error::unexpected_token(filename,source,head.sv);
+  throw error::unexpected_token(head.sv);
 }
 
 }
@@ -754,7 +754,8 @@ ptr parse(tokenizer &tk) {
             def->variants.back().args.push_back(expression::parse_t2(tk));
           }
           if (tk.peek() == ARROW) {
-            THROW_UNIMPLEMENTED //TODO: throw syntax error as this //type t = | A of int -> int ;; is not allowed
+            //type t = | A of int -> int ;; is not allowed
+            throw parse::error::unexpected_token(tk.peek_sv()," maybe you forgot to enclose type expression in parenthesis.");
           }
         }
       }

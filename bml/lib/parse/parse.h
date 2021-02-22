@@ -45,11 +45,11 @@ typedef style_token<util::message::style::error> report_token;
 typedef style_token<util::message::style::note> note_token;
 
 struct unexpected_token : public t, public util::message::error_token {
-  unexpected_token(std::string_view filename,
-                   std::string_view file,
-                   std::string_view found) : util::message::error_token(found, file, filename) {}
+  std::string_view additional_note;
+  unexpected_token(std::string_view found, std::string_view additional_note = "") : util::message::error_token(found),additional_note(additional_note) {}
   void describe(std::ostream &os) const {
-    os << "token " << util::message::style::bold << token << util::message::style::clear << "was not expected here.";
+    os << "token " << util::message::style::bold << token << util::message::style::clear << " was not expected here.";
+    if(!additional_note.empty())os<<additional_note;
   }
 };
 

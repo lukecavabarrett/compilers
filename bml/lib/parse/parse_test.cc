@@ -169,6 +169,10 @@ TEST_PARSE_TYPE_DECL("type ('a,'err) result = | Ok of 'a | Error of 'err ",
                      "ast::type::definition::t{nonrec : false,  defs : [ast::type::definition::single_variant{name : 'result',  variants : [ast::type::definition::single_variant::constr{name : 'Ok',  args : [ast::type::expression::identifier{name : ''a'}]}, ast::type::definition::single_variant::constr{name : 'Error',  args : [ast::type::expression::identifier{name : ''err'}]}]}]}"
 );
 
+TEST(TypeDef, MACROS_CONCAT_NAME(TypeDef, __COUNTER__)) {
+  EXPECT_THROW(parse_expect_rethrow<ast::type::definition::parse>("type 'a lazy = | Fun of unit -> 'a ;;", ""), std::runtime_error);
+}
+
 TEST_PARSE_EXPRESSION_EQUAL("4*5+27", "(4*5)+27");
 TEST_PARSE_EXPRESSION_EQUAL("4*5+27/34*32-27*34/32+5*(6+23)/45", "(4*5)+((27/34)*32)-((27*34)/32)+((5*(6+23))/45)");
 TEST_PARSE_EXPRESSION_EQUAL("- 10", "__unary_op__MINUS__ 10");

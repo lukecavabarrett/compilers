@@ -133,17 +133,16 @@ void record_typedef(type::constr_map &constr_map,
       std::unordered_map<std::string_view, size_t> params_id;
 
       if (p->name.at(0) == '\'')
-        throw parse::error::report_token(p->name,
-                                         "declared type name",
+        throw parse::error::report_token("declared type name", p->name,
                                          "cannot start with ' (tick)");
 
       for (size_t i = 0; i < sv->params.size(); ++i) {
 
         std::string_view p = sv->params.at(i)->name;
 
-        if (p.at(0) != '\'')throw parse::error::report_token(p, "type parameter", "doesn't start with ' (tick)");
+        if (p.at(0) != '\'')throw parse::error::report_token("type parameter", p, "doesn't start with ' (tick)");
         if (!params_id.try_emplace(p, i).second) {
-          throw parse::error::report_token(p, "type parameter", "occurred more than once. this is illegal");
+          throw parse::error::report_token("type parameter", p, "occurred more than once. this is illegal");
         }
       }
       for (const auto &ac : sv->variants) {
@@ -254,7 +253,7 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
     f.compile(target);
   }
   for (const auto&[n, m] : global_names)
-    if (m->usages.empty() && !dynamic_cast<extern_matcher*>(m))
+    if (m->usages.empty() && !dynamic_cast<extern_matcher *>(m))
       util::message::global.push_back(std::make_unique<ast::error::unused_value>(m->name));
   util::message::global.link_file(s, filename);
   util::message::global.print(std::cout);

@@ -211,7 +211,20 @@ Mon Feb  1 00:56:43 2021
 *)
 
 let tee f x = f x ; x ;;
+type ('a,'err) result = | Ok of 'a | Error of 'err ;;
 
+let result_map f result = match result with | Ok x -> Ok (f x) | Error e -> Error e ;;
+let result_bind f result = match result with | Ok x -> f x | Error e -> Error e ;;
+
+type 'a lazy = | Fun of (unit -> 'a) ;;
+let lazy_eval (Fun l) = l () ;;
+let lazy_map f (Fun l) = Fun (fun () -> l () |> f) ;;
+let lazy_bind f (Fun l) = Fun (fun () ->  (l () |> f) |> lazy_eval ) ;;
+
+type 'a stream = | Item of 'a * (unit -> 'a stream) ;;
+let rec iota n = Item (n, (fun () -> iota (n+1))) ;;
+let rec print_stream n (Item (x,xf)) = if (n=0) then print_str "\n" else print_int x ; print_stream (n-1) (xf()) ;;
+let rec map f (Item (x,xf)) = Item (f x,( fun () -> map f (xf()))) ;;
 (*
 This would play two games
 acf_open "log.txt" "w+" |> log (Str "Hello") |> log (Str "This is logging some information") |> tee play_fib |> play_fib;;
