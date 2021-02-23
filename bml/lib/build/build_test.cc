@@ -13,9 +13,9 @@ typedef std::variant<std::string_view, ::testing::PolymorphicMatcher<testing::in
     expect_str_t;
 
 struct test_params {
-  bool use_valgrind = false; // takes longer time
+  bool use_valgrind = true; // takes longer time
   bool sandbox_timeout = false;
-  bool use_release_lib = true; // true for testing efficiency; false for debugging
+  bool use_release_lib = false; // true for testing efficiency; false for debugging
   expect_str_t expected_stdout = "";
   expect_str_t expected_stderr = "";
   int expected_exit_code = 0;
@@ -230,8 +230,8 @@ let make () = (A (3,(),true)) ~> (fun _ -> print_str "Destroyed!\n" );;
 let fst (A(x,_,_)) = x;;
 let abc = make ();;
 println_int (fst abc) ;;
-(* globals don't get destroyed - for now *)
-)", {.expected_stdout = "3\n", .expected_exit_code=0});
+(* also globals get destroyed now *)
+)", {.expected_stdout = "3\nDestroyed!\n", .expected_exit_code=0});
 }
 
 TEST(Build, ApplyTwice) {
@@ -805,6 +805,8 @@ and x = fib 8;;
 println_int x ;;
 let Cons (x,_) = a ;;
 println_int x ;;
+
+let s = "Some string literal";;
 )",{.expected_stdout="21\n21\n"});
 }
 /*

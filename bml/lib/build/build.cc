@@ -31,7 +31,7 @@ std::pair<ast::global_names_map, ast::global_types_map> make_ir_data_section(std
   ast::global_names_map global_names;
   ast::global_types_map global_types;
   target << "section .data\n";
-  target << "extern apply_fn, decrement_nontrivial, decrement_value, increment_value, malloc, json_debug\n";
+  target << "extern apply_fn, destroy_nontrivial, decrement_nontrivial, decrement_value, increment_value, malloc, json_debug\n";
 
   ir_registerer_t ir_registerer{.names=global_names, .types = global_types, .data=target};
 
@@ -244,7 +244,9 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
       }
     }
   }
+  target << "__global_dealloc_fn__ dq 0, 4294967300,global_dealloc,3; global_dealloc : funblock\n" ;;
   target << "global main\n" "section .text\n";
+  main.declare_assign(ir::rhs_expr::apply_fn{.f = main.declare_global("__global_dealloc_fn__"),.x = main.declare_constant(1)});
   main.ret = main.declare_constant(0);
   functions.push_back(std::move(main));
   for (auto &f : functions) {
@@ -252,6 +254,33 @@ void build_ir(std::string_view s, std::ostream &target, std::string_view filenam
 //    f.print(std::cout);
     f.compile(target);
   }
+  //global destroy
+
+  target << "global_dealloc:\n" ;
+  target << "sub rsp, 8\n";
+  target << "call decrement_value\n";
+
+  std::for_each(defs.rbegin(),defs.rend(),[&]( ast::definition::ptr& defblock) {
+
+    std::for_each(defblock->defs.rbegin(),defblock->defs.rend(),[&]( ast::definition::def & d){
+      if(d.is_fun())return;
+      d.name->for_each_universal([&](ast::matcher::universal& m){
+        assert(m.top_level);
+        target << "; deallocating global " << m.name << " " << (m.use_as_immediate ? "(structured)": "(single)" )<< std::endl;
+        if(m.use_as_immediate){
+          target << "mov rdi, "<< m.ir_asm_name() <<  "\n";
+          target << "call destroy_nontrivial\n";
+        } else {
+          target << "mov rdi, qword ["<< m.ir_asm_name() <<  "]\n";
+          target << "call decrement_value\n";
+        }
+      });
+    });
+  });
+  target << "add rsp, 8\n";
+  target << "mov eax, 1\nret\n";
+
+  //output warnings
   for (const auto&[n, m] : global_names)
     if (m->usages.empty() && !dynamic_cast<extern_matcher *>(m))
       util::message::global.push_back(std::make_unique<ast::error::unused_value>(m->name));

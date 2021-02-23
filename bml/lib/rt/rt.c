@@ -123,8 +123,8 @@ void __json_debug(uintptr_t x, int depth) {
         break;
       case Tag_String: {
         fputs("\"String\"", debug_stream);
-        fprintf(debug_stream, ", \"content\" : \"%s\"  : ", (const char*)(v+2));
-        v += size+2;
+        fprintf(debug_stream, ", \"content\" : \"%s\"  : ", (const char *) (v + 2));
+        v += size + 2;
         size = 0;
         assert(size == 0);
       };
@@ -323,7 +323,10 @@ void destroy_nontrivial(uintptr_t x_v) {
 #endif
     const uintptr_t *xloop = x;
     xloop += 2;
-    if (tag == Tag_Fun) {
+    if (tag == Tag_String) {
+      xloop += size;
+      size = 0;
+    } else if (tag == Tag_Fun) {
       ++xloop;
       --size;
     }
@@ -331,7 +334,8 @@ void destroy_nontrivial(uintptr_t x_v) {
       decrement_value(*xloop);
       ++xloop;
     }
-    free(x);
+    if(x[0])free(x); // cheap trick to use same code for globals
+    //TODO: consider if you want to do something nicer
   }
 }
 
@@ -469,7 +473,7 @@ uintptr_t _mllib_fn__int_println(uintptr_t argv) {
 uintptr_t _mllib_fn__bool_println(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
-  if(b)printf("true\n");
+  if (b)printf("true\n");
   else printf("false\n");
   decrement_boxed(argv);
   return uint_to_v(0);
@@ -478,7 +482,7 @@ uintptr_t _mllib_fn__bool_println(uintptr_t argv) {
 uintptr_t _mllib_fn__bool_print(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   int64_t b = v_to_int(argv_b[4]);
-  if(b)printf("true ");
+  if (b)printf("true ");
   else printf("false ");
   decrement_boxed(argv);
   return uint_to_v(0);
@@ -564,7 +568,7 @@ uintptr_t _mllib_fn__t_deep_copy(uintptr_t argv) {
 uintptr_t _mllib_fn__time_print(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   time_t x = (time_t) (v_to_int(argv_b[4]));
-  const char* c_time_string = ctime(&x);
+  const char *c_time_string = ctime(&x);
   printf("%s", c_time_string);
   decrement_boxed(argv);
   return uint_to_v(0);
@@ -575,8 +579,8 @@ uintptr_t _mllib_fn__time_fprint(uintptr_t argv) {
   const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
   int fd = v_to_int(argv_a[4]);
   time_t t = (time_t) (v_to_int(argv_b[4]));
-  const char* c_time_string = ctime(&t);
-  dprintf(fd,"%s", c_time_string);
+  const char *c_time_string = ctime(&t);
+  dprintf(fd, "%s", c_time_string);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
@@ -598,7 +602,7 @@ uintptr_t _mllib_fn__str_fprint(uintptr_t argv) {
   int fd = v_to_int(argv_a[4]);
   const char *s = (const char *) (b + 2);
   size_t len = strlen(s);
-  assert(write(fd, s, len)==len);
+  assert(write(fd, s, len) == len);
   decrement_boxed(argv);
   return uint_to_v(0);
 }
@@ -626,8 +630,8 @@ uintptr_t _mllib_fn__str_at(uintptr_t argv) {
 
 uintptr_t _mllib_fn__fclose(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
-  int fd = v_to_int( argv_b[4]);
-  if (close(fd)){
+  int fd = v_to_int(argv_b[4]);
+  if (close(fd)) {
     perror("closing file");
     exit(1);
   }
@@ -638,32 +642,42 @@ uintptr_t _mllib_fn__fclose(uintptr_t argv) {
 uintptr_t _mllib_fn__fopen(uintptr_t argv) {
   uintptr_t *argv_b = (uintptr_t *) argv;
   const uintptr_t *argv_a = (uintptr_t *) argv_b[2];
-  const char *path = (const char *)((uintptr_t*)(argv_a[4])+2);
-  const char *mode = (const char *)((uintptr_t*)(argv_b[4])+2);
+  const char *path = (const char *) ((uintptr_t *) (argv_a[4]) + 2);
+  const char *mode = (const char *) ((uintptr_t *) (argv_b[4]) + 2);
   int flag = 0;
   bool r = false, w = false;
-  for(const char *c = mode; *c; ++c){
+  for (const char *c = mode; *c; ++c) {
     switch (*c) {
-      case 'r':r=true;break;
-      case 'w':w=true;break;
-      case 'c':flag|=O_CREAT;break;
-      case '+':flag|=O_APPEND;break;
-      default:{
-        fprintf(stderr," \"%s\" is not a valid flag for opening a file\n",mode);
+      case 'r':
+        r = true;
+        break;
+      case 'w':
+        w = true;
+        break;
+      case 'c':
+        flag |= O_CREAT;
+        break;
+      case '+':
+        flag |= O_APPEND;
+        break;
+      default: {
+        fprintf(stderr, " \"%s\" is not a valid flag for opening a file\n", mode);
         exit(1);
       }
     }
   }
-  if(w)flag|=O_CREAT;
-  if(r && w)flag|=O_RDWR;
-  if(r && !w)flag|=O_RDONLY;
-  if(!r && w)flag|=O_WRONLY;
-  if(!r && !w){
-    fprintf(stderr," \"%s\" is not a valid flag for opening a file - you should specify at least one between 'r' or 'w'\n",mode);
+  if (w)flag |= O_CREAT;
+  if (r && w)flag |= O_RDWR;
+  if (r && !w)flag |= O_RDONLY;
+  if (!r && w)flag |= O_WRONLY;
+  if (!r && !w) {
+    fprintf(stderr,
+            " \"%s\" is not a valid flag for opening a file - you should specify at least one between 'r' or 'w'\n",
+            mode);
     exit(1);
   }
-  int fd = open(path,flag,0666);
-  if (fd<0){
+  int fd = open(path, flag, 0666);
+  if (fd < 0) {
     perror("opening file");
     exit(1);
   }
