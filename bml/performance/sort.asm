@@ -261,33 +261,25 @@ mov rsi, 1
 jmp apply_fn
 
 __direct__list_range_: ; args rdi=i, rsi=acc
-push rdi ;+
-push rsi ;+ (2)
-sub rsp, 8; +
 cmp rdi, -1
 jne .L9
-add rsp, 8 ; -
-mov rax, qword [rsp]
-add rsp, 16 ; ++
+mov rax, rsi
 ret
 .L9
-add rsp, 8 ; - (2)
-mov rdi, qword [rsp+8]
-sar rdi, 1
-sub rdi, 1
-lea rdi, [rdi+1+rdi]
-push rdi ; + (3)
+push rdi ;+
+push rsi ;+ (2)
+sub rsp, 8
 mov rdi, 4 
 call fast_malloc
+add rsp, 8
+pop rsi
+pop rdi
 mov qword [rax], 3
 mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps 
 mov dword [rax+12], 105
-mov rdx, qword [rsp+16] ; i
-mov qword [rax+16], rdx
-mov rdx, qword [rsp+8] ; acc
-mov qword [rax+24], rdx
-mov rdi, qword [rsp] ; i-i
-add rsp, 24 ; reclaiming stack space
+mov qword [rax+16], rdi
+mov qword [rax+24], rsi
+sub rdi, 2
 mov rsi, rax
 jmp __direct__list_range_
 
