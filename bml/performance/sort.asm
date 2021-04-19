@@ -67,7 +67,6 @@ __global_value_33__ equ 3; stdout
 __global_value_34__ equ 5; stderr
 __global_value_35__ dq 0, 4294967300,__fun_1__,5; length_ : funblock
 __global_value_36__ dq 0, 4294967300,__fun_2__,3; length : funblock
-; __global_value_37__ dq 0, 4294967300,__direct__list_range_,5; list_range_ : funblock DIRECT
 __global_value_38__ dq 0, 4294967300,__fun_4__,3; list_range : funblock
 __global_value_39__ dq 0, 4294967300,__fun_5__,5; reverse_ : funblock
 __global_value_40__ dq 0, 4294967300,__fun_6__,3; reverse : funblock
@@ -264,26 +263,14 @@ jmp apply_fn
 __direct__list_range_: ; args rdi=i, rsi=acc
 push rdi ;+
 push rsi ;+ (2)
-mov rdi, __global_value_9__
-mov rsi, qword [rsp+8]
-sub rsp, 8 ;+ (3)
-call apply_fn
-mov rdi, rax
-mov rsi, 1
-call apply_fn
-test rax, 2
-jz .L9
-add rsp, 8 ; -
-mov rdi, rax
-sub rsp, 8 ; +
-call decrement_value
+sub rsp, 8; +
+cmp rdi, -1
+jne .L9
 add rsp, 8 ; -
 mov rax, qword [rsp]
 add rsp, 16 ; ++
 ret
 .L9
-mov rdi, rax
-call decrement_value
 add rsp, 8 ; - (2)
 mov rdi, qword [rsp+8]
 sar rdi, 1
@@ -1678,7 +1665,7 @@ call decrement_value
 pop rax
 ret
 main:
-mov qword [__global_value_49__], 21
+mov qword [__global_value_49__], 200001
 mov rax, qword [__global_value_49__]
 ; incrementing var__628 : value 
 mov rdi, rax
