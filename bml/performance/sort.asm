@@ -1297,13 +1297,10 @@ pop rsi
 push rax
 mov rdi, __global_value_45__
 call apply_fn
-pop rsi
-push rax
-mov rdi, __global_value_42__
-call apply_fn
-pop rsi
-mov rdi, rax
-jmp apply_fn
+pop rdi
+mov rsi, rax
+mov rdx, 103
+jmp __direct__list_merge_
 
 __fun_12__:
 mov rax, qword [rdi+32]
