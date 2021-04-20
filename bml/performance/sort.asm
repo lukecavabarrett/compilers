@@ -283,6 +283,36 @@ sub rdi, 2
 mov rsi, rax
 jmp __direct__list_range_
 
+__direct__list_reverse_: ; args rdi=l, rsi=acc
+cmp rdi, 103
+jne .L10
+mov rax, rsi
+ret
+.L10
+push rsi; acc
+push qword [rdi+16]; hd
+push rdi; l
+mov rdi, qword [rdi+24]; tl
+call increment_value
+mov rdi, qword [rsp+8]; hd
+mov qword [rsp+8], rax
+call increment_value
+mov rdi, qword [rsp]; l
+mov qword [rsp], rax
+call decrement_value
+mov rdi, 4
+call fast_malloc
+pop rsi ; hd
+pop rdi ; tl
+pop rdx ; acc
+mov qword [rax], 3
+mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps
+mov dword [rax+12], 105
+mov qword [rax+16], rsi
+mov qword [rax+24], rdx
+mov rsi, rax
+jmp __direct__list_reverse_
+
 __fun_4__:
 mov rax, qword [rdi+32]
 ; incrementing var__132 : value 
@@ -462,6 +492,7 @@ pop rcx
 mov rdi, __throw__unmatched__
 mov rsi, 3
 jmp apply_fn
+
 __fun_6__:
 mov rax, qword [rdi+32]
 ; incrementing var__203 : value 
@@ -475,14 +506,10 @@ xchg rdi, rax
 push rax
 call decrement_value
 pop rax
-mov rsi, rax
-mov rdi, __global_value_39__
-sub rsp, 8 ; ensure stack is 16-byte aligned before calls
-call apply_fn
-add rsp, 8 ; reclaiming stack space
 mov rdi, rax
 mov rsi, 103
-jmp apply_fn
+jmp __direct__list_reverse_
+
 __fun_7__:
 mov rax, qword [rdi+32]
 ; incrementing var__218 : value 
@@ -575,8 +602,8 @@ push rax
 push rcx
 push rdx
 call decrement_value
-pop rdx
-pop rcx
+pop rdx ;#2
+pop rcx ;#1
 pop rax
 mov rsi, rcx
 push rdx
@@ -1662,7 +1689,7 @@ mov rax, qword [__global_value_49__]
 ; incrementing var__628 : value 
 mov rdi, rax
 sub rsp, 8
-call increment_value
+call increment_value1
 add rsp, 8
 mov rdi, rax 
 mov rsi, rdi
