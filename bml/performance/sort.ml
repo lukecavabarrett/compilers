@@ -54,7 +54,7 @@ let println_list l =
 
 let tee f x = f x; x ;;
 
-let n = 100000;;
-list_range n |> reverse |> sort ;; 
+let n = 10;;
+list_range n |> reverse |> sort |> println_list;;
 (* list_range n |> tee println_list |> reverse |> tee println_list |> sort |> println_list;; *)
 
