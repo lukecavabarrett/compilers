@@ -71,8 +71,8 @@ __global_value_38__ dq 0, 4294967300,__fun_4__,3; list_range : funblock
 ;__global_value_39__ dq 0, 4294967300,__fun_5__,5; reverse_ : funblock
 __global_value_40__ dq 0, 4294967300,__fun_6__,3; reverse : funblock
 ;__global_value_41__ dq 0, 4294967300,__fun_7__,7; merge_ : funblock
-__global_value_42__ dq 0, 4294967300,__fun_8__,5; merge : funblock
-__global_value_43__ dq 0, 4294967300,__fun_9__,5; split_ : funblock
+;__global_value_42__ dq 0, 4294967300,__fun_8__,5; merge : funblock
+__global_value_43__ dq 0, 4294967300,__fun_9__,7; split_ : funblock
 __global_value_44__ dq 0, 4294967300,__fun_10__,3; split : funblock
 __global_value_45__ dq 0, 4294967300,__fun_11__,3; sort : funblock
 __string_literal_1__ dq 0, 12884901890
@@ -878,26 +878,79 @@ mov rdi, __throw__unmatched__
 mov rsi, 3
 jmp apply_fn
 
-__fun_8__:
+;__fun_8__:
+;mov rax, qword [rdi+32]
+;; incrementing var__337 : value
+;xchg rdi, rax
+;push rax
+;call increment_value
+;mov rdi, rax
+;pop rax
+;mov rcx, qword [rax+16]
+;; incrementing var__338 : value
+;xchg rdi, rcx
+;push rax
+;push rcx
+;sub rsp, 8
+;call increment_value
+;add rsp, 8
+;mov rdi, rax
+;pop rcx
+;pop rax
+;; destroying var__336 : value
+;xchg rdi, rax
+;push rax
+;push rcx
+;sub rsp, 8
+;call decrement_value
+;add rsp, 8
+;pop rcx
+;pop rax
+;mov rdi, qword [rax+32]
+;; incrementing var__339 : value
+;push rax
+;push rcx
+;sub rsp, 8
+;call increment_value
+;add rsp, 8
+;mov rdi, rax
+;pop rcx
+;pop rax
+;; destroying var__338 : value
+;xchg rdi, rax
+;push rax
+;push rcx
+;sub rsp, 8
+;call decrement_value
+;add rsp, 8
+;pop rcx
+;pop rax
+;mov rdi, rax
+;mov rsi, rcx
+;mov rdx, 103
+;jmp __direct__list_merge_
+
+
+__fun_9__:
 mov rax, qword [rdi+32]
-; incrementing var__337 : value 
+; incrementing var__355 : value
 xchg rdi, rax
 push rax
 call increment_value
-mov rdi, rax 
+mov rdi, rax
 pop rax
 mov rcx, qword [rax+16]
-; incrementing var__338 : value 
+; incrementing var__356 : value
 xchg rdi, rcx
 push rax
 push rcx
 sub rsp, 8
 call increment_value
 add rsp, 8
-mov rdi, rax 
+mov rdi, rax
 pop rcx
 pop rax
-; destroying var__336 : value 
+; destroying var__354 : value
 xchg rdi, rax
 push rax
 push rcx
@@ -907,79 +960,27 @@ add rsp, 8
 pop rcx
 pop rax
 mov rdi, qword [rax+32]
-; incrementing var__339 : value 
+; incrementing var__357 : value
 push rax
 push rcx
 sub rsp, 8
 call increment_value
 add rsp, 8
-mov rdi, rax 
-pop rcx
-pop rax
-; destroying var__338 : value 
-xchg rdi, rax
-push rax
-push rcx
-sub rsp, 8
-call decrement_value
-add rsp, 8
-pop rcx
-pop rax
 mov rdi, rax
-mov rsi, rcx
-mov rdx, 103
-jmp __direct__list_merge_
-
-__fun_9__:
-mov rax, qword [rdi+32]
-; incrementing var__355 : value 
-xchg rdi, rax
-push rax
-call increment_value
-mov rdi, rax 
-pop rax
-mov rcx, qword [rdi+16]
-; incrementing var__356 : value 
-xchg rdi, rcx
-push rax
-push rcx
-sub rsp, 8
-call increment_value
-add rsp, 8
-mov rdi, rax 
 pop rcx
 pop rax
-mov rdx, qword [rcx+24]
-; incrementing var__357 : value 
+mov rdx, qword [rax+16]
+; incrementing var__358 : value
 xchg rdi, rdx
 push rax
 push rcx
 push rdx
 call increment_value
-mov rdi, rax 
+mov rdi, rax
 pop rdx
 pop rcx
 pop rax
-; destroying var__355 : value 
-xchg rdi, rcx
-push rax
-push rcx
-push rdx
-call decrement_value
-pop rdx
-pop rcx
-pop rax
-mov rdi, qword [rax+16]
-; incrementing var__358 : value 
-push rax
-push rcx
-push rdx
-call increment_value
-mov rdi, rax 
-pop rdx
-pop rcx
-pop rax
-; destroying var__354 : value 
+; destroying var__356 : value
 xchg rdi, rax
 push rax
 push rcx
@@ -989,16 +990,16 @@ pop rdx
 pop rcx
 pop rax
 mov rdi, qword [rax+32]
-; incrementing var__359 : value 
+; incrementing var__359 : value
 push rax
 push rcx
 push rdx
 call increment_value
-mov rdi, rax 
+mov rdi, rax
 pop rdx
 pop rcx
 pop rax
-; destroying var__358 : value 
+; destroying var__358 : value
 xchg rdi, rax
 push rax
 push rcx
@@ -1016,7 +1017,7 @@ mov rdi, 1
 .L36
 test rdi, 2
 jz .L37
-; destroying var__346 : value 
+; destroying var__346 : value
 xchg rdi, rax
 push rax
 push rcx
@@ -1027,7 +1028,7 @@ pop rcx
 pop rax
 push rcx
 push rdx
-mov rdi, 4 
+mov rdi, 4
 call fast_malloc
 mov qword [rax], 3
 mov qword [rax+8], 4
@@ -1058,17 +1059,17 @@ mov rdi, 1
 test rdi, 2
 jz .L42
 mov rdi, qword [rax+16]
-; incrementing var__398 : value 
+; incrementing var__398 : value
 push rax
 push rcx
 push rdx
 call increment_value
-mov rdi, rax 
+mov rdi, rax
 pop rdx
 pop rcx
 pop rax
 mov rsi, qword [rax+24]
-; incrementing var__399 : value 
+; incrementing var__399 : value
 xchg rdi, rsi
 push rax
 push rcx
@@ -1077,12 +1078,12 @@ push rsi
 sub rsp, 8
 call increment_value
 add rsp, 8
-mov rdi, rax 
+mov rdi, rax
 pop rsi
 pop rdx
 pop rcx
 pop rax
-; destroying var__346 : value 
+; destroying var__346 : value
 xchg rdi, rax
 push rax
 push rcx
@@ -1095,38 +1096,34 @@ pop rsi
 pop rdx
 pop rcx
 pop rax
+
 xchg rsi, rax
 push rax
 push rcx
 push rdx
+
 mov rdi, __global_value_43__
 call apply_fn
 push rax
-mov rdi, 4 
+
+mov rdi, 4
 call fast_malloc
 mov qword [rax], 3
-mov qword [rax+8], 4
-push rax
-mov rdi, 4 
-call fast_malloc
-mov qword [rax], 3
-mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps 
+mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps
 mov dword [rax+12], 105
-mov rdi, qword [rsp+32]
-mov qword [rax+16], rdi
 mov rdi, qword [rsp+24]
+mov qword [rax+16], rdi
+mov rdi, qword [rsp+16]
 mov qword [rax+24], rdi
 pop rdi
-mov qword [rdi+16], rax
-mov rax, qword [rsp+8]
-mov qword [rdi+24], rax
-mov rax, qword [rsp]
-add rsp, 32 ; reclaiming stack space
-xchg rdi, rax
 mov rsi, rax
+call apply_fn
+mov rsi, qword [rsp]
+add rsp, 24 ; reclaiming stack space
+mov rdi, rax
 jmp apply_fn
 .L42
-; destroying var__346 : value 
+; destroying var__346 : value
 xchg rdi, rax
 push rax
 push rcx
@@ -1135,17 +1132,17 @@ call decrement_value
 pop rdx
 pop rcx
 pop rax
-; destroying var__347 : value 
-mov rdi, rdx
+; destroying var__348 : value
+mov rdi, rcx
 push rax
-push rcx
+push rdx
 sub rsp, 8
 call decrement_value
 add rsp, 8
-pop rcx
+pop rdx
 pop rax
-; destroying var__348 : value 
-mov rdi, rcx
+; destroying var__347 : value
+mov rdi, rdx
 push rax
 call decrement_value
 pop rax
@@ -1155,13 +1152,13 @@ jmp apply_fn
 
 __fun_10__:
 mov rax, qword [rdi+32]
-; incrementing var__415 : value 
+; incrementing var__413 : value
 xchg rdi, rax
 push rax
 call increment_value
-mov rdi, rax 
+mov rdi, rax
 pop rax
-; destroying var__414 : value 
+; destroying var__412 : value
 xchg rdi, rax
 push rax
 call decrement_value
@@ -1170,16 +1167,14 @@ mov rsi, rax
 mov rdi, __global_value_43__
 sub rsp, 8 ; ensure stack is 16-byte aligned before calls
 call apply_fn
-mov qword [rsp+0], rax
-mov rdi, 4 
-call fast_malloc
-mov qword [rax], 3
-mov qword [rax+8], 4
-mov qword [rax+16], 103
-mov qword [rax+24], 103
-pop rdi
-mov rsi, rax
+mov rdi, rax
+mov rsi, 103
+call apply_fn
+add rsp, 8 ; reclaiming stack space
+mov rdi, rax
+mov rsi, 103
 jmp apply_fn
+
 
 __fun_11__:
 mov rax, qword [rdi+32]
