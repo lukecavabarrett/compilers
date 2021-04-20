@@ -70,7 +70,7 @@ __global_value_36__ dq 0, 4294967300,__fun_2__,3; length : funblock
 __global_value_38__ dq 0, 4294967300,__fun_4__,3; list_range : funblock
 ;__global_value_39__ dq 0, 4294967300,__fun_5__,5; reverse_ : funblock
 __global_value_40__ dq 0, 4294967300,__fun_6__,3; reverse : funblock
-__global_value_41__ dq 0, 4294967300,__fun_7__,7; merge_ : funblock
+;__global_value_41__ dq 0, 4294967300,__fun_7__,7; merge_ : funblock
 __global_value_42__ dq 0, 4294967300,__fun_8__,5; merge : funblock
 __global_value_43__ dq 0, 4294967300,__fun_9__,5; split_ : funblock
 __global_value_44__ dq 0, 4294967300,__fun_10__,3; split : funblock
@@ -510,101 +510,15 @@ mov rdi, rax
 mov rsi, 103
 jmp __direct__list_reverse_
 
-__fun_7__:
-mov rax, qword [rdi+32]
-; incrementing var__218 : value 
-xchg rdi, rax
-push rax
-call increment_value
-mov rdi, rax 
-pop rax
-mov rcx, qword [rax+16]
-; incrementing var__219 : value 
-xchg rdi, rcx
-push rax
-push rcx
-sub rsp, 8
-call increment_value
-add rsp, 8
-mov rdi, rax 
-pop rcx
-pop rax
-; destroying var__217 : value 
-xchg rdi, rax
-push rax
-push rcx
-sub rsp, 8
-call decrement_value
-add rsp, 8
-pop rcx
-pop rax
-mov rdi, qword [rax+32]
-; incrementing var__220 : value 
-push rax
-push rcx
-sub rsp, 8
-call increment_value
-add rsp, 8
-mov rdi, rax 
-pop rcx
-pop rax
-mov rdx, qword [rax+16]
-; incrementing var__221 : value 
-xchg rdi, rdx
-push rax
-push rcx
-push rdx
-call increment_value
-mov rdi, rax 
-pop rdx
-pop rcx
-pop rax
-; destroying var__219 : value 
-xchg rdi, rax
-push rax
-push rcx
-push rdx
-call decrement_value
-pop rdx
-pop rcx
-pop rax
-mov rdi, qword [rax+32]
-; incrementing var__222 : value 
-push rax
-push rcx
-push rdx
-call increment_value
-mov rdi, rax 
-pop rdx
-pop rcx
-pop rax
-; destroying var__221 : value 
-xchg rdi, rax
-push rax
-push rcx
-push rdx
-call decrement_value
-pop rdx
-pop rcx
-pop rax
+__direct__list_merge_: ;rdi=a, rsi=b, rdx=racc
+mov rax, rdi
+mov rcx, rdx
+mov rdx, rsi
+; start procedure: a:rax b:rdx racc:rcx
 cmp rax, 103
-jne .L18
-mov rdi, 3
-jmp .L19
-.L18
-mov rdi, 1
-.L19
-test rdi, 2
-jz .L20
-; destroying var__209 : value 
-xchg rdi, rax
-push rax
-push rcx
-push rdx
-call decrement_value
-pop rsi ;#2
-pop rdi ;#1
-pop rax
+jne .L20
+mov rdi, rcx
+mov rsi, rdx
 jmp __direct__list_reverse_
 .L20
 test rax, 1
@@ -818,27 +732,24 @@ pop rax
 ; destroying var__305 : value 
 mov rdi, rax
 call decrement_value
-mov rsi, qword [rsp+48]
-mov rdi, __global_value_41__
-call apply_fn
-mov rdi, rax
-pop rsi
-add rsp, 8
-call apply_fn
-mov qword [rsp+32], rax
-mov rdi, 4 
+
+mov rdi, 4
 call fast_malloc
+mov rdi, qword [rsp+48] ;#1
+pop rsi ;#2
+add rsp, 8
+
 mov qword [rax], 3
-mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps 
+mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps
 mov dword [rax+12], 105
-mov rdi, qword [rsp+8]
-mov qword [rax+16], rdi
-mov rdi, qword [rsp+24]
-mov qword [rax+24], rdi
-mov rdi, qword [rsp+32]
+mov rdx, qword [rsp+8]
+mov qword [rax+16], rdx
+mov rdx, qword [rsp+24]
+mov qword [rax+24], rdx
+mov rdx, rax
 add rsp, 40 ; reclaiming stack space
-mov rsi, rax
-jmp apply_fn
+jmp __direct__list_merge_
+
 .L34
 ; destroying var__209 : value 
 mov rdi, qword [rsp+48]
@@ -866,28 +777,26 @@ add rsp, 8 ; reclaiming stack space
 mov rdi, rax
 sub rsp, 8
 call decrement_value
-add rsp, 8
-mov rsi, qword [rsp+24]
-mov rdi, __global_value_41__
-sub rsp, 8 ; ensure stack is 16-byte aligned before calls
-call apply_fn
-mov rdi, rax
-mov rsi, qword [rsp+8]
-call apply_fn
-mov qword [rsp+48], rax
-mov rdi, 4 
+
+mov rdi, 4
 call fast_malloc
+add rsp, 8
+
+mov rdi, qword [rsp+24] ;#1
+sub rsp, 8 ; ensure stack is 16-byte aligned before calls
+mov rsi, qword [rsp+8] ;#2
+
 mov qword [rax], 3
 mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps 
 mov dword [rax+12], 105
-mov rdi, qword [rsp+16]
-mov qword [rax+16], rdi
-mov rdi, qword [rsp+40]
-mov qword [rax+24], rdi
-mov rdi, qword [rsp+48]
+mov rdx, qword [rsp+16]
+mov qword [rax+16], rdx
+mov rdx, qword [rsp+40]
+mov qword [rax+24], rdx
 add rsp, 56 ; reclaiming stack space
-mov rsi, rax
-jmp apply_fn
+mov rdx, rax
+jmp __direct__list_merge_
+
 .L33
 ; destroying var__210 : value 
 xchg rdi, rdx
@@ -1016,18 +925,10 @@ call decrement_value
 add rsp, 8
 pop rcx
 pop rax
-mov rsi, rax
-push rcx
-mov rdi, __global_value_41__
-call apply_fn
 mov rdi, rax
-pop rsi
-sub rsp, 8 ; ensure stack is 16-byte aligned before calls
-call apply_fn
-add rsp, 8 ; reclaiming stack space
-mov rdi, rax
-mov rsi, 103
-jmp apply_fn
+mov rsi, rcx
+mov rdx, 103
+jmp __direct__list_merge_
 
 __fun_9__:
 mov rax, qword [rdi+32]
