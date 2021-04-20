@@ -72,8 +72,8 @@ __global_value_38__ dq 0, 4294967300,__fun_4__,3; list_range : funblock
 __global_value_40__ dq 0, 4294967300,__fun_6__,3; reverse : funblock
 ;__global_value_41__ dq 0, 4294967300,__fun_7__,7; merge_ : funblock
 ;__global_value_42__ dq 0, 4294967300,__fun_8__,5; merge : funblock
-__global_value_43__ dq 0, 4294967300,__fun_9__,7; split_ : funblock
-__global_value_44__ dq 0, 4294967300,__fun_10__,3; split : funblock
+;__global_value_43__ dq 0, 4294967300,__fun_9__,7; split_ : funblock
+;__global_value_44__ dq 0, 4294967300,__fun_10__,3; split : funblock
 __global_value_45__ dq 0, 4294967300,__fun_11__,3; sort : funblock
 __string_literal_1__ dq 0, 12884901890
  db "]",10,0,0,0,0,0,0
@@ -931,83 +931,11 @@ jmp apply_fn
 ;jmp __direct__list_merge_
 
 
-__fun_9__:
-mov rax, qword [rdi+32]
-; incrementing var__355 : value
-xchg rdi, rax
-push rax
-call increment_value
-mov rdi, rax
-pop rax
-mov rcx, qword [rax+16]
-; incrementing var__356 : value
-xchg rdi, rcx
-push rax
-push rcx
-sub rsp, 8
-call increment_value
-add rsp, 8
-mov rdi, rax
-pop rcx
-pop rax
-; destroying var__354 : value
-xchg rdi, rax
-push rax
-push rcx
-sub rsp, 8
-call decrement_value
-add rsp, 8
-pop rcx
-pop rax
-mov rdi, qword [rax+32]
-; incrementing var__357 : value
-push rax
-push rcx
-sub rsp, 8
-call increment_value
-add rsp, 8
-mov rdi, rax
-pop rcx
-pop rax
-mov rdx, qword [rax+16]
-; incrementing var__358 : value
-xchg rdi, rdx
-push rax
-push rcx
-push rdx
-call increment_value
-mov rdi, rax
-pop rdx
-pop rcx
-pop rax
-; destroying var__356 : value
-xchg rdi, rax
-push rax
-push rcx
-push rdx
-call decrement_value
-pop rdx
-pop rcx
-pop rax
-mov rdi, qword [rax+32]
-; incrementing var__359 : value
-push rax
-push rcx
-push rdx
-call increment_value
-mov rdi, rax
-pop rdx
-pop rcx
-pop rax
-; destroying var__358 : value
-xchg rdi, rax
-push rax
-push rcx
-push rdx
-call decrement_value
-pop rdx
-pop rcx
-pop rax
+__direct__list_split_: ;  rdi=l rsi=acc0 rdx=acc1
+mov rax, rdi
+mov rcx, rdx
+mov rdx, rsi
+; start procedure: claim a:rax b:rdx racc:rcx
 cmp rax, 103
 jne .L35
 mov rdi, 3
@@ -1091,37 +1019,22 @@ push rdx
 push rsi
 sub rsp, 8
 call decrement_value
-add rsp, 8
-pop rsi
-pop rdx
-pop rcx
-pop rax
-
-xchg rsi, rax
-push rax
-push rcx
-push rdx
-
-mov rdi, __global_value_43__
-call apply_fn
-push rax
-
 mov rdi, 4
 call fast_malloc
-mov qword [rax], 3
-mov dword [rax+8], 4 ; loading 64-bit constant 450971566084 in two steps
-mov dword [rax+12], 105
-mov rdi, qword [rsp+24]
-mov qword [rax+16], rdi
-mov rdi, qword [rsp+16]
-mov qword [rax+24], rdi
-pop rdi
+add rsp, 8
 mov rsi, rax
-call apply_fn
-mov rsi, qword [rsp]
-add rsp, 24 ; reclaiming stack space
-mov rdi, rax
-jmp apply_fn
+mov qword [rsi], 3
+mov dword [rsi+8], 4 ; loading 64-bit constant 450971566084 in two steps
+mov dword [rsi+12], 105
+; now we can pop (in order) [hd, acc0, acc1, tl]
+pop rcx
+mov qword [rsi+16], rcx
+pop rdx
+pop rcx
+mov qword [rsi+24], rcx
+pop rdi
+jmp __direct__list_split_
+
 .L42
 ; destroying var__346 : value
 xchg rdi, rax
@@ -1150,30 +1063,30 @@ mov rdi, __throw__unmatched__
 mov rsi, 3
 jmp apply_fn
 
-__fun_10__:
-mov rax, qword [rdi+32]
-; incrementing var__413 : value
-xchg rdi, rax
-push rax
-call increment_value
-mov rdi, rax
-pop rax
-; destroying var__412 : value
-xchg rdi, rax
-push rax
-call decrement_value
-pop rax
-mov rsi, rax
-mov rdi, __global_value_43__
-sub rsp, 8 ; ensure stack is 16-byte aligned before calls
-call apply_fn
-mov rdi, rax
-mov rsi, 103
-call apply_fn
-add rsp, 8 ; reclaiming stack space
-mov rdi, rax
-mov rsi, 103
-jmp apply_fn
+;__fun_10__:
+;mov rax, qword [rdi+32]
+;; incrementing var__413 : value
+;xchg rdi, rax
+;push rax
+;call increment_value
+;mov rdi, rax
+;pop rax
+;; destroying var__412 : value
+;xchg rdi, rax
+;push rax
+;call decrement_value
+;pop rax
+;mov rsi, rax
+;mov rdi, __global_value_43__
+;sub rsp, 8 ; ensure stack is 16-byte aligned before calls
+;call apply_fn
+;mov rdi, rax
+;mov rsi, 103
+;call apply_fn
+;add rsp, 8 ; reclaiming stack space
+;mov rdi, rax
+;mov rsi, 103
+;jmp apply_fn
 
 
 __fun_11__:
@@ -1255,10 +1168,11 @@ pop rax
 ret
 .L52
 ; optimized out branch
-mov rsi, rax
-mov rdi, __global_value_44__
+mov rdi, rax
+mov rsi, 103
+mov rdx, 103
 sub rsp, 8 ; ensure stack is 16-byte aligned before calls
-call apply_fn
+call __direct__list_split_
 mov rdi, qword [rax+16]
 ; incrementing var__483 : value 
 push rax
