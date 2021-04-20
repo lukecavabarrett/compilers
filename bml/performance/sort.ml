@@ -27,11 +27,11 @@ let rec merge_ a b racc =
 let merge a b = merge_ a b Nil;;
 
 
-let rec split_ l (acc0,acc1) =
+let rec split_ l acc0 acc1 =
     match l with
     | Nil -> (acc0,acc1)
-    | Cons (hd,tl) -> split_ tl (Cons(hd,acc1),acc0)
-and split l = split_ l (Nil,Nil);;
+    | Cons (hd,tl) -> split_ tl (Cons(hd,acc1)) acc0
+and split l = split_ l Nil Nil;;
 
 let rec sort l =
     match l with
@@ -55,6 +55,6 @@ let println_list l =
 let tee f x = f x; x ;;
 
 let n = 10;;
-list_range n |> reverse |> sort |> println_list;;
+list_range n |> reverse |> sort |> println_list ;;
 (* list_range n |> tee println_list |> reverse |> tee println_list |> sort |> println_list;; *)
 
